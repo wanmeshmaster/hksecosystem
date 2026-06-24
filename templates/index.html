@@ -14,7 +14,6 @@
         }
 
         body {
-            /* Flex layout to keep the footer at the bottom and content centered */
             display: flex;
             flex-direction: column;
             min-height: 100vh;
@@ -22,7 +21,6 @@
             color: #333;
         }
 
-        /* Header Styling */
         header {
             padding: 40px 20px;
             text-align: center;
@@ -35,9 +33,8 @@
             letter-spacing: -0.5px;
         }
 
-        /* Main App Grid Area (Mostly Empty) */
         main {
-            flex: 1; /* Pushes the footer to the bottom */
+            flex: 1;
             display: flex;
             align-content: flex-start;
             justify-content: center;
@@ -55,7 +52,7 @@
             justify-content: flex-start;
         }
 
-        /* App Slot (Rectangle) */
+        /* Default App Slot Styling */
         .app-slot {
             display: flex;
             align-items: center;
@@ -71,6 +68,10 @@
             font-weight: 500;
             transition: all 0.2s ease-in-out;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+            padding: 15px;
         }
 
         .app-slot:hover {
@@ -81,7 +82,19 @@
             box-shadow: 0 10px 15px rgba(0, 0, 0, 0.05);
         }
 
-        /* Version Number Footer */
+        /* Styling modifier for when a background image is present */
+        .app-slot.has-bg {
+            border: none;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .app-slot.has-bg:hover {
+            color: #ffffff;
+            border: none;
+            box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+        }
+
         footer {
             padding: 20px;
             text-align: center;
@@ -94,26 +107,29 @@
 </head>
 <body>
 
-    <!-- Portal Title -->
     <header>
         <h1>Hong Kong Solutions Ecosystem</h1>
     </header>
 
-    <!-- App Container -->
     <main>
         <div class="app-grid">
-            <!-- App Slot linking to a new page -->
-            <a href="coming-soon.html" class="app-slot" title="New App Container">
-                Coming soon...
-            </a>
-            
-            <!-- Future apps would just be added as new <a> tags here -->
+            {% for app in apps %}
+                
+                <a href="{{ app.url }}" 
+                   class="app-slot {% if app.bg_image %}has-bg{% endif %}" 
+                   title="{{ app.title }}"
+                   {% if app.bg_image %}
+                   style="background-image: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.6)), url('/source/{{ app.bg_image }}'); background-size: cover; background-position: center;"
+                   {% endif %}>
+                    {{ app.title }}
+                </a>
+
+            {% endfor %}
         </div>
     </main>
 
-    <!-- Version Number -->
     <footer>
-        v0.1.0
+        v0.1.1
     </footer>
 
 </body>
