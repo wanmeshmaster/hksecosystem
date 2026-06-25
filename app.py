@@ -18,7 +18,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
+            password_hash TEXT NOT NULL,
+            is_admin INTEGER NOT NULL DEFAULT 0
         )
     """)
 
@@ -81,9 +82,20 @@ def register():
         conn = sqlite3.connect(DATABASE)
         cur = conn.cursor()
 
+        # Count existing users
+        cur.execute("SELECT COUNT(*) FROM users")
+        user_count = cur.fetchone()[0]
+
+        # First user becomes admin
+        is_admin = 1 if user_count == 0 else 0
+
         cur.execute(
-            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-            (username, password_hash)
+            """
+            INSERT INTO users
+            (username, password_hash, is_admin)
+            VALUES (?, ?, ?)
+            """,
+            (username, password_hash, is_admin)
         )
 
         conn.commit()
@@ -112,11 +124,26 @@ def login():
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT password_hash FROM users WHERE username=?",
+        """
+        SELECT password_hash, is_admin
+        FROM users
+        WHERE username=?
+        """,
         (username,)
     )
 
     row = cur.fetchone()
+
+    if row and check_password_hash(row[0], password):
+
+        session["username"] = username
+        session["is_admin"] = bool(row[1])
+
+        return jsonify({
+            "success": True,
+            "username": username,
+            "isAdmin": bool(row[1])
+        })
     conn.close()
 
     if row and check_password_hash(row[0], password):
@@ -143,17 +170,29 @@ def logout():
 
 @app.route('/api/current-user')
 def current_user():
-    username = session.get("username")
 
-    if username:
+    if "username" in session:
         return jsonify({
             "loggedIn": True,
-            "username": username
+            "username": session["username"],
+            "isAdmin": session.get("is_admin", False)
         })
 
     return jsonify({
         "loggedIn": False
     })
+
+def is_admin():
+    return session.get("is_admin", False)
+
+@app.route('/api/admin/users')
+def admin_users():
+
+    if not is_admin():
+        return jsonify({
+            "success": False,
+            "message": "Administrator access required."
+        }), 403
 
 if __name__ == '__main__':
     init_db()
