@@ -19,7 +19,8 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             is_admin INTEGER NOT NULL DEFAULT 0,
-            balance REAL NOT NULL DEFAULT 0.0
+            balance REAL NOT NULL DEFAULT 0.0,
+            full_name TEXT NOT NULL DEFAULT ''
         )
     """)
     
@@ -36,6 +37,11 @@ def init_db():
     
     try:
         cur.execute("ALTER TABLE users ADD COLUMN balance REAL NOT NULL DEFAULT 0.0")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''")
     except sqlite3.OperationalError:
         pass
         
@@ -71,9 +77,15 @@ def register():
     data = request.get_json()
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()
+    first_name = data.get("first_name", "").strip()
+    last_name = data.get("last_name", "").strip()
+    full_name = f"{first_name} {last_name}".strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password required."}), 400
+
+    if not first_name or not last_name:
+        return jsonify({"success": False, "message": "First and last name required."}), 400
 
     password_hash = generate_password_hash(password)
 
@@ -85,9 +97,9 @@ def register():
         is_admin = 1 if user_count == 0 else 0
 
         cur.execute("""
-            INSERT INTO users (username, password_hash, is_admin, balance)
-            VALUES (?, ?, ?, 0.0)
-        """, (username, password_hash, is_admin))
+            INSERT INTO users (username, password_hash, is_admin, balance, full_name)
+            VALUES (?, ?, ?, 0.0, ?)
+        """, (username, password_hash, is_admin, full_name))
         conn.commit()
         conn.close()
         return jsonify({"success": True, "message": "Account created."})
@@ -126,7 +138,7 @@ def current_user():
     if "username" in session:
         conn = sqlite3.connect(DATABASE)
         cur = conn.cursor()
-        cur.execute("SELECT is_admin, balance FROM users WHERE username=?", (session["username"],))
+        cur.execute("SELECT is_admin, balance, full_name FROM users WHERE username=?", (session["username"],))
         row = cur.fetchone()
         conn.close()
         if row:
@@ -134,7 +146,8 @@ def current_user():
                 "loggedIn": True,
                 "username": session["username"],
                 "isAdmin": bool(row[0]),
-                "balance": row[1]
+                "balance": row[1],
+                "fullName": row[2] if row[2] else session["username"]
             })
     return jsonify({"loggedIn": False})
 

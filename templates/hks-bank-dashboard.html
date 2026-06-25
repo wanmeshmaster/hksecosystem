@@ -149,7 +149,7 @@
                 if (!data.loggedIn) {
                     window.location.href = '/hks-bank.html';
                 } else {
-                    document.getElementById('user-display').innerText = data.username;
+                    document.getElementById('user-display').innerText = data.fullName || data.username;
                     
                     // Format balance display immediately on the main card
                     const balanceString = parseFloat(data.balance).toFixed(2);
