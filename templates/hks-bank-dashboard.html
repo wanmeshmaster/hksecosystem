@@ -42,10 +42,12 @@
         .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; text-align: center; padding: 20px 0; }
         .tx-list { display: flex; flex-direction: column; gap: 10px; }
         .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background-color: #f8fafc; border-radius: 6px; border-left: 4px solid #10b981; }
+        .transaction-item.debit { border-left-color: #ef4444; }
         .tx-info { display: flex; flex-direction: column; gap: 4px; }
         .tx-title { font-weight: 600; color: #333; font-size: 0.95rem; }
         .tx-date { font-size: 0.8rem; color: #64748b; }
         .tx-amount { font-weight: 700; color: #10b981; font-size: 1.1rem; }
+        .tx-amount.debit { color: #ef4444; }
 
         /* Admin Controls Section */
         .admin-panel { background: #ffffff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
@@ -55,16 +57,9 @@
         .user-table th { font-weight: 600; color: #64748b; font-size: 0.9rem; }
         .user-table tr:last-child td { border-bottom: none; }
         
-        .fund-input { width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 6px; }
-        .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .fund-input { width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 10px; }
         .add-btn { background-color: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .add-btn:hover { background-color: #059669; }
-        .sub-btn { background-color: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-        .sub-btn:hover { background-color: #dc2626; }
-        .promote-btn { background-color: #0052cc; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
-        .promote-btn:hover { background-color: #003d99; }
-        .promote-btn.demote { background-color: #f59e0b; }
-        .promote-btn.demote:hover { background-color: #d97706; }
     </style>
 </head>
 <body>
@@ -98,8 +93,7 @@
                         <th>Username</th>
                         <th>Role</th>
                         <th>Current Balance</th>
-                        <th>Funds</th>
-                        <th>Role Action</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="user-table-body">
@@ -181,15 +175,19 @@
                     data.transactions.forEach(tx => {
                         const dateObj = new Date(tx.date);
                         const dateString = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                        const isDebit = tx.amount < 0;
+                        const absAmount = Math.abs(tx.amount).toFixed(2);
+                        const amountDisplay = isDebit ? `-$${absAmount}` : `+$${absAmount}`;
                         
                         const item = document.createElement('div');
-                        item.className = 'transaction-item';
+                        item.className = `transaction-item${isDebit ? ' debit' : ''}`;
                         item.innerHTML = `
                             <div class="tx-info">
                                 <span class="tx-title">${tx.title}</span>
                                 <span class="tx-date">${dateString}</span>
                             </div>
-                            <div class="tx-amount">+$${parseFloat(tx.amount).toFixed(2)}</div>
+                            <div class="tx-amount${isDebit ? ' debit' : ''}">${amountDisplay}</div>
                         `;
                         txContainer.appendChild(item);
                     });
@@ -211,34 +209,18 @@
                     const tbody = document.getElementById('user-table-body');
                     tbody.innerHTML = '';
                     
-                    // Get current logged-in username to prevent self-role-change
-                    const meResp = await fetch('/api/current-user');
-                    const meData = await meResp.json();
-                    const currentUsername = meData.username;
-
                     data.users.forEach(user => {
                         const row = document.createElement('tr');
                         const balanceFixed = parseFloat(user.balance).toFixed(2);
                         const role = user.is_admin ? "Admin" : "User";
-                        const isSelf = user.username === currentUsername;
                         
-                        const promoteLabel = user.is_admin ? "Demote" : "Promote";
-                        const promoteClass = user.is_admin ? "promote-btn demote" : "promote-btn";
-                        const promoteDisabled = isSelf ? "disabled title='Cannot change your own role'" : "";
-
                         row.innerHTML = `
                             <td><strong>${user.username}</strong></td>
-                            <td><span id="role-label-${user.username}">${role}</span></td>
+                            <td>${role}</td>
                             <td>$${balanceFixed}</td>
                             <td>
-                                <div class="action-btns">
-                                    <input type="number" id="fund-${user.username}" class="fund-input" placeholder="0.00" min="0" step="10">
-                                    <button onclick="addFunds('${user.username}')" class="add-btn">Add</button>
-                                    <button onclick="subtractFunds('${user.username}')" class="sub-btn">Sub</button>
-                                </div>
-                            </td>
-                            <td>
-                                <button id="promote-btn-${user.username}" onclick="toggleRole('${user.username}')" class="${promoteClass}" ${promoteDisabled}>${promoteLabel}</button>
+                                <input type="number" id="fund-${user.username}" class="fund-input" placeholder="0.00" min="0" step="10">
+                                <button onclick="addFunds('${user.username}')" class="add-btn">Add Funds</button>
                             </td>
                         `;
                         tbody.appendChild(row);
@@ -270,72 +252,13 @@
                 if (data.success) {
                     alert(data.message);
                     amountInput.value = '';
+                    // Refresh data across the board to instantly show new balance/transactions
                     verifySession(); 
                 } else {
                     alert(data.message);
                 }
             } catch (err) {
                 console.error("Fund addition failed:", err);
-            }
-        }
-
-        // Admin: Subtract Funds Logic
-        async function subtractFunds(username) {
-            const amountInput = document.getElementById(`fund-${username}`);
-            const amount = parseFloat(amountInput.value);
-
-            if (isNaN(amount) || amount <= 0) {
-                alert("Please enter a valid amount greater than 0.");
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/admin/subtract_funds', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, amount: amount })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    alert(data.message);
-                    amountInput.value = '';
-                    verifySession();
-                } else {
-                    alert(data.message);
-                }
-            } catch (err) {
-                console.error("Fund subtraction failed:", err);
-            }
-        }
-
-        // Admin: Toggle User Role (Promote / Demote)
-        async function toggleRole(username) {
-            const btn = document.getElementById(`promote-btn-${username}`);
-            const currentlyAdmin = btn.classList.contains('demote');
-            const action = currentlyAdmin ? "demote" : "promote";
-
-            if (!confirm(`Are you sure you want to ${action} "${username}"?`)) return;
-
-            try {
-                const response = await fetch('/api/admin/promote_user', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username })
-                });
-
-                const data = await response.json();
-                if (data.success) {
-                    alert(data.message);
-                    // Update role label and button in place without full reload
-                    document.getElementById(`role-label-${username}`).innerText = data.isAdmin ? "Admin" : "User";
-                    btn.innerText = data.isAdmin ? "Demote" : "Promote";
-                    btn.className = data.isAdmin ? "promote-btn demote" : "promote-btn";
-                } else {
-                    alert(data.message);
-                }
-            } catch (err) {
-                console.error("Role toggle failed:", err);
             }
         }
 
