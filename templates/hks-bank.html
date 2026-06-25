@@ -254,67 +254,124 @@
         }
 
         // --- Registration Logic ---
-        function registerAccount() {
+        async function registerAccount() {
             const user = document.getElementById('reg-username').value.trim();
             const pass = document.getElementById('reg-password').value.trim();
 
-            if (user === '' || pass === '') {
+            if (!user || !pass) {
                 regError.innerText = "Please fill out both fields.";
                 regError.style.display = 'block';
                 return;
             }
 
-            if (userDatabase[user]) {
-                regError.innerText = "Username already exists.";
-                regError.style.display = 'block';
-                return;
-            }
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: user,
+                        password: pass
+                    })
+                });
 
-            // Save to mock database
-            userDatabase[user] = pass;
-            
-            // Success alert and close modal
-            alert("Account created successfully! Please sign in with your new credentials.");
-            closeRegisterModal();
-            
-            // Auto-fill login username for convenience
-            document.getElementById('login-username').value = user;
-            document.getElementById('login-password').value = '';
+                const data = await response.json();
+
+                if (data.success) {
+                    alert("Account created successfully!");
+
+                    closeRegisterModal();
+
+                    document.getElementById('login-username').value = user;
+                    document.getElementById('login-password').value = '';
+                } else {
+                    regError.innerText = data.message;
+                    regError.style.display = 'block';
+                }
+
+            } catch (err) {
+                regError.innerText = "Server error.";
+                regError.style.display = 'block';
+            }
         }
 
         // --- Login Logic ---
-        function attemptLogin() {
+        async function attemptLogin() {
             const user = document.getElementById('login-username').value.trim();
             const pass = document.getElementById('login-password').value.trim();
 
-            // Check if user exists and password matches
-            if (userDatabase[user] && userDatabase[user] === pass) {
-                // Success: Hide login, show main view
-                loginError.style.display = 'none';
-                loginView.style.display = 'none';
-                
-                // Set the username in the dashboard
-                document.getElementById('display-user').innerText = user;
-                
-                // Show dashboard
-                mainView.style.display = 'block';
-            } else {
-                // Fail: Show error
-                loginError.innerText = "Invalid username or password.";
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: user,
+                        password: pass
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+
+                    loginError.style.display = 'none';
+
+                    loginView.style.display = 'none';
+
+                    document.getElementById('display-user').innerText =
+                        data.username;
+
+                    mainView.style.display = 'block';
+
+                } else {
+                    loginError.innerText = data.message;
+                    loginError.style.display = 'block';
+                }
+
+            } catch (err) {
+                loginError.innerText = "Server error.";
                 loginError.style.display = 'block';
             }
         }
 
         // --- Logout Logic ---
-        function logout() {
-            // Hide main view, show login view
+        async function logout() {
+
+            await fetch('/api/logout', {
+                method: 'POST'
+            });
+
             mainView.style.display = 'none';
             loginView.style.display = 'block';
-            
-            // Clear passwords
+
             document.getElementById('login-password').value = '';
             document.getElementById('login-username').value = '';
         }
+
+        window.addEventListener('load', async () => {
+
+            try {
+
+                const response = await fetch('/api/current-user');
+                const data = await response.json();
+
+                if (data.loggedIn) {
+
+                    loginView.style.display = 'none';
+
+                    document.getElementById('display-user').innerText =
+                        data.username;
+
+                    mainView.style.display = 'block';
+                }
+
+            } catch (err) {
+                console.error(err);
+            }
+        });
     </script>
 
 </body>

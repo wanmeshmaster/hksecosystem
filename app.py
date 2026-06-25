@@ -1,7 +1,29 @@
+from flask import Flask, render_template, request, jsonify, session
+from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
 import os
-from flask import Flask, render_template
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
+
+app.secret_key = os.urandom(32)
+
+DATABASE = "users.db"
+
+
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
 
 @app.route('/')
 def home():
@@ -35,10 +57,104 @@ def home():
 def coming_soon():
     return render_template('coming-soon.html')
 
-# New route for the HKS Bank template
 @app.route('/hks-bank.html')
-def hks_bank():
+def bank():
     return render_template('hks-bank.html')
 
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.get_json()
+
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+
+    if not username or not password:
+        return jsonify({
+            "success": False,
+            "message": "Username and password required."
+        }), 400
+
+    password_hash = generate_password_hash(password)
+
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cur = conn.cursor()
+
+        cur.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            (username, password_hash)
+        )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": "Account created."
+        })
+
+    except sqlite3.IntegrityError:
+        return jsonify({
+            "success": False,
+            "message": "Username already exists."
+        }), 400
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT password_hash FROM users WHERE username=?",
+        (username,)
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if row and check_password_hash(row[0], password):
+        session["username"] = username
+
+        return jsonify({
+            "success": True,
+            "username": username
+        })
+
+    return jsonify({
+        "success": False,
+        "message": "Invalid username or password."
+    }), 401
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+
+    return jsonify({
+        "success": True
+    })
+
+@app.route('/api/current-user')
+def current_user():
+    username = session.get("username")
+
+    if username:
+        return jsonify({
+            "loggedIn": True,
+            "username": username
+        })
+
+    return jsonify({
+        "loggedIn": False
+    })
+
 if __name__ == '__main__':
+    init_db()
     app.run(host='0.0.0.0', port=5001, debug=True)
