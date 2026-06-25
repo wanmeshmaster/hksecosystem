@@ -32,8 +32,16 @@
         .action-prompt { font-size: 0.85rem; color: #0052cc; font-weight: 500; }
         .expanded-details { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: left; }
         .balance-heading { font-size: 1.6rem; font-weight: 700; color: #10b981; margin-bottom: 15px; }
-        .transaction-title { font-size: 0.9rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .transaction-title { font-size: 0.9rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.5px; }
+        
+        /* Transaction History UI */
         .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; }
+        .tx-list { display: flex; flex-direction: column; gap: 10px; }
+        .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background-color: #f8fafc; border-radius: 6px; border-left: 4px solid #10b981; }
+        .tx-info { display: flex; flex-direction: column; gap: 3px; }
+        .tx-title { font-weight: 600; color: #333; font-size: 0.95rem; }
+        .tx-date { font-size: 0.8rem; color: #64748b; }
+        .tx-amount { font-weight: 700; color: #10b981; }
 
         /* Admin Controls Section */
         .admin-panel { background: #ffffff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
@@ -63,7 +71,6 @@
             <h2>Welcome to HKS-Bank</h2>
         </div>
 
-        <!-- Personal Account Panel -->
         <div class="account-panel" onclick="toggleAccountView()">
             <div class="account-header">
                 <span class="account-title">Current Account</span>
@@ -73,11 +80,13 @@
             <div id="details-view" class="expanded-details">
                 <div class="balance-heading" id="display-balance">Balance: $0.00</div>
                 <div class="transaction-title">Recent Transactions</div>
-                <p class="empty-text">Your transaction history is currently empty.</p>
+                
+                <div id="tx-container" class="tx-list">
+                    <p class="empty-text">Loading transactions...</p>
+                </div>
             </div>
         </div>
 
-        <!-- Admin Control Panel (Hidden by Default) -->
         <div id="admin-section" class="admin-panel" style="display: none;">
             <h3>Admin User Directory</h3>
             <table class="user-table">
@@ -90,8 +99,7 @@
                     </tr>
                 </thead>
                 <tbody id="user-table-body">
-                    <!-- Populated by JavaScript -->
-                </tbody>
+                    </tbody>
             </table>
         </div>
     </main>
@@ -112,6 +120,9 @@
                     const balanceString = parseFloat(data.balance).toFixed(2);
                     document.getElementById('display-balance').innerText = `Balance: $${balanceString}`;
                     
+                    // Fetch transaction history for the logged-in user
+                    loadTransactions();
+
                     if (data.isAdmin) {
                         document.getElementById('admin-indicator').style.display = 'inline-block';
                         document.getElementById('admin-section').style.display = 'block';
@@ -128,12 +139,50 @@
             const displayBlock = document.getElementById('details-view');
             const visualLabel = document.getElementById('toggle-label');
             
+            // Prevent panel collapse if they click inside the details view
+            if (event.target.closest('#details-view')) return;
+
             if (displayBlock.style.display === 'block') {
                 displayBlock.style.display = 'none';
                 visualLabel.innerText = 'Click to view details';
             } else {
                 displayBlock.style.display = 'block';
                 visualLabel.innerText = 'Click to hide details';
+            }
+        }
+
+        // Fetch and Render Transactions
+        async function loadTransactions() {
+            const txContainer = document.getElementById('tx-container');
+            
+            try {
+                const response = await fetch('/api/transactions');
+                const data = await response.json();
+                
+                txContainer.innerHTML = ''; // Clear container
+
+                if (data.success && data.transactions.length > 0) {
+                    data.transactions.forEach(tx => {
+                        // Format the date nicely
+                        const dateObj = new Date(tx.date);
+                        const dateString = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        
+                        const item = document.createElement('div');
+                        item.className = 'transaction-item';
+                        item.innerHTML = `
+                            <div class="tx-info">
+                                <span class="tx-title">${tx.title}</span>
+                                <span class="tx-date">${dateString}</span>
+                            </div>
+                            <div class="tx-amount">+$${parseFloat(tx.amount).toFixed(2)}</div>
+                        `;
+                        txContainer.appendChild(item);
+                    });
+                } else {
+                    txContainer.innerHTML = '<p class="empty-text">Your transaction history is currently empty.</p>';
+                }
+            } catch (err) {
+                txContainer.innerHTML = '<p class="empty-text" style="color: #ef4444;">Failed to load transactions.</p>';
             }
         }
 
@@ -190,7 +239,7 @@
                 if (data.success) {
                     alert(data.message);
                     amountInput.value = '';
-                    // Reload both tables and user's own balance data dynamically
+                    // Refresh data across the board to instantly show new balance/transactions
                     verifySession(); 
                 } else {
                     alert(data.message);
@@ -210,6 +259,7 @@
             }
         }
 
+        // Initialize immediately upon page load
         window.addEventListener('load', verifySession);
     </script>
 </body>

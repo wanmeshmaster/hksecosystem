@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
+from datetime import datetime
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
 app.secret_key = os.urandom(32)
@@ -10,6 +11,8 @@ DATABASE = "users.db"
 def init_db():
     conn = sqlite3.connect(DATABASE)
     cur = conn.cursor()
+    
+    # Users table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,11 +22,23 @@ def init_db():
             balance REAL NOT NULL DEFAULT 0.0
         )
     """)
-    # Safely attempt to add the balance column to existing databases
+    
+    # Transactions table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            title TEXT NOT NULL,
+            amount REAL NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     try:
         cur.execute("ALTER TABLE users ADD COLUMN balance REAL NOT NULL DEFAULT 0.0")
     except sqlite3.OperationalError:
         pass
+        
     conn.commit()
     conn.close()
 
@@ -123,6 +138,21 @@ def current_user():
             })
     return jsonify({"loggedIn": False})
 
+@app.route('/api/transactions')
+def get_transactions():
+    if "username" not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+        
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT title, amount, timestamp FROM transactions WHERE username=? ORDER BY timestamp DESC", (session["username"],))
+    
+    # Format the data into a list of dictionaries
+    transactions = [{"title": row[0], "amount": row[1], "date": row[2]} for row in cur.fetchall()]
+    conn.close()
+    
+    return jsonify({"success": True, "transactions": transactions})
+
 def is_admin():
     return session.get("is_admin", False)
 
@@ -152,7 +182,16 @@ def admin_add_funds():
 
     conn = sqlite3.connect(DATABASE)
     cur = conn.cursor()
+    
+    # Update balance
     cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, username))
+    
+    # Insert a transaction record titled "Interest"
+    cur.execute("""
+        INSERT INTO transactions (username, title, amount)
+        VALUES (?, ?, ?)
+    """, (username, "Interest", amount))
+    
     conn.commit()
     conn.close()
 
