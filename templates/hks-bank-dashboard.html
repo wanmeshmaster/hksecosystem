@@ -57,9 +57,16 @@
         .user-table th { font-weight: 600; color: #64748b; font-size: 0.9rem; }
         .user-table tr:last-child td { border-bottom: none; }
         
-        .fund-input { width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 10px; }
+        .fund-input { width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 6px; }
+        .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .add-btn { background-color: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .add-btn:hover { background-color: #059669; }
+        .sub-btn { background-color: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .sub-btn:hover { background-color: #dc2626; }
+        .promote-btn { background-color: #0052cc; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+        .promote-btn:hover { background-color: #003d99; }
+        .promote-btn.demote { background-color: #f59e0b; }
+        .promote-btn.demote:hover { background-color: #d97706; }
     </style>
 </head>
 <body>
@@ -93,7 +100,8 @@
                         <th>Username</th>
                         <th>Role</th>
                         <th>Current Balance</th>
-                        <th>Action</th>
+                        <th>Funds</th>
+                        <th>Role Action</th>
                     </tr>
                 </thead>
                 <tbody id="user-table-body">
@@ -179,7 +187,7 @@
                         const isDebit = tx.amount < 0;
                         const absAmount = Math.abs(tx.amount).toFixed(2);
                         const amountDisplay = isDebit ? `-$${absAmount}` : `+$${absAmount}`;
-                        
+
                         const item = document.createElement('div');
                         item.className = `transaction-item${isDebit ? ' debit' : ''}`;
                         item.innerHTML = `
@@ -208,19 +216,34 @@
                 if (data.success) {
                     const tbody = document.getElementById('user-table-body');
                     tbody.innerHTML = '';
-                    
+
+                    const meResp = await fetch('/api/current-user');
+                    const meData = await meResp.json();
+                    const currentUsername = meData.username;
+
                     data.users.forEach(user => {
                         const row = document.createElement('tr');
                         const balanceFixed = parseFloat(user.balance).toFixed(2);
                         const role = user.is_admin ? "Admin" : "User";
-                        
+                        const isSelf = user.username === currentUsername;
+
+                        const promoteLabel = user.is_admin ? "Demote" : "Promote";
+                        const promoteClass = user.is_admin ? "promote-btn demote" : "promote-btn";
+                        const promoteDisabled = isSelf ? "disabled title='Cannot change your own role'" : "";
+
                         row.innerHTML = `
                             <td><strong>${user.username}</strong></td>
-                            <td>${role}</td>
+                            <td><span id="role-label-${user.username}">${role}</span></td>
                             <td>$${balanceFixed}</td>
                             <td>
-                                <input type="number" id="fund-${user.username}" class="fund-input" placeholder="0.00" min="0" step="10">
-                                <button onclick="addFunds('${user.username}')" class="add-btn">Add Funds</button>
+                                <div class="action-btns">
+                                    <input type="number" id="fund-${user.username}" class="fund-input" placeholder="0.00" min="0" step="10">
+                                    <button onclick="addFunds('${user.username}')" class="add-btn">Add</button>
+                                    <button onclick="subtractFunds('${user.username}')" class="sub-btn">Sub</button>
+                                </div>
+                            </td>
+                            <td>
+                                <button id="promote-btn-${user.username}" onclick="toggleRole('${user.username}')" class="${promoteClass}" ${promoteDisabled}>${promoteLabel}</button>
                             </td>
                         `;
                         tbody.appendChild(row);
