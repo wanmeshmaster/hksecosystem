@@ -5,42 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HKS Bank - Dashboard</title>
     <style>
+        /* Base Styling */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: #f4f6f8; color: #333; display: flex; flex-direction: column; min-height: 100vh; }
         
-        /* Banner on top of screen */
+        /* Top Navigation Banner */
         .top-banner { background-color: #ffffff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .brand { font-size: 1.3rem; font-weight: 700; color: #0052cc; text-decoration: none; }
         .user-controls { display: flex; align-items: center; gap: 20px; font-weight: 500; }
         .admin-badge { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 6px; text-transform: uppercase; }
-        
         .logout-btn { background-color: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .logout-btn:hover { background-color: #ef4444; color: white; }
         
-        /* Core Dashboard Workspace */
-        main { flex: 1; max-width: 600px; width: 100%; margin: 40px auto; padding: 0 20px; }
+        /* Layout Structure */
+        main { flex: 1; max-width: 800px; width: 100%; margin: 40px auto; padding: 0 20px; }
         
-        /* News Headline in the middle */
+        /* Headline Banner */
         .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.03); }
         .news-headline h2 { font-size: 1.6rem; font-weight: 600; }
         
-        /* Current Account Interactive Wrapper */
-        .account-panel { background: #ffffff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
+        /* Current Account Section */
+        .account-panel { background: #ffffff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); cursor: pointer; transition: border-color 0.2s, transform 0.1s; margin-bottom: 30px; }
         .account-panel:hover { border-color: #0052cc; transform: translateY(-1px); }
         .account-header { display: flex; justify-content: space-between; align-items: center; }
         .account-title { font-size: 1.25rem; font-weight: 600; color: #1a1a1a; }
         .action-prompt { font-size: 0.85rem; color: #0052cc; font-weight: 500; }
-        
-        /* Dropdown Detail Area */
         .expanded-details { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: left; }
-        .balance-heading { font-size: 1.4rem; font-weight: 700; color: #10b981; margin-bottom: 15px; }
+        .balance-heading { font-size: 1.6rem; font-weight: 700; color: #10b981; margin-bottom: 15px; }
         .transaction-title { font-size: 0.9rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
         .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; }
+
+        /* Admin Controls Section */
+        .admin-panel { background: #ffffff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
+        .admin-panel h3 { color: #1a1a1a; margin-bottom: 15px; font-size: 1.2rem; }
+        .user-table { width: 100%; border-collapse: collapse; text-align: left; }
+        .user-table th, .user-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; }
+        .user-table th { font-weight: 600; color: #64748b; font-size: 0.9rem; }
+        .user-table tr:last-child td { border-bottom: none; }
+        
+        .fund-input { width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 10px; }
+        .add-btn { background-color: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .add-btn:hover { background-color: #059669; }
     </style>
 </head>
 <body>
 
-    <!-- Top Banner Element -->
     <header class="top-banner">
         <a href="#" class="brand">HKS Bank</a>
         <div class="user-controls">
@@ -50,12 +59,11 @@
     </header>
 
     <main>
-        <!-- News Headline Widget -->
         <div class="news-headline">
-            <h2>welcome to hks-bank</h2>
+            <h2>Welcome to HKS-Bank</h2>
         </div>
 
-        <!-- Current Account Section -->
+        <!-- Personal Account Panel -->
         <div class="account-panel" onclick="toggleAccountView()">
             <div class="account-header">
                 <span class="account-title">Current Account</span>
@@ -63,15 +71,33 @@
             </div>
             
             <div id="details-view" class="expanded-details">
-                <div class="balance-heading">Balance: $0.00</div>
+                <div class="balance-heading" id="display-balance">Balance: $0.00</div>
                 <div class="transaction-title">Recent Transactions</div>
-                <!-- Transactions Status Placeholder -->
                 <p class="empty-text">Your transaction history is currently empty.</p>
             </div>
+        </div>
+
+        <!-- Admin Control Panel (Hidden by Default) -->
+        <div id="admin-section" class="admin-panel" style="display: none;">
+            <h3>Admin User Directory</h3>
+            <table class="user-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Current Balance</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="user-table-body">
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
         </div>
     </main>
 
     <script>
+        // Core session validation
         async function verifySession() {
             try {
                 const response = await fetch('/api/current-user');
@@ -81,9 +107,15 @@
                     window.location.href = '/hks-bank.html';
                 } else {
                     document.getElementById('user-display').innerText = data.username;
-                    // Check admin criteria flag fed directly from app.py configuration
+                    
+                    // Format balance display
+                    const balanceString = parseFloat(data.balance).toFixed(2);
+                    document.getElementById('display-balance').innerText = `Balance: $${balanceString}`;
+                    
                     if (data.isAdmin) {
                         document.getElementById('admin-indicator').style.display = 'inline-block';
+                        document.getElementById('admin-section').style.display = 'block';
+                        loadAdminUsers();
                     }
                 }
             } catch(err) {
@@ -91,6 +123,7 @@
             }
         }
 
+        // Toggle Account View
         function toggleAccountView() {
             const displayBlock = document.getElementById('details-view');
             const visualLabel = document.getElementById('toggle-label');
@@ -104,16 +137,79 @@
             }
         }
 
+        // Admin: Load User Directory
+        async function loadAdminUsers() {
+            try {
+                const response = await fetch('/api/admin/users');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const tbody = document.getElementById('user-table-body');
+                    tbody.innerHTML = '';
+                    
+                    data.users.forEach(user => {
+                        const row = document.createElement('tr');
+                        const balanceFixed = parseFloat(user.balance).toFixed(2);
+                        const role = user.is_admin ? "Admin" : "User";
+                        
+                        row.innerHTML = `
+                            <td><strong>${user.username}</strong></td>
+                            <td>${role}</td>
+                            <td>$${balanceFixed}</td>
+                            <td>
+                                <input type="number" id="fund-${user.username}" class="fund-input" placeholder="0.00" min="0" step="10">
+                                <button onclick="addFunds('${user.username}')" class="add-btn">Add Funds</button>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to load users:", err);
+            }
+        }
+
+        // Admin: Add Funds Logic
+        async function addFunds(username) {
+            const amountInput = document.getElementById(`fund-${username}`);
+            const amount = parseFloat(amountInput.value);
+            
+            if (isNaN(amount) || amount <= 0) {
+                alert("Please enter a valid amount greater than 0.");
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/add_funds', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, amount: amount })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message);
+                    amountInput.value = '';
+                    // Reload both tables and user's own balance data dynamically
+                    verifySession(); 
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                console.error("Fund addition failed:", err);
+            }
+        }
+
+        // Handle User Logout
         async function executeLogout() {
             try {
                 await fetch('/api/logout', { method: 'POST' });
                 window.location.href = '/hks-bank.html';
             } catch(err) {
-                console.error("Logout request configuration error", err);
+                console.error("Logout error:", err);
             }
         }
 
-        // Initialize session check immediately upon mounting page context
         window.addEventListener('load', verifySession);
     </script>
 </body>
