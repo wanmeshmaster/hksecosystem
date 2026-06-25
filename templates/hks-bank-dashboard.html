@@ -67,6 +67,33 @@
         .promote-btn:hover { background-color: #003d99; }
         .promote-btn.demote { background-color: #f59e0b; }
         .promote-btn.demote:hover { background-color: #d97706; }
+
+        /* Fund Action Confirmation Modal */
+        .fund-modal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .fund-modal-header .icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
+        .fund-modal-header .icon.add { background-color: #d1fae5; }
+        .fund-modal-header .icon.sub { background-color: #fee2e2; }
+        .fund-modal-header h3 { font-size: 1.2rem; color: #1a1a1a; margin: 0; }
+        .fund-modal-meta { background-color: #f8fafc; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
+        .fund-modal-meta .meta-label { font-size: 0.82rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
+        .fund-modal-meta .meta-value { font-size: 1.05rem; font-weight: 700; color: #1a1a1a; }
+        .fund-modal-meta .meta-value.add { color: #10b981; }
+        .fund-modal-meta .meta-value.sub { color: #ef4444; }
+        .fund-modal-field label { display: block; font-size: 0.85rem; color: #64748b; font-weight: 500; margin-bottom: 6px; }
+        .fund-modal-field select { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; color: #333; outline: none; background-color: #fff; transition: border-color 0.2s; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+        .fund-modal-field select:focus { border-color: #0052cc; }
+        .fund-modal-field input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; color: #333; outline: none; transition: border-color 0.2s; }
+        .fund-modal-field input[type="text"]:focus { border-color: #0052cc; }
+        .fund-modal-field { margin-bottom: 14px; }
+        .fund-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .fund-modal-actions button { flex: 1; padding: 11px; border-radius: 6px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
+        .fund-confirm-btn.add { background-color: #10b981; color: white; }
+        .fund-confirm-btn.add:hover { background-color: #059669; }
+        .fund-confirm-btn.sub { background-color: #ef4444; color: white; }
+        .fund-confirm-btn.sub:hover { background-color: #dc2626; }
+        .fund-cancel-btn { background-color: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0 !important; }
+        .fund-cancel-btn:hover { background-color: #e2e8f0; }
+        #fund-modal-custom-row { display: none; }
     </style>
 </head>
 <body>
@@ -121,6 +148,41 @@
         </div>
     </div>
 
+    <!-- Fund Action Confirmation Modal -->
+    <div id="fundActionModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeFundModal()">&times;</span>
+            <div class="fund-modal-header">
+                <div id="fund-modal-icon" class="icon add">➕</div>
+                <h3 id="fund-modal-title">Add Funds</h3>
+            </div>
+            <div class="fund-modal-meta">
+                <div>
+                    <div class="meta-label">Account</div>
+                    <div class="meta-value" id="fund-modal-username">—</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="meta-label">Amount</div>
+                    <div class="meta-value" id="fund-modal-amount">—</div>
+                </div>
+            </div>
+            <div class="fund-modal-field">
+                <label for="fund-modal-reason">Reason</label>
+                <select id="fund-modal-reason" onchange="handleReasonChange()">
+                    <!-- Options injected by JS -->
+                </select>
+            </div>
+            <div class="fund-modal-field" id="fund-modal-custom-row">
+                <label for="fund-modal-custom">Custom reason</label>
+                <input type="text" id="fund-modal-custom" placeholder="Describe the reason...">
+            </div>
+            <div class="fund-modal-actions">
+                <button class="fund-cancel-btn" onclick="closeFundModal()">Cancel</button>
+                <button id="fund-confirm-btn" class="fund-confirm-btn add" onclick="confirmFundAction()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Modal Controls
         const txModal = document.getElementById('txModal');
@@ -133,11 +195,9 @@
             txModal.style.display = 'none';
         }
 
-        // Close modal if user clicks the darkened background
         window.onclick = function(event) {
-            if (event.target === txModal) {
-                closeTxModal();
-            }
+            if (event.target === txModal) closeTxModal();
+            if (event.target === document.getElementById('fundActionModal')) closeFundModal();
         }
 
         // Core session validation
@@ -254,64 +314,97 @@
             }
         }
 
-        // Admin: Add Funds Logic
-        async function addFunds(username) {
+        // Fund Action Modal State
+        let _fundAction = null; // { type: 'add'|'sub', username, amount }
+
+        const ADD_REASONS = ["Interest", "Bonus", "Refund", "Manual Adjustment", "Other"];
+        const SUB_REASONS = ["Fee", "Penalty", "Correction", "Manual Adjustment", "Other"];
+
+        function openFundModal(type, username) {
             const amountInput = document.getElementById(`fund-${username}`);
             const amount = parseFloat(amountInput.value);
-            
+
             if (isNaN(amount) || amount <= 0) {
                 alert("Please enter a valid amount greater than 0.");
                 return;
             }
 
+            _fundAction = { type, username, amount };
+
+            const isAdd = type === 'add';
+            const reasons = isAdd ? ADD_REASONS : SUB_REASONS;
+
+            document.getElementById('fund-modal-icon').textContent = isAdd ? '➕' : '➖';
+            document.getElementById('fund-modal-icon').className = `icon ${type}`;
+            document.getElementById('fund-modal-title').textContent = isAdd ? 'Add Funds' : 'Subtract Funds';
+            document.getElementById('fund-modal-username').textContent = username;
+            document.getElementById('fund-modal-amount').textContent = `$${amount.toFixed(2)}`;
+            document.getElementById('fund-modal-amount').className = `meta-value ${type}`;
+
+            const select = document.getElementById('fund-modal-reason');
+            select.innerHTML = reasons.map(r => `<option value="${r}">${r}</option>`).join('');
+            document.getElementById('fund-modal-custom-row').style.display = 'none';
+            document.getElementById('fund-modal-custom').value = '';
+
+            const confirmBtn = document.getElementById('fund-confirm-btn');
+            confirmBtn.className = `fund-confirm-btn ${type}`;
+            confirmBtn.textContent = isAdd ? 'Confirm Add' : 'Confirm Subtract';
+
+            document.getElementById('fundActionModal').style.display = 'flex';
+        }
+
+        function closeFundModal() {
+            document.getElementById('fundActionModal').style.display = 'none';
+            _fundAction = null;
+        }
+
+        function handleReasonChange() {
+            const val = document.getElementById('fund-modal-reason').value;
+            document.getElementById('fund-modal-custom-row').style.display = val === 'Other' ? 'block' : 'none';
+        }
+
+        async function confirmFundAction() {
+            if (!_fundAction) return;
+            const { type, username, amount } = _fundAction;
+
+            let reason = document.getElementById('fund-modal-reason').value;
+            if (reason === 'Other') {
+                reason = document.getElementById('fund-modal-custom').value.trim();
+                if (!reason) {
+                    alert("Please enter a custom reason.");
+                    return;
+                }
+            }
+
+            const endpoint = type === 'add' ? '/api/admin/add_funds' : '/api/admin/subtract_funds';
+
             try {
-                const response = await fetch('/api/admin/add_funds', {
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, amount: amount })
+                    body: JSON.stringify({ username, amount, reason })
                 });
-                
                 const data = await response.json();
+                closeFundModal();
+                document.getElementById(`fund-${username}`).value = '';
                 if (data.success) {
-                    alert(data.message);
-                    amountInput.value = '';
-                    verifySession(); 
+                    verifySession();
                 } else {
                     alert(data.message);
                 }
             } catch (err) {
-                console.error("Fund addition failed:", err);
+                console.error("Fund action failed:", err);
             }
+        }
+
+        // Admin: Add Funds Logic
+        async function addFunds(username) {
+            openFundModal('add', username);
         }
 
         // Admin: Subtract Funds Logic
         async function subtractFunds(username) {
-            const amountInput = document.getElementById(`fund-${username}`);
-            const amount = parseFloat(amountInput.value);
-            
-            if (isNaN(amount) || amount <= 0) {
-                alert("Please enter a valid amount greater than 0.");
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/admin/subtract_funds', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, amount: amount })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    alert(data.message);
-                    amountInput.value = '';
-                    verifySession(); 
-                } else {
-                    alert(data.message);
-                }
-            } catch (err) {
-                console.error("Fund subtraction failed:", err);
-            }
+            openFundModal('sub', username);
         }
 
         // Admin: Promote/Demote Logic

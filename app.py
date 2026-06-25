@@ -189,6 +189,7 @@ def admin_add_funds():
     data = request.get_json()
     username = data.get("username")
     amount = float(data.get("amount", 0))
+    reason = data.get("reason", "Interest").strip() or "Interest"
 
     if amount <= 0:
         return jsonify({"success": False, "message": "Invalid amount."}), 400
@@ -199,11 +200,11 @@ def admin_add_funds():
     # Update balance
     cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, username))
     
-    # Insert a transaction record titled "Interest"
+    # Insert a transaction record with the provided reason
     cur.execute("""
         INSERT INTO transactions (username, title, amount)
         VALUES (?, ?, ?)
-    """, (username, "Interest", amount))
+    """, (username, reason, amount))
     
     conn.commit()
     conn.close()
@@ -218,6 +219,7 @@ def admin_subtract_funds():
     data = request.get_json()
     username = data.get("username")
     amount = float(data.get("amount", 0))
+    reason = data.get("reason", "Deduction").strip() or "Deduction"
 
     if amount <= 0:
         return jsonify({"success": False, "message": "Invalid amount."}), 400
@@ -240,7 +242,7 @@ def admin_subtract_funds():
     cur.execute("""
         INSERT INTO transactions (username, title, amount)
         VALUES (?, ?, ?)
-    """, (username, "Deduction", -amount))
+    """, (username, reason, -amount))
 
     conn.commit()
     conn.close()
