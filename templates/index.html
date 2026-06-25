@@ -17,8 +17,23 @@
             display: flex;
             flex-direction: column;
             min-height: 100vh;
-            background-color: #f4f6f8;
             color: #333;
+
+            background-image: url('/source/main_bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+
+            position: relative;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.1);
+            z-index: -1;
         }
 
         header {
@@ -29,7 +44,7 @@
         header h1 {
             font-size: 2rem;
             font-weight: 600;
-            color: #1a1a1a;
+            color: #ffffff;
             letter-spacing: -0.5px;
         }
 
@@ -240,7 +255,7 @@
     </main>
 
     <footer>
-        v0.2.18
+        v0.2.19
     </footer>
 
     <button id="openCreditsBtn" class="credits-btn">Credits</button>
