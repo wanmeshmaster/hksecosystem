@@ -275,13 +275,63 @@
                 if (data.success) {
                     alert(data.message);
                     amountInput.value = '';
-                    // Refresh data across the board to instantly show new balance/transactions
                     verifySession(); 
                 } else {
                     alert(data.message);
                 }
             } catch (err) {
                 console.error("Fund addition failed:", err);
+            }
+        }
+
+        // Admin: Subtract Funds Logic
+        async function subtractFunds(username) {
+            const amountInput = document.getElementById(`fund-${username}`);
+            const amount = parseFloat(amountInput.value);
+            
+            if (isNaN(amount) || amount <= 0) {
+                alert("Please enter a valid amount greater than 0.");
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/subtract_funds', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, amount: amount })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message);
+                    amountInput.value = '';
+                    verifySession(); 
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                console.error("Fund subtraction failed:", err);
+            }
+        }
+
+        // Admin: Promote/Demote Logic
+        async function toggleRole(username) {
+            try {
+                const response = await fetch('/api/admin/promote_user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message);
+                    verifySession(); // Refresh table to show updated role
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) {
+                console.error("Role toggle failed:", err);
             }
         }
 
