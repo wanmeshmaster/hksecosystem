@@ -24,24 +24,28 @@
         .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.03); }
         .news-headline h2 { font-size: 1.6rem; font-weight: 600; }
         
-        /* Current Account Section */
-        .account-panel { background: #ffffff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); cursor: pointer; transition: border-color 0.2s, transform 0.1s; margin-bottom: 30px; }
-        .account-panel:hover { border-color: #0052cc; transform: translateY(-1px); }
-        .account-header { display: flex; justify-content: space-between; align-items: center; }
-        .account-title { font-size: 1.25rem; font-weight: 600; color: #1a1a1a; }
-        .action-prompt { font-size: 0.85rem; color: #0052cc; font-weight: 500; }
-        .expanded-details { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: left; }
-        .balance-heading { font-size: 1.6rem; font-weight: 700; color: #10b981; margin-bottom: 15px; }
-        .transaction-title { font-size: 0.9rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.5px; }
+        /* Current Account Section (Always visible balance) */
+        .account-panel { background: #ffffff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .account-info { display: flex; flex-direction: column; gap: 5px; }
+        .account-title { font-size: 1.1rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .balance-heading { font-size: 2.2rem; font-weight: 700; color: #1a1a1a; }
+        .tx-btn { background-color: #f1f5f9; color: #0052cc; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .tx-btn:hover { background-color: #e2e8f0; border-color: #94a3b8; }
         
-        /* Transaction History UI */
-        .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; }
+        /* Transaction History Modal UI */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal-content { background-color: #ffffff; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; position: relative; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; }
+        .close-btn:hover { color: #ef4444; }
+        .modal-title { font-size: 1.4rem; color: #1a1a1a; margin-bottom: 20px; font-weight: 600; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
+        
+        .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; text-align: center; padding: 20px 0; }
         .tx-list { display: flex; flex-direction: column; gap: 10px; }
-        .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background-color: #f8fafc; border-radius: 6px; border-left: 4px solid #10b981; }
-        .tx-info { display: flex; flex-direction: column; gap: 3px; }
+        .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background-color: #f8fafc; border-radius: 6px; border-left: 4px solid #10b981; }
+        .tx-info { display: flex; flex-direction: column; gap: 4px; }
         .tx-title { font-weight: 600; color: #333; font-size: 0.95rem; }
         .tx-date { font-size: 0.8rem; color: #64748b; }
-        .tx-amount { font-weight: 700; color: #10b981; }
+        .tx-amount { font-weight: 700; color: #10b981; font-size: 1.1rem; }
 
         /* Admin Controls Section */
         .admin-panel { background: #ffffff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
@@ -71,20 +75,12 @@
             <h2>Welcome to HKS-Bank</h2>
         </div>
 
-        <div class="account-panel" onclick="toggleAccountView()">
-            <div class="account-header">
-                <span class="account-title">Current Account</span>
-                <span class="action-prompt" id="toggle-label">Click to view details</span>
+        <div class="account-panel">
+            <div class="account-info">
+                <span class="account-title">Current Account Balance</span>
+                <span class="balance-heading" id="display-balance">$0.00</span>
             </div>
-            
-            <div id="details-view" class="expanded-details">
-                <div class="balance-heading" id="display-balance">Balance: $0.00</div>
-                <div class="transaction-title">Recent Transactions</div>
-                
-                <div id="tx-container" class="tx-list">
-                    <p class="empty-text">Loading transactions...</p>
-                </div>
-            </div>
+            <button class="tx-btn" onclick="openTxModal()">View History</button>
         </div>
 
         <div id="admin-section" class="admin-panel" style="display: none;">
@@ -104,7 +100,36 @@
         </div>
     </main>
 
+    <div id="txModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeTxModal()">&times;</span>
+            <h3 class="modal-title">Transaction History</h3>
+            
+            <div id="tx-container" class="tx-list">
+                <p class="empty-text">Loading transactions...</p>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // Modal Controls
+        const txModal = document.getElementById('txModal');
+
+        function openTxModal() {
+            txModal.style.display = 'flex';
+        }
+
+        function closeTxModal() {
+            txModal.style.display = 'none';
+        }
+
+        // Close modal if user clicks the darkened background
+        window.onclick = function(event) {
+            if (event.target === txModal) {
+                closeTxModal();
+            }
+        }
+
         // Core session validation
         async function verifySession() {
             try {
@@ -116,11 +141,11 @@
                 } else {
                     document.getElementById('user-display').innerText = data.username;
                     
-                    // Format balance display
+                    // Format balance display immediately on the main card
                     const balanceString = parseFloat(data.balance).toFixed(2);
-                    document.getElementById('display-balance').innerText = `Balance: $${balanceString}`;
+                    document.getElementById('display-balance').innerText = `$${balanceString}`;
                     
-                    // Fetch transaction history for the logged-in user
+                    // Fetch transaction history in the background so it's ready for the popup
                     loadTransactions();
 
                     if (data.isAdmin) {
@@ -134,24 +159,7 @@
             }
         }
 
-        // Toggle Account View
-        function toggleAccountView() {
-            const displayBlock = document.getElementById('details-view');
-            const visualLabel = document.getElementById('toggle-label');
-            
-            // Prevent panel collapse if they click inside the details view
-            if (event.target.closest('#details-view')) return;
-
-            if (displayBlock.style.display === 'block') {
-                displayBlock.style.display = 'none';
-                visualLabel.innerText = 'Click to view details';
-            } else {
-                displayBlock.style.display = 'block';
-                visualLabel.innerText = 'Click to hide details';
-            }
-        }
-
-        // Fetch and Render Transactions
+        // Fetch and Render Transactions into the Modal
         async function loadTransactions() {
             const txContainer = document.getElementById('tx-container');
             
@@ -163,7 +171,6 @@
 
                 if (data.success && data.transactions.length > 0) {
                     data.transactions.forEach(tx => {
-                        // Format the date nicely
                         const dateObj = new Date(tx.date);
                         const dateString = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                         
