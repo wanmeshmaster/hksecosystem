@@ -197,6 +197,75 @@ def admin_add_funds():
 
     return jsonify({"success": True, "message": f"Successfully added funds to {username}."})
 
+@app.route('/api/admin/subtract_funds', methods=['POST'])
+def admin_subtract_funds():
+    if not is_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data = request.get_json()
+    username = data.get("username")
+    amount = float(data.get("amount", 0))
+
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Invalid amount."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+
+    cur.execute("SELECT balance FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+
+    if row[0] < amount:
+        conn.close()
+        return jsonify({"success": False, "message": "Insufficient balance."}), 400
+
+    cur.execute("UPDATE users SET balance = balance - ? WHERE username = ?", (amount, username))
+
+    cur.execute("""
+        INSERT INTO transactions (username, title, amount)
+        VALUES (?, ?, ?)
+    """, (username, "Deduction", -amount))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": f"Successfully subtracted funds from {username}."})
+
+@app.route('/api/admin/promote_user', methods=['POST'])
+def admin_promote_user():
+    if not is_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data = request.get_json()
+    username = data.get("username")
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+
+    # Prevent self-demotion
+    if username == session.get("username"):
+        return jsonify({"success": False, "message": "You cannot change your own role."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+
+    cur.execute("SELECT is_admin FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+
+    new_role = 0 if row[0] else 1
+    cur.execute("UPDATE users SET is_admin = ? WHERE username = ?", (new_role, username))
+    conn.commit()
+    conn.close()
+
+    action = "promoted to Admin" if new_role else "demoted to User"
+    return jsonify({"success": True, "message": f"{username} has been {action}.", "isAdmin": bool(new_role)})
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=5001, debug=True)
