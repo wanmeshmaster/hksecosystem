@@ -193,6 +193,26 @@
             font-weight: 500;
             margin-bottom: 5px;
         }
+        .credit-person {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 10px 0;
+        }
+
+        .credit-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e2e8f0;
+        }
+
+        .credit-name {
+            font-size: 1rem;
+            color: #333;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -217,7 +237,7 @@
     </main>
 
     <footer>
-        v0.1.2
+        v0.1.3
     </footer>
 
     <button id="openCreditsBtn" class="credits-btn">Credits</button>
@@ -226,16 +246,34 @@
         <div class="modal-content">
             <span id="closeCreditsBtn" class="close-btn">&times;</span>
             <h2>Project Credits</h2>
-            
+
             <div class="role-group">
                 <h3>Project Manager</h3>
-                <p>Sandra Beaver</p>
+
+                <div class="credit-person">
+                    <img src="https://github.com/GITHUB_USERNAME_1.png"
+                         alt="Sandra Beaver"
+                         class="credit-avatar">
+                    <span class="credit-name">Sandra Beaver</span>
+                </div>
             </div>
-            
+
             <div class="role-group">
                 <h3>Developers</h3>
-                <p>Gary Davis</p>
-                <p>James Sterling (Plantcode Ltd.)</p>
+
+                <div class="credit-person">
+                    <img src="https://github.com/wanmeshmaster.png"
+                         alt="Gary Davis"
+                         class="credit-avatar">
+                    <span class="credit-name">Gary Davis</span>
+                </div>
+
+                <div class="credit-person">
+                    <img src="https://github.com/emperorsoap922-ux.png"
+                         alt="James Sterling"
+                         class="credit-avatar">
+                    <span class="credit-name">James Sterling (Plantcode Ltd.)</span>
+                </div>
             </div>
         </div>
     </div>
