@@ -121,10 +121,14 @@
 
         <div id="admin-section" class="admin-panel" style="display: none;">
             <h3>Admin User Directory</h3>
+            <div style="margin-bottom:15px;">
+                <input type="text" id="user-search" placeholder="Search username..." oninput="filterUsers()" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;">
+            </div>
             <table class="user-table">
                 <thead>
                     <tr>
                         <th>Username</th>
+                        <th>Real Name</th>
                         <th>Role</th>
                         <th>Current Balance</th>
                         <th>Funds</th>
@@ -293,6 +297,7 @@
 
                         row.innerHTML = `
                             <td><strong>${user.username}</strong></td>
+                            <td>${user.full_name || ''}</td>
                             <td><span id="role-label-${user.username}">${role}</span></td>
                             <td>$${balanceFixed}</td>
                             <td>
@@ -312,6 +317,15 @@
             } catch (err) {
                 console.error("Failed to load users:", err);
             }
+        }
+
+        
+        function filterUsers() {
+            const term = document.getElementById('user-search').value.toLowerCase();
+            document.querySelectorAll('#user-table-body tr').forEach(row => {
+                const username = row.cells[0].innerText.toLowerCase();
+                row.style.display = username.includes(term) ? '' : 'none';
+            });
         }
 
         // Fund Action Modal State
