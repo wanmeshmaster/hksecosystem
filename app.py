@@ -173,11 +173,26 @@ def is_admin():
 def admin_users():
     if not is_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
-    
+
     conn = sqlite3.connect(DATABASE)
     cur = conn.cursor()
-    cur.execute("SELECT id, username, balance, is_admin FROM users")
-    users = [{"id": row[0], "username": row[1], "balance": row[2], "is_admin": bool(row[3])} for row in cur.fetchall()]
+
+    cur.execute("""
+        SELECT id, username, full_name, balance, is_admin
+        FROM users
+    """)
+
+    users = [
+        {
+            "id": row[0],
+            "username": row[1],
+            "full_name": row[2],
+            "balance": row[3],
+            "is_admin": bool(row[4])
+        }
+        for row in cur.fetchall()
+    ]
+
     conn.close()
     return jsonify({"success": True, "users": users})
 

@@ -18,7 +18,7 @@
         .logout-btn:hover { background-color: #ef4444; color: white; }
         
         /* Layout Structure */
-        main { flex: 1; max-width: 800px; width: 100%; margin: 40px auto; padding: 0 20px; }
+        main { flex: 1; max-width: 1400px; width: 100%; margin: 40px auto; padding: 0 20px; }
         
         /* Headline Banner */
         .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.03); }
@@ -122,7 +122,7 @@
         <div id="admin-section" class="admin-panel" style="display: none;">
             <h3>Admin User Directory</h3>
             <div style="margin-bottom:15px;">
-                <input type="text" id="user-search" placeholder="Search username..." oninput="filterUsers()" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;">
+                <input type="text" id="user-search" placeholder="Search by Username or Real Name..." oninput="filterUsers()" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;">
             </div>
             <table class="user-table">
                 <thead>
@@ -321,10 +321,16 @@
 
         
         function filterUsers() {
-            const term = document.getElementById('user-search').value.toLowerCase();
+            const term = document.getElementById('user-search').value.toLowerCase().trim();
+
             document.querySelectorAll('#user-table-body tr').forEach(row => {
                 const username = row.cells[0].innerText.toLowerCase();
-                row.style.display = username.includes(term) ? '' : 'none';
+                const realName = row.cells[1].innerText.toLowerCase();
+
+                row.style.display =
+                    username.includes(term) || realName.includes(term)
+                        ? ''
+                        : 'none';
             });
         }
 
