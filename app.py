@@ -45,8 +45,8 @@ def init_db():
 @app.route('/')
 def home():
     apps = [
-        {'id': 'coming-soon', 'title': 'Coming soon...', 'url': '/coming-soon.html'},
-        {'id': 'hks-bank', 'title': 'HKS Bank', 'url': '/hks-bank.html'}
+        {'id': 'hks-bank', 'title': 'HKS Bank', 'url': '/hks-bank.html'},
+        {'id': 'coming-soon', 'title': 'Coming soon...', 'url': '/coming-soon.html'}
     ]
     for a in apps:
         image_filename = f"{a['id']}.jpg"
