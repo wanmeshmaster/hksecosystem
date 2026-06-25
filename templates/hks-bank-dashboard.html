@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HKS Bank - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: #f4f6f8; color: #333; display: flex; flex-direction: column; min-height: 100vh; }
+        
+        /* Banner on top of screen */
+        .top-banner { background-color: #ffffff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .brand { font-size: 1.3rem; font-weight: 700; color: #0052cc; text-decoration: none; }
+        .user-controls { display: flex; align-items: center; gap: 20px; font-weight: 500; }
+        .admin-badge { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 6px; text-transform: uppercase; }
+        
+        .logout-btn { background-color: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .logout-btn:hover { background-color: #ef4444; color: white; }
+        
+        /* Core Dashboard Workspace */
+        main { flex: 1; max-width: 600px; width: 100%; margin: 40px auto; padding: 0 20px; }
+        
+        /* News Headline in the middle */
+        .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.03); }
+        .news-headline h2 { font-size: 1.6rem; font-weight: 600; }
+        
+        /* Current Account Interactive Wrapper */
+        .account-panel { background: #ffffff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
+        .account-panel:hover { border-color: #0052cc; transform: translateY(-1px); }
+        .account-header { display: flex; justify-content: space-between; align-items: center; }
+        .account-title { font-size: 1.25rem; font-weight: 600; color: #1a1a1a; }
+        .action-prompt { font-size: 0.85rem; color: #0052cc; font-weight: 500; }
+        
+        /* Dropdown Detail Area */
+        .expanded-details { display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: left; }
+        .balance-heading { font-size: 1.4rem; font-weight: 700; color: #10b981; margin-bottom: 15px; }
+        .transaction-title { font-size: 0.9rem; color: #64748b; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+
+    <!-- Top Banner Element -->
+    <header class="top-banner">
+        <a href="#" class="brand">HKS Bank</a>
+        <div class="user-controls">
+            <span>Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span></span>
+            <button onclick="executeLogout()" class="logout-btn">Log Out</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- News Headline Widget -->
+        <div class="news-headline">
+            <h2>welcome to hks-bank</h2>
+        </div>
+
+        <!-- Current Account Section -->
+        <div class="account-panel" onclick="toggleAccountView()">
+            <div class="account-header">
+                <span class="account-title">Current Account</span>
+                <span class="action-prompt" id="toggle-label">Click to view details</span>
+            </div>
+            
+            <div id="details-view" class="expanded-details">
+                <div class="balance-heading">Balance: $0.00</div>
+                <div class="transaction-title">Recent Transactions</div>
+                <!-- Transactions Status Placeholder -->
+                <p class="empty-text">Your transaction history is currently empty.</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        async function verifySession() {
+            try {
+                const response = await fetch('/api/current-user');
+                const data = await response.json();
+                
+                if (!data.loggedIn) {
+                    window.location.href = '/hks-bank.html';
+                } else {
+                    document.getElementById('user-display').innerText = data.username;
+                    // Check admin criteria flag fed directly from app.py configuration
+                    if (data.isAdmin) {
+                        document.getElementById('admin-indicator').style.display = 'inline-block';
+                    }
+                }
+            } catch(err) {
+                window.location.href = '/hks-bank.html';
+            }
+        }
+
+        function toggleAccountView() {
+            const displayBlock = document.getElementById('details-view');
+            const visualLabel = document.getElementById('toggle-label');
+            
+            if (displayBlock.style.display === 'block') {
+                displayBlock.style.display = 'none';
+                visualLabel.innerText = 'Click to view details';
+            } else {
+                displayBlock.style.display = 'block';
+                visualLabel.innerText = 'Click to hide details';
+            }
+        }
+
+        async function executeLogout() {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/hks-bank.html';
+            } catch(err) {
+                console.error("Logout request configuration error", err);
+            }
+        }
+
+        // Initialize session check immediately upon mounting page context
+        window.addEventListener('load', verifySession);
+    </script>
+</body>
+</html>

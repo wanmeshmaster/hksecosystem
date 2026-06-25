@@ -3,376 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HKS Bank - HK Solutions Ecosystem</title>
+    <title>HKS Bank - Sign In</title>
     <style>
-        /* Base Reset & Typography */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-        
-        body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            background-color: #f4f6f8;
-            color: #333;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .container {
-            background: #ffffff;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            max-width: 400px;
-            width: 100%;
-        }
-
-        h1 {
-            font-size: 1.8rem;
-            color: #1a1a1a;
-            margin-bottom: 25px;
-        }
-
-        p {
-            color: #64748b;
-            margin-bottom: 25px;
-            line-height: 1.6;
-        }
-
-        /* Form Elements */
-        .input-group {
-            margin-bottom: 15px;
-            text-align: left;
-        }
-
-        .input-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: #64748b;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        input[type="text"], input[type="password"] {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            font-size: 1rem;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-
-        input[type="text"]:focus, input[type="password"]:focus {
-            border-color: #3b82f6;
-        }
-
-        /* Buttons */
-        .primary-btn {
-            width: 100%;
-            background-color: #0052cc;
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            margin-top: 10px;
-        }
-
-        .primary-btn:hover {
-            background-color: #003d99;
-        }
-
-        .secondary-btn {
-            width: 100%;
-            background-color: transparent;
-            color: #0052cc;
-            border: 1px solid #0052cc;
-            padding: 12px;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-top: 15px;
-        }
-
-        .secondary-btn:hover {
-            background-color: #f0f7ff;
-        }
-
-        a.back-link {
-            display: inline-block;
-            margin-top: 25px;
-            color: #64748b;
-            text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-
-        a.back-link:hover {
-            color: #3b82f6;
-        }
-
-        /* Modal Styling */
-        .modal-overlay {
-            display: none; /* Hidden by default */
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.4);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(2px);
-        }
-
-        .modal-content {
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 400px;
-            position: relative;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-        }
-
-        .close-btn {
-            position: absolute;
-            top: 15px;
-            right: 20px;
-            font-size: 1.5rem;
-            color: #94a3b8;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-
-        .close-btn:hover {
-            color: #ef4444;
-        }
-
-        .error-msg {
-            color: #ef4444;
-            font-size: 0.85rem;
-            margin-top: 10px;
-            display: none;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f4f6f8; color: #333; text-align: center; padding: 20px; }
+        .container { background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 400px; width: 100%; }
+        h1 { font-size: 1.8rem; color: #1a1a1a; margin-bottom: 25px; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        .input-group label { display: block; font-size: 0.85rem; color: #64748b; margin-bottom: 5px; font-weight: 500; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+        input[type="text"]:focus, input[type="password"]:focus { border-color: #3b82f6; }
+        .primary-btn { width: 100%; background-color: #0052cc; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background-color 0.2s; margin-top: 10px; }
+        .primary-btn:hover { background-color: #003d99; }
+        .secondary-btn { width: 100%; background-color: transparent; color: #0052cc; border: 1px solid #0052cc; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 15px; }
+        .secondary-btn:hover { background-color: #f0f7ff; }
+        a.back-link { display: inline-block; margin-top: 25px; color: #64748b; text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
+        a.back-link:hover { color: #3b82f6; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal-content { background-color: #ffffff; padding: 40px; border-radius: 12px; width: 90%; max-width: 400px; position: relative; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; }
+        .close-btn:hover { color: #ef4444; }
+        .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
 
     <div id="login-view" class="container">
         <h1>HKS Bank Sign In</h1>
-        
         <div class="input-group">
             <label for="login-username">Username</label>
             <input type="text" id="login-username" placeholder="Enter your username">
         </div>
-        
         <div class="input-group">
             <label for="login-password">Password</label>
             <input type="password" id="login-password" placeholder="Enter your password">
         </div>
-
         <p id="login-error" class="error-msg">Invalid username or password.</p>
-
         <button onclick="attemptLogin()" class="primary-btn">Sign In</button>
         <button onclick="openRegisterModal()" class="secondary-btn">Register New Account</button>
-        
         <a href="/" class="back-link">&larr; Back to Portal</a>
-    </div>
-
-    <div id="main-view" class="container" style="display: none;">
-        <h1>HKS Bank Dashboard</h1>
-        <p>Welcome, <strong id="display-user">User</strong>!</p>
-        <p>This is the main application module. It is currently being configured as a template.</p>
-        <button onclick="logout()" class="secondary-btn">Log Out</button>
     </div>
 
     <div id="registerModal" class="modal-overlay">
         <div class="modal-content">
             <span class="close-btn" onclick="closeRegisterModal()">&times;</span>
             <h2 style="margin-bottom: 20px;">Register</h2>
-            
             <div class="input-group">
                 <label for="reg-username">Choose a Username</label>
                 <input type="text" id="reg-username" placeholder="New username">
             </div>
-            
             <div class="input-group">
                 <label for="reg-password">Choose a Password</label>
                 <input type="password" id="reg-password" placeholder="New password">
             </div>
-
             <p id="reg-error" class="error-msg">Please fill out both fields.</p>
-
             <button onclick="registerAccount()" class="primary-btn">Create Account</button>
         </div>
     </div>
 
     <script>
-        // Mock Database (stores users temporarily while the page is open)
-        const userDatabase = {};
-
-        // UI Elements
-        const loginView = document.getElementById('login-view');
-        const mainView = document.getElementById('main-view');
         const registerModal = document.getElementById('registerModal');
         const loginError = document.getElementById('login-error');
         const regError = document.getElementById('reg-error');
 
-        // --- Modal Controls ---
         function openRegisterModal() {
             registerModal.style.display = 'flex';
-            document.getElementById('reg-username').value = '';
-            document.getElementById('reg-password').value = '';
             regError.style.display = 'none';
         }
+        function closeRegisterModal() { registerModal.style.display = 'none'; }
+        window.onclick = function(event) { if (event.target === registerModal) closeRegisterModal(); }
 
-        function closeRegisterModal() {
-            registerModal.style.display = 'none';
-        }
-
-        // Close modal if clicked outside
-        window.onclick = function(event) {
-            if (event.target === registerModal) {
-                closeRegisterModal();
-            }
-        }
-
-        // --- Registration Logic ---
         async function registerAccount() {
             const user = document.getElementById('reg-username').value.trim();
             const pass = document.getElementById('reg-password').value.trim();
-
             if (!user || !pass) {
                 regError.innerText = "Please fill out both fields.";
                 regError.style.display = 'block';
                 return;
             }
-
             try {
                 const response = await fetch('/api/register', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        username: user,
-                        password: pass
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
                 });
-
                 const data = await response.json();
-
                 if (data.success) {
                     alert("Account created successfully!");
-
                     closeRegisterModal();
-
                     document.getElementById('login-username').value = user;
-                    document.getElementById('login-password').value = '';
                 } else {
                     regError.innerText = data.message;
                     regError.style.display = 'block';
                 }
-
             } catch (err) {
                 regError.innerText = "Server error.";
                 regError.style.display = 'block';
             }
         }
 
-        // --- Login Logic ---
         async function attemptLogin() {
             const user = document.getElementById('login-username').value.trim();
             const pass = document.getElementById('login-password').value.trim();
-
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        username: user,
-                        password: pass
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
                 });
-
                 const data = await response.json();
-
                 if (data.success) {
-
-                    loginError.style.display = 'none';
-
-                    loginView.style.display = 'none';
-
-                    document.getElementById('display-user').innerText =
-                        data.username;
-
-                    mainView.style.display = 'block';
-
+                    window.location.href = '/hks-bank-dashboard.html';
                 } else {
                     loginError.innerText = data.message;
                     loginError.style.display = 'block';
                 }
-
             } catch (err) {
                 loginError.innerText = "Server error.";
                 loginError.style.display = 'block';
             }
         }
 
-        // --- Logout Logic ---
-        async function logout() {
-
-            await fetch('/api/logout', {
-                method: 'POST'
-            });
-
-            mainView.style.display = 'none';
-            loginView.style.display = 'block';
-
-            document.getElementById('login-password').value = '';
-            document.getElementById('login-username').value = '';
-        }
-
         window.addEventListener('load', async () => {
-
-            try {
-
-                const response = await fetch('/api/current-user');
-                const data = await response.json();
-
-                if (data.loggedIn) {
-
-                    loginView.style.display = 'none';
-
-                    document.getElementById('display-user').innerText =
-                        data.username;
-
-                    mainView.style.display = 'block';
-                }
-
-            } catch (err) {
-                console.error(err);
+            const response = await fetch('/api/current-user');
+            const data = await response.json();
+            if (data.loggedIn) {
+                window.location.href = '/hks-bank-dashboard.html';
             }
         });
     </script>
-
 </body>
 </html>

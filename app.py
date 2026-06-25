@@ -62,6 +62,9 @@ def coming_soon():
 def bank():
     return render_template('hks-bank.html')
 
+@app.route('/hks-bank-dashboard.html')
+def bank_dashboard():
+    return render_template('hks-bank-dashboard.html')
 
 @app.route('/api/register', methods=['POST'])
 def register():
