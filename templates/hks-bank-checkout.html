@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HKS Bank - Secure Checkout</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { display: flex; align-items: center; justify-content: center; height: 100vh; background-color: #f4f6f8; color: #333; }
+        .checkout-container { background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 400px; width: 100%; text-align: center; }
+        .logo { max-width: 120px; margin-bottom: 20px; }
+        h2 { margin-bottom: 10px; color: #1a1a1a; }
+        .amount-display { font-size: 2.5rem; font-weight: 700; color: #10b981; margin: 15px 0; }
+        .desc-display { color: #64748b; margin-bottom: 25px; font-size: 0.95rem; }
+        
+        .input-group { margin-bottom: 15px; text-align: left; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; }
+        
+        button { width: 100%; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; margin-top: 10px; }
+        .btn-approve { background-color: #0052cc; color: white; }
+        .btn-approve:hover { background-color: #003d99; }
+        .btn-cancel { background-color: #f1f5f9; color: #64748b; margin-top: 15px; }
+        .btn-cancel:hover { background-color: #e2e8f0; }
+        .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="checkout-container">
+        <img src="source/hks-bank.jpg" alt="HKS Bank" class="logo">
+        
+        <div id="login-view" style="display: none;">
+            <h2>Log in to pay</h2>
+            <p class="desc-display">Secure your transaction with HKS Bank</p>
+            <div class="input-group">
+                <input type="text" id="login-username" placeholder="Username">
+            </div>
+            <div class="input-group">
+                <input type="password" id="login-password" placeholder="Password">
+            </div>
+            <p id="auth-error" class="error-msg">Invalid credentials.</p>
+            <button onclick="attemptLogin()" class="btn-approve">Log In</button>
+            <button onclick="cancelCheckout()" class="btn-cancel">Cancel Return to Merchant</button>
+        </div>
+
+        <div id="approval-view" style="display: none;">
+            <h2>Confirm Payment</h2>
+            <p class="desc-display">Paying as <strong id="logged-in-user">User</strong></p>
+            
+            <div class="amount-display" id="display-amount">$0.00</div>
+            <p class="desc-display" id="display-desc">Loading description...</p>
+            
+            <p id="checkout-error" class="error-msg"></p>
+            
+            <button onclick="approvePayment()" class="btn-approve">Approve & Pay</button>
+            <button onclick="cancelCheckout()" class="btn-cancel">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // Extract parameters from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const checkoutAmount = urlParams.get('amount');
+        const checkoutDesc = urlParams.get('desc') || 'External Payment';
+        const returnUrl = urlParams.get('return_url');
+
+        window.onload = async () => {
+            if (!checkoutAmount || isNaN(checkoutAmount)) {
+                document.querySelector('.checkout-container').innerHTML = "<h3>Invalid Checkout Request</h3><p>Missing or invalid amount.</p>";
+                return;
+            }
+
+            document.getElementById('display-amount').innerText = `$${parseFloat(checkoutAmount).toFixed(2)}`;
+            document.getElementById('display-desc').innerText = checkoutDesc;
+
+            // Check if user is already logged in
+            const response = await fetch('/api/current-user');
+            const data = await response.json();
+
+            if (data.loggedIn) {
+                document.getElementById('logged-in-user').innerText = data.username;
+                document.getElementById('approval-view').style.display = 'block';
+            } else {
+                document.getElementById('login-view').style.display = 'block';
+            }
+        };
+
+        async function attemptLogin() {
+            const user = document.getElementById('login-username').value;
+            const pass = document.getElementById('login-password').value;
+            const err = document.getElementById('auth-error');
+            
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                // Hide login, show approval
+                document.getElementById('login-view').style.display = 'none';
+                document.getElementById('logged-in-user').innerText = user;
+                document.getElementById('approval-view').style.display = 'block';
+            } else {
+                err.style.display = 'block';
+                err.innerText = data.message;
+            }
+        }
+
+        async function approvePayment() {
+            const err = document.getElementById('checkout-error');
+            err.style.display = 'none';
+
+            const response = await fetch('/api/checkout/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: checkoutAmount, description: checkoutDesc })
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                alert("Payment successful!");
+                if (returnUrl) {
+                    window.location.href = returnUrl; // Send them back to the store
+                } else {
+                    window.location.href = '/hks-bank-dashboard.html';
+                }
+            } else {
+                err.style.display = 'block';
+                err.innerText = data.message;
+            }
+        }
+
+        function cancelCheckout() {
+            if (returnUrl) {
+                window.location.href = returnUrl;
+            } else {
+                window.location.href = '/';
+            }
+        }
+    </script>
+</body>
+</html>

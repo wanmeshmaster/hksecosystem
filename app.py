@@ -296,6 +296,112 @@ def admin_promote_user():
     action = "promoted to Admin" if new_role else "demoted to User"
     return jsonify({"success": True, "message": f"{username} has been {action}.", "isAdmin": bool(new_role)})
 
+
+@app.route('/hks-bank-checkout.html')
+def bank_checkout():
+    return render_template('hks-bank-checkout.html')
+
+@app.route('/api/checkout/process', methods=['POST'])
+def process_checkout():
+    # Ensure the user is actually logged in
+    if "username" not in session:
+        return jsonify({"success": False, "message": "You must log in to approve this transaction."}), 401
+
+    data = request.get_json()
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid amount format."}), 400
+
+    description = data.get("description", "External Payment").strip()
+
+    # We only allow positive amounts to be deducted in this checkout flow
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Checkout amount must be greater than zero."}), 400
+
+    username = session["username"]
+
+    # Process the transaction
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+
+    cur.execute("SELECT balance FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User account not found."}), 404
+
+    current_balance = row[0]
+
+    # Prevent overdrafts
+    if current_balance < amount:
+        conn.close()
+        return jsonify({"success": False, "message": "Insufficient funds to complete this payment."}), 400
+
+    new_balance = current_balance - amount
+    cur.execute("UPDATE users SET balance = ? WHERE username = ?", (new_balance, username))
+    
+    cur.execute("""
+        INSERT INTO transactions (username, title, amount)
+        VALUES (?, ?, ?)
+    """, (username, description, -amount))
+
+    conn.commit()
+    conn.close()
+
+    # Destroy the session immediately after successful payment
+    session.clear()
+
+    return jsonify({"success": True, "message": "Payment approved securely and session closed."})
+
+@app.route('/api/contribution-status', methods=['GET'])
+def contribution_status():
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+    
+    # Sum all transactions that have the specific contribution title
+    cur.execute("SELECT SUM(ABS(amount)) FROM transactions WHERE title = 'HKS Coming Soon Contribution'")
+    total_raised = cur.fetchone()[0] or 0.0
+    conn.close()
+    
+    return jsonify({"success": True, "total": total_raised, "goal": 5000.0})
+
+    username = session["username"]
+    contribution_amount = 5.00
+    description = "HKS Coming Soon Contribution"
+
+    conn = sqlite3.connect(DATABASE)
+    cur = conn.cursor()
+
+    cur.execute("SELECT balance FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+
+    current_balance = row[0]
+
+    # Prevent overdraft
+    if current_balance < contribution_amount:
+        conn.close()
+        return jsonify({"success": False, "message": "Insufficient funds to complete this contribution."}), 400
+
+    # Deduct funds and log transaction
+    new_balance = current_balance - contribution_amount
+    cur.execute("UPDATE users SET balance = ? WHERE username = ?", (new_balance, username))
+    
+    cur.execute("""
+        INSERT INTO transactions (username, title, amount)
+        VALUES (?, ?, ?)
+    """, (username, description, -contribution_amount))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Thank you for your $5 contribution!"})
+
 if __name__ == '__main__':
     init_db()
     app.run(host='0.0.0.0', port=5001, debug=True)

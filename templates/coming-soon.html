@@ -3,46 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coming Soon - HK Solutions Ecosystem</title>
+    <title>Coming Soon - HKS Ecosystem</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background-color: #f4f6f8; color: #333; padding: 20px; }
+        
+        .container { background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 500px; width: 100%; text-align: center; }
+        h1 { color: #1a1a1a; margin-bottom: 10px; font-size: 2rem; }
+        p.subtitle { color: #64748b; margin-bottom: 30px; font-size: 1rem; line-height: 1.5; }
+        
+        /* Progress Bar Styling */
+        .progress-container { width: 100%; background-color: #e2e8f0; border-radius: 8px; overflow: hidden; margin-bottom: 10px; height: 24px; position: relative; }
+        .progress-bar { height: 100%; background-color: #10b981; width: 0%; transition: width 0.5s ease-in-out; }
+        .progress-text { margin-bottom: 25px; font-size: 0.95rem; font-weight: 600; color: #333; }
+        
+        /* Buttons & Links */
+        .contribute-btn { background-color: #0052cc; color: white; border: none; width: 100%; padding: 14px; border-radius: 8px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .contribute-btn:hover { background-color: #003d99; }
+        .contribute-btn:disabled { background-color: #94a3b8; cursor: not-allowed; }
+        
+        .back-link { display: inline-block; margin-top: 20px; color: #64748b; text-decoration: none; font-size: 0.95rem; transition: color 0.2s; }
+        .back-link:hover { color: #0052cc; }
+
+        /* Modal Overlay Styling */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px);
+            display: none; align-items: center; justify-content: center; z-index: 1000;
         }
-        body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            background-color: #f4f6f8;
-            color: #333;
-            text-align: center;
+        .modal-content {
+            background: white; padding: 30px; border-radius: 12px;
+            width: 90%; max-width: 350px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        h1 {
-            font-size: 2.5rem;
-            color: #1a1a1a;
-            margin-bottom: 10px;
-        }
-        p {
-            color: #64748b;
-            margin-bottom: 30px;
-        }
-        a {
-            color: #3b82f6;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .modal-content h2 { font-size: 1.4rem; margin-bottom: 5px; color: #1a1a1a; }
+        .modal-content p { font-size: 0.9rem; color: #64748b; margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; }
+        .input-group input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; }
+        .input-group input:focus { border-color: #0052cc; }
+        
+        .login-btn { background-color: #10b981; color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+        .login-btn:hover { background-color: #059669; }
+        .cancel-btn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 0.9rem; text-decoration: underline; }
+        
+        .error-msg { color: #ef4444; font-size: 0.85rem; margin-bottom: 15px; display: none; }
     </style>
 </head>
 <body>
-    <h1>App Coming Soon</h1>
-    <p>This module is currently under development.</p>
-    <a href="/">&larr; Back to Portal</a>
+
+    <div class="container">
+        <h1>Under Construction</h1>
+        <p class="subtitle">We are currently building this application. You can help speed up development by contributing to our goal!</p>
+
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="progress-text" id="progress-text">$0 / $5,000 Raised</div>
+
+        <button id="contribute-btn" class="contribute-btn" onclick="initiateCheckout()">Contribute $5</button>
+        
+        <br>
+        <a href="/" class="back-link">&larr; Back to Ecosystem</a>
+    </div>
+
+    <div id="loginModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>HKS Bank Gateway</h2>
+            <p>Please log in to authorize this payment.</p>
+            
+            <p id="modal-error" class="error-msg">Invalid credentials.</p>
+            
+            <div class="input-group">
+                <input type="text" id="modal-username" placeholder="Username">
+            </div>
+            <div class="input-group">
+                <input type="password" id="modal-password" placeholder="Password">
+            </div>
+            
+            <button onclick="submitModalLogin()" class="login-btn">Secure Log In</button>
+            <button onclick="closeModal()" class="cancel-btn">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. Load the progress bar on page load
+        async function loadProgress() {
+            try {
+                const response = await fetch('/api/contribution-status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const percentage = Math.min((data.total / data.goal) * 100, 100);
+                    document.getElementById('progress-bar').style.width = percentage + '%';
+                    document.getElementById('progress-text').innerText = `$${data.total.toFixed(2)} / $${data.goal.toFixed(2)} Raised`;
+                }
+            } catch (err) {
+                console.error("Failed to load progress:", err);
+            }
+        }
+
+        // 2. Start the checkout process
+        async function initiateCheckout() {
+            const btn = document.getElementById('contribute-btn');
+            btn.disabled = true;
+            btn.innerText = "Connecting to HKS Bank...";
+
+            try {
+                // Check if user is already logged in
+                const response = await fetch('/api/current-user');
+                const data = await response.json();
+
+                if (data.loggedIn) {
+                    // Already logged in! Send directly to checkout.
+                    redirectToBank();
+                } else {
+                    // Not logged in. Show the inline pop-up modal.
+                    document.getElementById('loginModal').style.display = 'flex';
+                    btn.innerText = "Contribute $5";
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert("Connection to bank failed.");
+                btn.innerText = "Contribute $5";
+                btn.disabled = false;
+            }
+        }
+
+        // 3. Handle Login from the Modal
+        async function submitModalLogin() {
+            const user = document.getElementById('modal-username').value;
+            const pass = document.getElementById('modal-password').value;
+            const errDisplay = document.getElementById('modal-error');
+            
+            errDisplay.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Login successful! Send them to the checkout page.
+                    redirectToBank();
+                } else {
+                    errDisplay.innerText = data.message;
+                    errDisplay.style.display = 'block';
+                }
+            } catch (err) {
+                errDisplay.innerText = "Server error occurred.";
+                errDisplay.style.display = 'block';
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('loginModal').style.display = 'none';
+        }
+
+        function redirectToBank() {
+            // Send the user to the secure checkout page, and tell it to return here when done.
+            const checkoutUrl = "/hks-bank-checkout.html?amount=5&desc=HKS+Coming+Soon+Contribution&return_url=/coming-soon.html";
+            window.location.href = checkoutUrl;
+        }
+
+        window.addEventListener('load', loadProgress);
+    </script>
 </body>
 </html>
