@@ -82,6 +82,7 @@ def init_db():
 def home():
     apps = [
         {'id': 'hks-bank',    'title': 'HKS Bank',       'url': '/hks-bank.html'},
+        {'id': 'hkmail',      'title': 'HKMail',          'url': '/hkmail.html'},
         {'id': 'coming-soon', 'title': 'Coming soon...', 'url': '/coming-soon.html'},
     ]
     for a in apps:
@@ -657,9 +658,453 @@ def contribution_status():
     conn.close()
     return jsonify({"success": True, "total": total, "goal": 5000.0})
 
+# ══════════════════════════════════════════════════════════════════════════════
+# HKMail — separate database & session namespace
+# ══════════════════════════════════════════════════════════════════════════════
 
-# ── Entry point ────────────────────────────────────────────────────────────────
+MAIL_DATABASE = "mail.db"
+
+
+def init_mail_db():
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+
+    # Users table (completely separate from HKS Bank)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS mail_users (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            username     TEXT UNIQUE NOT NULL,   -- stored as full address e.g. jane@hkmail.cn
+            password_hash TEXT NOT NULL,
+            full_name    TEXT NOT NULL DEFAULT '',
+            is_admin     INTEGER NOT NULL DEFAULT 0,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Emails table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS emails (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender      TEXT NOT NULL,
+            recipient   TEXT NOT NULL,
+            subject     TEXT NOT NULL DEFAULT '(No subject)',
+            body        TEXT NOT NULL DEFAULT '',
+            sent_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+            read        INTEGER NOT NULL DEFAULT 0,
+            deleted_by_sender    INTEGER NOT NULL DEFAULT 0,
+            deleted_by_recipient INTEGER NOT NULL DEFAULT 0,
+            folder_sender        TEXT NOT NULL DEFAULT 'sent',
+            folder_recipient     TEXT NOT NULL DEFAULT 'inbox'
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def mail_current_user():
+    """Return the HKMail username from session, or None."""
+    return session.get("mail_username")
+
+
+# ── HKMail page routes ─────────────────────────────────────────────────────────
+
+@app.route('/hkmail.html')
+def hkmail_login():
+    return render_template('hkmail.html')
+
+@app.route('/hkmail-inbox.html')
+def hkmail_inbox():
+    return render_template('hkmail-inbox.html')
+
+
+# ── HKMail Auth API ────────────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/register', methods=['POST'])
+def hkmail_register():
+    data       = request.get_json()
+    username   = data.get("username", "").strip().lower()   # full address
+    password   = data.get("password", "").strip()
+    first_name = data.get("first_name", "").strip()
+    last_name  = data.get("last_name", "").strip()
+    full_name  = f"{first_name} {last_name}".strip()
+
+    if not username or not password:
+        return jsonify({"success": False, "message": "Email and password are required."}), 400
+    if not first_name or not last_name:
+        return jsonify({"success": False, "message": "First and last name are required."}), 400
+    if len(password) < 8:
+        return jsonify({"success": False, "message": "Password must be at least 8 characters."}), 400
+
+    password_hash = generate_password_hash(password)
+    try:
+        conn = sqlite3.connect(MAIL_DATABASE)
+        cur  = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM mail_users")
+        is_admin = 1 if cur.fetchone()[0] == 0 else 0
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin) VALUES (?, ?, ?, ?)",
+            (username, password_hash, full_name, is_admin)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": "Account created."})
+    except sqlite3.IntegrityError:
+        return jsonify({"success": False, "message": "That email address is already taken."}), 400
+
+
+@app.route('/api/hkmail/login', methods=['POST'])
+def hkmail_login_api():
+    data     = request.get_json()
+    username = data.get("username", "").strip().lower()
+    password = data.get("password", "").strip()
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT password_hash, full_name, is_admin FROM mail_users WHERE username=?", (username,))
+    row = cur.fetchone()
+    conn.close()
+
+    if row and check_password_hash(row[0], password):
+        session["mail_username"] = username
+        session["mail_full_name"] = row[1]
+        session["mail_is_admin"]  = bool(row[2])
+        return jsonify({"success": True, "username": username, "fullName": row[1], "isAdmin": bool(row[2])})
+    return jsonify({"success": False, "message": "Incorrect email or password."}), 401
+
+
+@app.route('/api/hkmail/logout', methods=['POST'])
+def hkmail_logout():
+    session.pop("mail_username", None)
+    session.pop("mail_full_name", None)
+    session.pop("mail_is_admin", None)
+    return jsonify({"success": True})
+
+
+@app.route('/api/hkmail/current-user')
+def hkmail_current_user():
+    u = mail_current_user()
+    if u:
+        conn = sqlite3.connect(MAIL_DATABASE)
+        cur  = conn.cursor()
+        cur.execute("SELECT full_name, is_admin FROM mail_users WHERE username=?", (u,))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return jsonify({"loggedIn": True, "username": u,
+                            "fullName": row[0], "isAdmin": bool(row[1])})
+    return jsonify({"loggedIn": False})
+
+
+# ── HKMail: compose / send ─────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/send', methods=['POST'])
+def hkmail_send():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data      = request.get_json()
+    recipient = data.get("recipient", "").strip().lower()
+    subject   = data.get("subject",   "").strip() or "(No subject)"
+    body      = data.get("body",       "").strip()
+
+    if not recipient:
+        return jsonify({"success": False, "message": "Recipient is required."}), 400
+
+    # Auto-append @hkmail.cn if no domain given
+    if "@" not in recipient:
+        recipient = recipient + "@hkmail.cn"
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+
+    # Verify recipient exists
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": f"No HKMail account found for {recipient}."}), 404
+
+    # Self-send: one row, shows in both sent & inbox
+    if recipient == u:
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body, folder_sender, folder_recipient) VALUES (?,?,?,?,?,?)",
+            (u, recipient, subject, body, 'sent', 'inbox')
+        )
+    else:
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?,?,?,?)",
+            (u, recipient, subject, body)
+        )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"Message sent to {recipient}."})
+
+
+# ── HKMail: list folders ───────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/inbox')
+def hkmail_inbox_api():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, sender, subject, sent_at, read
+        FROM emails
+        WHERE recipient=? AND deleted_by_recipient=0
+        ORDER BY sent_at DESC
+    """, (u,))
+    emails = [{"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4])}
+              for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "emails": emails})
+
+
+@app.route('/api/hkmail/sent')
+def hkmail_sent_api():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, recipient, subject, sent_at
+        FROM emails
+        WHERE sender=? AND deleted_by_sender=0 AND recipient != sender
+        ORDER BY sent_at DESC
+    """, (u,))
+    emails = [{"id": r[0], "to": r[1], "subject": r[2], "date": r[3]}
+              for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "emails": emails})
+
+
+@app.route('/api/hkmail/trash')
+def hkmail_trash_api():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    # Show emails deleted by this user (either as sender or recipient)
+    cur.execute("""
+        SELECT id, sender, recipient, subject, sent_at,
+               deleted_by_sender, deleted_by_recipient
+        FROM emails
+        WHERE (sender=? AND deleted_by_sender=1)
+           OR (recipient=? AND deleted_by_recipient=1)
+        ORDER BY sent_at DESC
+    """, (u, u))
+    emails = []
+    for r in cur.fetchall():
+        emails.append({
+            "id": r[0], "from": r[1], "to": r[2],
+            "subject": r[3], "date": r[4]
+        })
+    conn.close()
+    return jsonify({"success": True, "emails": emails})
+
+
+# ── HKMail: read a single email ────────────────────────────────────────────────
+
+@app.route('/api/hkmail/email/<int:email_id>')
+def hkmail_read_email(email_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, sender, recipient, subject, body, sent_at, read
+        FROM emails WHERE id=?
+    """, (email_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Email not found."}), 404
+
+    sender, recipient = row[1], row[2]
+    if u not in (sender, recipient):
+        conn.close()
+        return jsonify({"success": False, "message": "Access denied."}), 403
+
+    # Mark as read if recipient
+    if u == recipient and not row[6]:
+        cur.execute("UPDATE emails SET read=1 WHERE id=?", (email_id,))
+        conn.commit()
+
+    conn.close()
+    return jsonify({
+        "success": True,
+        "email": {
+            "id": row[0], "from": row[1], "to": row[2],
+            "subject": row[3], "body": row[4], "date": row[5], "read": True
+        }
+    })
+
+
+# ── HKMail: mark as read/unread ────────────────────────────────────────────────
+
+@app.route('/api/hkmail/email/<int:email_id>/mark-read', methods=['POST'])
+def hkmail_mark_read(email_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    data = request.get_json()
+    read_val = 1 if data.get("read", True) else 0
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT recipient FROM emails WHERE id=?", (email_id,))
+    row = cur.fetchone()
+    if not row or row[0] != u:
+        conn.close()
+        return jsonify({"success": False, "message": "Not found."}), 404
+    cur.execute("UPDATE emails SET read=? WHERE id=?", (read_val, email_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+# ── HKMail: delete (soft) ──────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/email/<int:email_id>/delete', methods=['POST'])
+def hkmail_delete_email(email_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT sender, recipient FROM emails WHERE id=?", (email_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Email not found."}), 404
+
+    sender, recipient = row
+    if u == sender:
+        cur.execute("UPDATE emails SET deleted_by_sender=1 WHERE id=?", (email_id,))
+    if u == recipient:
+        cur.execute("UPDATE emails SET deleted_by_recipient=1 WHERE id=?", (email_id,))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Moved to Trash."})
+
+
+# ── HKMail: restore from trash ────────────────────────────────────────────────
+
+@app.route('/api/hkmail/email/<int:email_id>/restore', methods=['POST'])
+def hkmail_restore_email(email_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT sender, recipient FROM emails WHERE id=?", (email_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Email not found."}), 404
+
+    sender, recipient = row
+    if u == sender:
+        cur.execute("UPDATE emails SET deleted_by_sender=0 WHERE id=?", (email_id,))
+    if u == recipient:
+        cur.execute("UPDATE emails SET deleted_by_recipient=0 WHERE id=?", (email_id,))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Email restored."})
+
+
+# ── HKMail: permanent delete ───────────────────────────────────────────────────
+
+@app.route('/api/hkmail/email/<int:email_id>/delete-permanent', methods=['POST'])
+def hkmail_delete_permanent(email_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT sender, recipient, deleted_by_sender, deleted_by_recipient FROM emails WHERE id=?", (email_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Email not found."}), 404
+
+    sender, recipient, del_sender, del_recipient = row
+    if u not in (sender, recipient):
+        conn.close()
+        return jsonify({"success": False, "message": "Access denied."}), 403
+
+    # Only truly delete if both parties have deleted it (or it's a self-send)
+    both_deleted = (
+        (sender == u and del_sender) or (sender != u)
+    ) and (
+        (recipient == u and del_recipient) or (recipient != u)
+    )
+
+    if both_deleted or sender == recipient:
+        cur.execute("DELETE FROM emails WHERE id=?", (email_id,))
+    else:
+        # Just mark this side as deleted
+        if u == sender:
+            cur.execute("UPDATE emails SET deleted_by_sender=1 WHERE id=?", (email_id,))
+        if u == recipient:
+            cur.execute("UPDATE emails SET deleted_by_recipient=1 WHERE id=?", (email_id,))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Email permanently deleted."})
+
+
+# ── HKMail: unread count ───────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/unread-count')
+def hkmail_unread_count():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM emails WHERE recipient=? AND read=0 AND deleted_by_recipient=0", (u,)
+    )
+    count = cur.fetchone()[0]
+    conn.close()
+    return jsonify({"success": True, "count": count})
+
+
+# ── HKMail: admin — list all users ────────────────────────────────────────────
+
+@app.route('/api/hkmail/admin/users')
+def hkmail_admin_users():
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id, username, full_name, is_admin, created_at FROM mail_users ORDER BY created_at")
+    users = [{"id": r[0], "username": r[1], "full_name": r[2],
+              "is_admin": bool(r[3]), "created_at": r[4]} for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "users": users})
+
+
+# ── HKMail: index route registration ──────────────────────────────────────────
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Entry point
+# ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
     init_db()
+    init_mail_db()
     app.run(host='0.0.0.0', port=5001, debug=True)

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HKMail — Sign In</title>
+    <style>
+        *, *::before, *::after {
+            margin: 0; padding: 0; box-sizing: border-box;
+        }
+
+        :root {
+            --navy:   #0B1A33;
+            --red:    #D72638;
+            --red-dk: #B01E2D;
+            --white:  #FFFFFF;
+            --slate:  #E8EDF5;
+            --muted:  #6B7A99;
+            --border: #D0D8E8;
+            --err:    #D72638;
+        }
+
+        body {
+            min-height: 100vh;
+            background-color: var(--navy);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 20px;
+        }
+
+        /* ── Logo ── */
+        .logo-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 32px;
+            user-select: none;
+        }
+
+        .logo-mark {
+            width: 48px;
+            height: 48px;
+            background: var(--red);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .logo-mark svg {
+            width: 26px;
+            height: 26px;
+        }
+
+        .logo-text {
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: var(--white);
+            letter-spacing: -1px;
+        }
+
+        .logo-text span {
+            color: var(--red);
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--white);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 420px;
+            padding: 36px 40px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+        }
+
+        /* ── Tabs ── */
+        .tab-bar {
+            display: flex;
+            background: var(--slate);
+            border-radius: 8px;
+            padding: 4px;
+            margin-bottom: 28px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 9px 0;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-align: center;
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+
+        .tab.active {
+            background: var(--white);
+            color: var(--navy);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        /* ── Form panels ── */
+        .panel {
+            display: none;
+        }
+        .panel.active {
+            display: block;
+        }
+
+        .panel h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 4px;
+        }
+
+        .panel p.sub {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 22px;
+        }
+
+        /* ── Fields ── */
+        .field {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        input {
+            width: 100%;
+            padding: 11px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            color: var(--navy);
+            background: var(--white);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        input:focus {
+            border-color: var(--red);
+        }
+
+        input::placeholder {
+            color: #A8B4CC;
+        }
+
+        /* ── Email with suffix ── */
+        .email-wrap {
+            display: flex;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.15s;
+        }
+
+        .email-wrap:focus-within {
+            border-color: var(--red);
+        }
+
+        .email-wrap input {
+            border: none;
+            border-radius: 0;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .email-wrap input:focus {
+            border: none;
+            box-shadow: none;
+        }
+
+        .email-suffix {
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            background: var(--slate);
+            color: var(--muted);
+            font-size: 0.88rem;
+            font-weight: 600;
+            white-space: nowrap;
+            border-left: 1.5px solid var(--border);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* ── Name row ── */
+        .name-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .name-row .field {
+            flex: 1;
+        }
+
+        /* ── Btn ── */
+        .btn-primary {
+            width: 100%;
+            padding: 13px;
+            background: var(--red);
+            color: var(--white);
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.15s, transform 0.1s;
+            letter-spacing: 0.2px;
+        }
+
+        .btn-primary:hover {
+            background: var(--red-dk);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.99);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* ── Messages ── */
+        .msg {
+            font-size: 0.85rem;
+            padding: 10px 14px;
+            border-radius: 7px;
+            margin-bottom: 14px;
+            display: none;
+        }
+
+        .msg.error {
+            background: #FEE8EB;
+            color: var(--err);
+            border: 1px solid #FCC8CC;
+            display: block;
+        }
+
+        .msg.success {
+            background: #E8F5EC;
+            color: #1A7A3C;
+            border: 1px solid #B8E0C4;
+            display: block;
+        }
+
+        /* ── Footer note ── */
+        .card-foot {
+            margin-top: 22px;
+            text-align: center;
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 28px;
+            font-size: 0.82rem;
+            color: rgba(255,255,255,0.45);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .back-link:hover {
+            color: rgba(255,255,255,0.75);
+        }
+
+        /* ── Spinner ── */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="logo-wrap">
+        <div class="logo-mark">
+            <!-- Envelope icon -->
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="2" y="5" width="20" height="14" rx="2" stroke="white" stroke-width="1.8" fill="none"/>
+                <polyline points="2,6 12,13 22,6" stroke="white" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+        <div class="logo-text">HK<span>Mail</span></div>
+    </div>
+
+    <div class="card">
+
+        <div class="tab-bar">
+            <button class="tab active" id="tab-signin" onclick="switchTab('signin')">Sign in</button>
+            <button class="tab" id="tab-register" onclick="switchTab('register')">Register</button>
+        </div>
+
+        <!-- ── Sign In ── -->
+        <div class="panel active" id="panel-signin">
+            <h2>Welcome back</h2>
+            <p class="sub">Sign in to your HKMail account.</p>
+
+            <div id="signin-msg" class="msg"></div>
+
+            <div class="field">
+                <label for="si-email">Email address</label>
+                <div class="email-wrap">
+                    <input type="text" id="si-email" placeholder="yourname" autocomplete="username">
+                    <span class="email-suffix">@hkmail.cn</span>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="si-password">Password</label>
+                <input type="password" id="si-password" placeholder="Enter your password" autocomplete="current-password">
+            </div>
+
+            <button class="btn-primary" id="signin-btn" onclick="doSignIn()">Sign in</button>
+
+            <div class="card-foot">
+                Don't have an account? <a href="#" onclick="switchTab('register'); return false;" style="color:#D72638;font-weight:600;text-decoration:none;">Register here</a>
+            </div>
+        </div>
+
+        <!-- ── Register ── -->
+        <div class="panel" id="panel-register">
+            <h2>Create an account</h2>
+            <p class="sub">Pick your @hkmail.cn address and get started.</p>
+
+            <div id="register-msg" class="msg"></div>
+
+            <div class="name-row">
+                <div class="field">
+                    <label for="reg-first">First name</label>
+                    <input type="text" id="reg-first" placeholder="Jane" autocomplete="given-name">
+                </div>
+                <div class="field">
+                    <label for="reg-last">Last name</label>
+                    <input type="text" id="reg-last" placeholder="Chan" autocomplete="family-name">
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="reg-email">Choose your address</label>
+                <div class="email-wrap">
+                    <input type="text" id="reg-email" placeholder="yourname" autocomplete="off"
+                           oninput="sanitizeUsername(this)">
+                    <span class="email-suffix">@hkmail.cn</span>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="reg-password">Password</label>
+                <input type="password" id="reg-password" placeholder="At least 8 characters" autocomplete="new-password">
+            </div>
+
+            <div class="field">
+                <label for="reg-confirm">Confirm password</label>
+                <input type="password" id="reg-confirm" placeholder="Repeat your password" autocomplete="new-password">
+            </div>
+
+            <button class="btn-primary" id="register-btn" onclick="doRegister()">Create account</button>
+
+            <div class="card-foot">
+                Already have an account? <a href="#" onclick="switchTab('signin'); return false;" style="color:#D72638;font-weight:600;text-decoration:none;">Sign in</a>
+            </div>
+        </div>
+
+    </div>
+
+    <a href="/" class="back-link">← Back to HKS Ecosystem</a>
+
+    <script>
+        // ── Tab switching ──────────────────────────────────────────────────────
+        function switchTab(which) {
+            document.getElementById('panel-signin').classList.toggle('active', which === 'signin');
+            document.getElementById('panel-register').classList.toggle('active', which === 'register');
+            document.getElementById('tab-signin').classList.toggle('active', which === 'signin');
+            document.getElementById('tab-register').classList.toggle('active', which === 'register');
+            clearMsgs();
+        }
+
+        function clearMsgs() {
+            ['signin-msg','register-msg'].forEach(id => {
+                const el = document.getElementById(id);
+                el.className = 'msg';
+                el.textContent = '';
+            });
+        }
+
+        function showMsg(id, text, type) {
+            const el = document.getElementById(id);
+            el.textContent = text;
+            el.className = 'msg ' + type;
+        }
+
+        // Allow only valid username chars
+        function sanitizeUsername(input) {
+            input.value = input.value.replace(/[^a-z0-9._\-]/gi, '').toLowerCase();
+        }
+
+        // ── Sign In ────────────────────────────────────────────────────────────
+        async function doSignIn() {
+            const emailPart = document.getElementById('si-email').value.trim().toLowerCase();
+            const password  = document.getElementById('si-password').value;
+            const btn       = document.getElementById('signin-btn');
+
+            if (!emailPart) { showMsg('signin-msg', 'Please enter your email address.', 'error'); return; }
+            if (!password)  { showMsg('signin-msg', 'Please enter your password.', 'error'); return; }
+
+            const username = emailPart + '@hkmail.cn';
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Signing in…';
+
+            try {
+                const res  = await fetch('/api/hkmail/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMsg('signin-msg', 'Signed in! Redirecting…', 'success');
+                    setTimeout(() => { window.location.href = '/hkmail-inbox.html'; }, 800);
+                } else {
+                    showMsg('signin-msg', data.message || 'Incorrect email or password.', 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Sign in';
+                }
+            } catch {
+                showMsg('signin-msg', 'Connection error. Please try again.', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Sign in';
+            }
+        }
+
+        // ── Register ───────────────────────────────────────────────────────────
+        async function doRegister() {
+            const firstName = document.getElementById('reg-first').value.trim();
+            const lastName  = document.getElementById('reg-last').value.trim();
+            const emailPart = document.getElementById('reg-email').value.trim().toLowerCase();
+            const password  = document.getElementById('reg-password').value;
+            const confirm   = document.getElementById('reg-confirm').value;
+            const btn       = document.getElementById('register-btn');
+
+            if (!firstName || !lastName) { showMsg('register-msg', 'Please enter your first and last name.', 'error'); return; }
+            if (!emailPart)              { showMsg('register-msg', 'Please choose an email address.', 'error'); return; }
+            if (emailPart.length < 3)    { showMsg('register-msg', 'Address must be at least 3 characters.', 'error'); return; }
+            if (!password)               { showMsg('register-msg', 'Please set a password.', 'error'); return; }
+            if (password.length < 8)     { showMsg('register-msg', 'Password must be at least 8 characters.', 'error'); return; }
+            if (password !== confirm)    { showMsg('register-msg', 'Passwords do not match.', 'error'); return; }
+
+            const username = emailPart + '@hkmail.cn';
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Creating account…';
+
+            try {
+                const res  = await fetch('/api/hkmail/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, first_name: firstName, last_name: lastName })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMsg('register-msg', `Account created! Your address is ${username}`, 'success');
+                    btn.textContent = 'Create account';
+                    btn.disabled = false;
+                    // Pre-fill sign-in and switch after a moment
+                    setTimeout(() => {
+                        document.getElementById('si-email').value = emailPart;
+                        switchTab('signin');
+                        showMsg('signin-msg', `Welcome, ${firstName}! Sign in to continue.`, 'success');
+                    }, 1800);
+                } else {
+                    showMsg('register-msg', data.message || 'Registration failed.', 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Create account';
+                }
+            } catch {
+                showMsg('register-msg', 'Connection error. Please try again.', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Create account';
+            }
+        }
+
+        // Allow Enter key to submit
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Enter') return;
+            const signinActive = document.getElementById('panel-signin').classList.contains('active');
+            if (signinActive) doSignIn();
+            else doRegister();
+        });
+    </script>
+
+</body>
+</html>
