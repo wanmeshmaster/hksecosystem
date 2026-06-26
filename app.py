@@ -465,6 +465,75 @@ def admin_create_account():
     return jsonify({"success": True, "message": f"{account_type} created successfully."})
 
 
+@app.route('/api/admin/close_account', methods=['POST'])
+def admin_close_account():
+    if not is_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data       = request.get_json()
+    account_id = data.get("account_id")
+    username   = data.get("username", "").strip()
+
+    if not account_id:
+        return jsonify({"success": False, "message": "Account ID required."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+
+    cur.execute("SELECT account_type, balance, username FROM accounts WHERE id = ?", (account_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Account not found."}), 404
+
+    account_type, balance, owner = row
+    # Safety: username must match
+    if username and owner != username:
+        conn.close()
+        return jsonify({"success": False, "message": "Account does not belong to this user."}), 403
+
+    cur.execute("DELETE FROM account_transactions WHERE account_id = ?", (account_id,))
+    cur.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{account_type} closed successfully.", "balance": balance})
+
+
+@app.route('/api/admin/delete_user', methods=['POST'])
+def admin_delete_user():
+    if not is_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data     = request.get_json()
+    username = data.get("username", "").strip()
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+    if username == session.get("username"):
+        return jsonify({"success": False, "message": "You cannot delete your own account."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+
+    cur.execute("SELECT id FROM users WHERE username = ?", (username,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+
+    # Delete all associated data
+    cur.execute("SELECT id FROM accounts WHERE username = ?", (username,))
+    account_ids = [r[0] for r in cur.fetchall()]
+    for aid in account_ids:
+        cur.execute("DELETE FROM account_transactions WHERE account_id = ?", (aid,))
+    cur.execute("DELETE FROM accounts WHERE username = ?", (username,))
+    cur.execute("DELETE FROM transactions WHERE username = ?", (username,))
+    cur.execute("DELETE FROM users WHERE username = ?", (username,))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"User '{username}' and all associated data deleted."})
+
+
 # ── Checkout ───────────────────────────────────────────────────────────────────
 
 @app.route('/api/checkout/process', methods=['POST'])

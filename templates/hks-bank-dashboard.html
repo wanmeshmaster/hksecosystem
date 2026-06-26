@@ -106,7 +106,13 @@
         .em-create-btn { background: #7c3aed; color: #fff; border: none; padding: 9px 14px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
         .em-create-btn:hover { background: #6d28d9; }
         .em-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
-        .em-sub-label { font-size: 0.76rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px; }
+        .em-close-acct-btn { background: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .em-close-acct-btn:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+        .em-danger-btn { width: 100%; padding: 11px; border: none; border-radius: 7px; font-size: 0.92rem; font-weight: 600; cursor: pointer; transition: all 0.2s; background: #ef4444; color: #fff; }
+        .em-danger-btn:hover { background: #dc2626; }
+        .em-danger-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .em-section.danger { border-color: #fca5a5; }
+        .em-section.danger .em-section-head { background: #fff5f5; color: #b91c1c; border-bottom-color: #fca5a5; }
     </style>
 </head>
 <body>
@@ -232,6 +238,16 @@
                     </div>
                     <input type="text" class="em-text-input" id="em-acct-custom" placeholder="Account name…" style="display:none;margin-top:6px;">
                     <div class="em-status" id="em-acct-msg"></div>
+                </div>
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="em-section danger">
+                <div class="em-section-head">Danger Zone</div>
+                <div class="em-section-body">
+                    <p style="font-size:0.85rem;color:#64748b;margin-bottom:4px;">Permanently delete this user and all their data. This cannot be undone.</p>
+                    <button class="em-danger-btn" id="em-delete-user-btn" onclick="emDeleteUser()">Delete User Account</button>
+                    <div class="em-status" id="em-delete-msg"></div>
                 </div>
             </div>
 
@@ -410,6 +426,12 @@
         setMsg('em-funds-msg', '', null);
         setMsg('em-role-msg', '', null);
         setMsg('em-acct-msg', '', null);
+        setMsg('em-delete-msg', '', null);
+
+        // Cannot delete yourself
+        const delBtn = document.getElementById('em-delete-user-btn');
+        delBtn.disabled = (username === _me);
+        delBtn.title = (username === _me) ? 'You cannot delete your own account.' : '';
 
         refreshRoleBtn(isAdmin, username === _me);
         document.getElementById('editUserModal').style.display = 'flex';
@@ -530,12 +552,16 @@
                     // Account list card
                     const card = document.createElement('div');
                     card.className = 'em-account-card';
+                    card.id = `em-acct-card-${a.id}`;
                     card.innerHTML = `
                         <div class="em-account-card-left">
                             <span class="em-account-name">${a.account_type}</span>
                             <span class="em-account-tag">Created ${new Date(a.created_at).toLocaleDateString()}</span>
                         </div>
-                        <span class="em-account-balance">$${fmt(a.balance)}</span>`;
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span class="em-account-balance">$${fmt(a.balance)}</span>
+                            <button class="em-close-acct-btn" onclick="emCloseAccount(${a.id}, '${a.account_type.replace(/'/g,"\\'")}')">Close</button>
+                        </div>`;
                     list.appendChild(card);
                     // Populate target account dropdown
                     const opt = document.createElement('option');
@@ -581,6 +607,45 @@
                 setMsg('em-acct-msg', data.message, false);
             }
         } catch { setMsg('em-acct-msg', 'Request failed.', false); }
+    }
+
+    // ── Edit modal: close bank account ────────────────────
+    async function emCloseAccount(accountId, accountType) {
+        if (!confirm(`Close "${accountType}" for ${_editUser}? This will delete the account and its full transaction history.`)) return;
+        try {
+            const data = await apiFetch('/api/admin/close_account', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ account_id: accountId, username: _editUser })
+            });
+            if (data.success) {
+                setMsg('em-acct-msg', `✓ ${accountType} closed.`, true);
+                await loadAdminAccountsForUser(_editUser);
+                if (_editUser === _me) verifySession();
+            } else {
+                setMsg('em-acct-msg', data.message, false);
+            }
+        } catch { setMsg('em-acct-msg', 'Request failed.', false); }
+    }
+
+    // ── Edit modal: delete full user account ──────────────
+    async function emDeleteUser() {
+        if (!confirm(`Permanently delete the user "${_editUser}" and ALL their data (accounts, transactions)? This cannot be undone.`)) return;
+        // Second confirmation for safety
+        if (!confirm(`Are you absolutely sure? Type OK to confirm deletion of "${_editUser}".`)) return;
+        try {
+            const data = await apiFetch('/api/admin/delete_user', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username: _editUser })
+            });
+            if (data.success) {
+                closeEditModal();
+                loadAdminUsers();
+            } else {
+                setMsg('em-delete-msg', data.message, false);
+            }
+        } catch { setMsg('em-delete-msg', 'Request failed.', false); }
     }
 
     // ── Logout ─────────────────────────────────────────────
