@@ -544,6 +544,68 @@ def admin_delete_user():
     return jsonify({"success": True, "message": f"User '{username}' and all associated data deleted."})
 
 
+# ── User-to-user transfer ──────────────────────────────────────────────────────
+
+@app.route('/api/transfer', methods=['POST'])
+def transfer():
+    if "username" not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data      = request.get_json()
+    recipient = data.get("recipient", "").strip()
+    reference = data.get("reference", "").strip() or "Transfer"
+    try:
+        amount = round(float(data.get("amount", 0)), 2)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid amount."}), 400
+
+    sender = session["username"]
+
+    if not recipient:
+        return jsonify({"success": False, "message": "Recipient username is required."}), 400
+    if recipient == sender:
+        return jsonify({"success": False, "message": "You cannot transfer money to yourself."}), 400
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Amount must be greater than zero."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+
+    # Verify recipient exists
+    cur.execute("SELECT username, full_name FROM users WHERE username = ?", (recipient,))
+    rec_row = cur.fetchone()
+    if not rec_row:
+        conn.close()
+        return jsonify({"success": False, "message": "Recipient not found. Check the username and try again."}), 404
+
+    # Check sender balance
+    cur.execute("SELECT balance FROM users WHERE username = ?", (sender,))
+    sender_row = cur.fetchone()
+    if not sender_row or sender_row[0] < amount:
+        conn.close()
+        return jsonify({"success": False, "message": "Insufficient funds."}), 400
+
+    recipient_full = rec_row[1] or recipient
+
+    # Debit sender
+    cur.execute("UPDATE users SET balance = balance - ? WHERE username = ?", (amount, sender))
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (sender, f"Transfer to {recipient} — {reference}", -amount, "Current Account")
+    )
+
+    # Credit recipient
+    cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, recipient))
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (recipient, f"Transfer from {sender} — {reference}", amount, "Current Account")
+    )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"${amount:.2f} sent to {recipient_full} successfully.", "recipient_full": recipient_full})
+
+
 # ── Checkout ───────────────────────────────────────────────────────────────────
 
 @app.route('/api/checkout/process', methods=['POST'])

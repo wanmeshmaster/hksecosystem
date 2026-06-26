@@ -36,6 +36,8 @@
         .balance-heading { font-size: 2rem; font-weight: 700; color: #1a1a1a; }
         .tx-btn { background: #f1f5f9; color: #0052cc; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .tx-btn:hover { background: #e2e8f0; border-color: #94a3b8; }
+        .tx-btn.send-btn { background: #0052cc; color: #fff; border-color: #0052cc; }
+        .tx-btn.send-btn:hover { background: #003d99; border-color: #003d99; }
 
         /* ── Modals (shared) ── */
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
@@ -130,6 +132,14 @@
         <h2>Welcome to HKS Bank</h2>
     </div>
 
+    <!-- Quick actions bar -->
+    <div style="margin-bottom:24px;">
+        <button onclick="openSendModal()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:#0052cc;color:#fff;border:none;border-radius:8px;font-size:0.97rem;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,82,204,0.2);" onmouseover="this.style.background='#003d99'" onmouseout="this.style.background='#0052cc'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Send Money
+        </button>
+    </div>
+
     <!-- Accounts grid: primary + any additional accounts -->
     <div class="accounts-grid" id="accounts-grid">
         <!-- Primary account card always rendered first by JS -->
@@ -155,6 +165,59 @@
         </table>
     </div>
 </main>
+
+<!-- ── Send Money Modal ── -->
+<div id="sendModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:420px;">
+        <button class="close-btn" onclick="closeSendModal()">&times;</button>
+        <h3 class="modal-title">Send Money</h3>
+
+        <div id="send-form-view">
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">Recipient Username</label>
+                <input type="text" id="send-recipient" placeholder="Enter their username"
+                    style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.97rem;outline:none;"
+                    oninput="clearSendError()">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="display:block;font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">Amount (USD)</label>
+                <div style="position:relative;">
+                    <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;font-weight:600;">$</span>
+                    <input type="number" id="send-amount" placeholder="0.00" min="0.01" step="0.01"
+                        style="width:100%;padding:11px 12px 11px 24px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.97rem;outline:none;"
+                        oninput="clearSendError()">
+                </div>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block;font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">Payment Reference</label>
+                <input type="text" id="send-reference" placeholder="e.g. Rent, Dinner, Invoice #42"
+                    style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.97rem;outline:none;"
+                    oninput="clearSendError()">
+            </div>
+            <p id="send-error" style="color:#ef4444;font-size:0.85rem;margin-bottom:12px;display:none;"></p>
+            <button onclick="executeTransfer()" id="send-submit-btn"
+                style="width:100%;padding:12px;background:#0052cc;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;transition:background 0.2s;">
+                Send Money
+            </button>
+            <button onclick="closeSendModal()"
+                style="width:100%;padding:11px;background:#f1f5f9;color:#64748b;border:none;border-radius:6px;font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:10px;transition:background 0.2s;">
+                Cancel
+            </button>
+        </div>
+
+        <div id="send-success-view" style="display:none;text-align:center;padding:10px 0;">
+            <div style="width:56px;height:56px;background:#ecfdf5;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h4 style="color:#1a1a1a;font-size:1.15rem;margin-bottom:8px;" id="send-success-heading">Transfer Successful</h4>
+            <p style="color:#64748b;font-size:0.92rem;margin-bottom:24px;" id="send-success-msg"></p>
+            <button onclick="closeSendModal()"
+                style="width:100%;padding:12px;background:#0052cc;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
 
 <!-- ── Transaction History Modal ── -->
 <div id="txModal" class="modal-overlay">
@@ -648,6 +711,73 @@
             }
         } catch { setMsg('em-delete-msg', 'Request failed.', false); }
     }
+
+    // ── Send Money modal ───────────────────────────────────
+    function openSendModal() {
+        document.getElementById('send-recipient').value = '';
+        document.getElementById('send-amount').value = '';
+        document.getElementById('send-reference').value = '';
+        document.getElementById('send-error').style.display = 'none';
+        document.getElementById('send-form-view').style.display = 'block';
+        document.getElementById('send-success-view').style.display = 'none';
+        document.getElementById('sendModal').style.display = 'flex';
+    }
+
+    function closeSendModal() {
+        document.getElementById('sendModal').style.display = 'none';
+    }
+
+    function clearSendError() {
+        document.getElementById('send-error').style.display = 'none';
+    }
+
+    async function executeTransfer() {
+        const recipient  = document.getElementById('send-recipient').value.trim();
+        const amount     = parseFloat(document.getElementById('send-amount').value);
+        const reference  = document.getElementById('send-reference').value.trim();
+        const errEl      = document.getElementById('send-error');
+        const submitBtn  = document.getElementById('send-submit-btn');
+
+        errEl.style.display = 'none';
+
+        if (!recipient) { errEl.innerText = 'Please enter a recipient username.'; errEl.style.display = 'block'; return; }
+        if (!amount || amount <= 0) { errEl.innerText = 'Please enter a valid amount greater than zero.'; errEl.style.display = 'block'; return; }
+        if (!reference) { errEl.innerText = 'Please enter a payment reference.'; errEl.style.display = 'block'; return; }
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Sending…';
+
+        try {
+            const data = await apiFetch('/api/transfer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient, amount, reference })
+            });
+
+            if (data.success) {
+                document.getElementById('send-form-view').style.display = 'none';
+                document.getElementById('send-success-heading').innerText = 'Transfer Successful';
+                document.getElementById('send-success-msg').innerText = data.message;
+                document.getElementById('send-success-view').style.display = 'block';
+                // Refresh balance
+                verifySession();
+            } else {
+                errEl.innerText = data.message;
+                errEl.style.display = 'block';
+            }
+        } catch {
+            errEl.innerText = 'A network error occurred. Please try again.';
+            errEl.style.display = 'block';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Send Money';
+        }
+    }
+
+    // Close send modal on backdrop click
+    document.getElementById('sendModal').addEventListener('click', e => {
+        if (e.target === document.getElementById('sendModal')) closeSendModal();
+    });
 
     // ── Logout ─────────────────────────────────────────────
     async function executeLogout() {
