@@ -494,9 +494,19 @@ def admin_close_account():
 
     cur.execute("DELETE FROM account_transactions WHERE account_id = ?", (account_id,))
     cur.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+
+    # Transfer any remaining balance to the user's primary account
+    if balance > 0:
+        cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (balance, owner))
+        cur.execute(
+            "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+            (owner, f"Transfer from closed {account_type}", balance, "Current Account")
+        )
+
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": f"{account_type} closed successfully.", "balance": balance})
+    transferred = f" ${balance:.2f} transferred to Current Account." if balance > 0 else ""
+    return jsonify({"success": True, "message": f"{account_type} closed.{transferred}", "balance": balance})
 
 
 @app.route('/api/admin/delete_user', methods=['POST'])

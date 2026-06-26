@@ -619,8 +619,9 @@
                 body: JSON.stringify({ account_id: accountId, username: _editUser })
             });
             if (data.success) {
-                setMsg('em-acct-msg', `✓ ${accountType} closed.`, true);
+                setMsg('em-acct-msg', `✓ ${data.message}`, true);
                 await loadAdminAccountsForUser(_editUser);
+                loadAdminUsers();
                 if (_editUser === _me) verifySession();
             } else {
                 setMsg('em-acct-msg', data.message, false);
