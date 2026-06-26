@@ -5,461 +5,589 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HKS Bank - Dashboard</title>
     <style>
-        /* Base Styling */
+        /* ── Reset & Base ── */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: #f4f6f8; color: #333; display: flex; flex-direction: column; min-height: 100vh; }
-        
-        /* Top Navigation Banner */
-        .top-banner { background-color: #ffffff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+
+        /* ── Top Banner ── */
+        .top-banner { background: #fff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .brand { font-size: 1.3rem; font-weight: 700; color: #0052cc; text-decoration: none; }
         .user-controls { display: flex; align-items: center; gap: 20px; font-weight: 500; }
-        .admin-badge { background-color: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-left: 6px; text-transform: uppercase; }
-        .logout-btn { background-color: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-        .logout-btn:hover { background-color: #ef4444; color: white; }
-        
-        /* Layout Structure */
+        .admin-badge { background: #ef4444; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 6px; text-transform: uppercase; }
+        .logout-btn { background: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .logout-btn:hover { background: #ef4444; color: #fff; }
+
+        /* ── Layout ── */
         main { flex: 1; max-width: 1400px; width: 100%; margin: 40px auto; padding: 0 20px; }
-        
-        /* Headline Banner */
-        .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: white; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.03); }
+
+        /* ── Hero Banner ── */
+        .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: #fff; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; }
         .news-headline h2 { font-size: 1.6rem; font-weight: 600; }
-        
-        /* Current Account Section (Always visible balance) */
-        .account-panel { background: #ffffff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+
+        /* ── Accounts Grid ── */
+        .accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 30px; }
+
+        /* ── Account Card ── */
+        .account-card { background: #fff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 22px 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); display: flex; justify-content: space-between; align-items: center; }
+        .account-card.primary { border-left: 4px solid #0052cc; }
+        .account-card.secondary { border-left: 4px solid #7c3aed; }
         .account-info { display: flex; flex-direction: column; gap: 5px; }
-        .account-title { font-size: 1.1rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-        .balance-heading { font-size: 2.2rem; font-weight: 700; color: #1a1a1a; }
-        .tx-btn { background-color: #f1f5f9; color: #0052cc; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-        .tx-btn:hover { background-color: #e2e8f0; border-color: #94a3b8; }
-        
-        /* Transaction History Modal UI */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-        .modal-content { background-color: #ffffff; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; position: relative; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; }
+        .account-title { font-size: 0.85rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .balance-heading { font-size: 2rem; font-weight: 700; color: #1a1a1a; }
+        .tx-btn { background: #f1f5f9; color: #0052cc; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .tx-btn:hover { background: #e2e8f0; border-color: #94a3b8; }
+
+        /* ── Modals (shared) ── */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal-content { background: #fff; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.12); }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; background: none; border: none; line-height: 1; }
         .close-btn:hover { color: #ef4444; }
         .modal-title { font-size: 1.4rem; color: #1a1a1a; margin-bottom: 20px; font-weight: 600; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
-        
+
+        /* ── Transactions ── */
         .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; text-align: center; padding: 20px 0; }
         .tx-list { display: flex; flex-direction: column; gap: 10px; }
-        .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background-color: #f8fafc; border-radius: 6px; border-left: 4px solid #10b981; }
+        .transaction-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: #f8fafc; border-radius: 6px; border-left: 4px solid #10b981; }
         .transaction-item.debit { border-left-color: #ef4444; }
         .tx-info { display: flex; flex-direction: column; gap: 4px; }
         .tx-title { font-weight: 600; color: #333; font-size: 0.95rem; }
         .tx-date { font-size: 0.8rem; color: #64748b; }
         .tx-amount { font-weight: 700; color: #10b981; font-size: 1.1rem; }
         .tx-amount.debit { color: #ef4444; }
+        .tx-account-badge { display: inline-block; font-size: 0.72rem; font-weight: 600; color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 4px; padding: 1px 7px; margin-top: 2px; width: fit-content; }
 
-        /* Admin Controls Section */
-        .admin-panel { background: #ffffff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
+        /* ── Admin Panel ── */
+        .admin-panel { background: #fff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
         .admin-panel h3 { color: #1a1a1a; margin-bottom: 15px; font-size: 1.2rem; }
         .user-table { width: 100%; border-collapse: collapse; text-align: left; }
-        .user-table th, .user-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; }
-        .user-table th { font-weight: 600; color: #64748b; font-size: 0.9rem; }
+        .user-table th, .user-table td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+        .user-table th { font-weight: 600; color: #64748b; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.4px; }
         .user-table tr:last-child td { border-bottom: none; }
-        
-        .fund-input { width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; margin-right: 6px; }
-        .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .add-btn { background-color: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-        .add-btn:hover { background-color: #059669; }
-        .sub-btn { background-color: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-        .sub-btn:hover { background-color: #dc2626; }
-        .promote-btn { background-color: #0052cc; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
-        .promote-btn:hover { background-color: #003d99; }
-        .promote-btn.demote { background-color: #f59e0b; }
-        .promote-btn.demote:hover { background-color: #d97706; }
+        .user-table tbody tr:hover { background: #fafbfc; }
+        .edit-user-btn { background: #0052cc; color: #fff; border: none; padding: 6px 16px; border-radius: 5px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
+        .edit-user-btn:hover { background: #003d99; }
 
-        /* Fund Action Confirmation Modal */
-        .fund-modal-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-        .fund-modal-header .icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
-        .fund-modal-header .icon.add { background-color: #d1fae5; }
-        .fund-modal-header .icon.sub { background-color: #fee2e2; }
-        .fund-modal-header h3 { font-size: 1.2rem; color: #1a1a1a; margin: 0; }
-        .fund-modal-meta { background-color: #f8fafc; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
-        .fund-modal-meta .meta-label { font-size: 0.82rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
-        .fund-modal-meta .meta-value { font-size: 1.05rem; font-weight: 700; color: #1a1a1a; }
-        .fund-modal-meta .meta-value.add { color: #10b981; }
-        .fund-modal-meta .meta-value.sub { color: #ef4444; }
-        .fund-modal-field label { display: block; font-size: 0.85rem; color: #64748b; font-weight: 500; margin-bottom: 6px; }
-        .fund-modal-field select { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; color: #333; outline: none; background-color: #fff; transition: border-color 0.2s; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
-        .fund-modal-field select:focus { border-color: #0052cc; }
-        .fund-modal-field input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; color: #333; outline: none; transition: border-color 0.2s; }
-        .fund-modal-field input[type="text"]:focus { border-color: #0052cc; }
-        .fund-modal-field { margin-bottom: 14px; }
-        .fund-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
-        .fund-modal-actions button { flex: 1; padding: 11px; border-radius: 6px; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
-        .fund-confirm-btn.add { background-color: #10b981; color: white; }
-        .fund-confirm-btn.add:hover { background-color: #059669; }
-        .fund-confirm-btn.sub { background-color: #ef4444; color: white; }
-        .fund-confirm-btn.sub:hover { background-color: #dc2626; }
-        .fund-cancel-btn { background-color: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0 !important; }
-        .fund-cancel-btn:hover { background-color: #e2e8f0; }
-        #fund-modal-custom-row { display: none; }
+        /* ── Edit User Modal ── */
+        .edit-modal-wrap { background: #fff; border-radius: 14px; width: 92%; max-width: 540px; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 24px 48px rgba(0,0,0,0.14); }
+        .edit-modal-header { padding: 24px 28px 0; display: flex; justify-content: space-between; align-items: flex-start; }
+        .edit-modal-header-left h3 { font-size: 1.2rem; color: #1a1a1a; margin-bottom: 4px; }
+        .edit-user-pill { display: inline-block; background: #eff6ff; color: #0052cc; border: 1px solid #bfdbfe; border-radius: 20px; padding: 2px 12px; font-size: 0.8rem; font-weight: 600; }
+        .edit-modal-body { padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 20px; }
+        .em-section { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+        .em-section-head { background: #f8fafc; padding: 10px 16px; font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.7px; border-bottom: 1px solid #e2e8f0; }
+        .em-section-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .em-funds-row { display: flex; gap: 8px; align-items: center; }
+        .em-funds-row input[type="number"] { flex: 1; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+        .em-funds-row input[type="number"]:focus { border-color: #0052cc; }
+        .em-add-btn { background: #10b981; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+        .em-add-btn:hover { background: #059669; }
+        .em-sub-btn { background: #ef4444; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+        .em-sub-btn:hover { background: #dc2626; }
+        .em-select { width: 100%; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; background: #fff; transition: border-color 0.2s; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+        .em-select:focus { border-color: #0052cc; }
+        .em-text-input { width: 100%; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+        .em-text-input:focus { border-color: #0052cc; }
+        .em-role-btn { width: 100%; padding: 10px; border: none; border-radius: 7px; font-size: 0.92rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .em-role-btn.promote { background: #0052cc; color: #fff; }
+        .em-role-btn.promote:hover { background: #003d99; }
+        .em-role-btn.demote { background: #f59e0b; color: #fff; }
+        .em-role-btn.demote:hover { background: #d97706; }
+        .em-role-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .em-status { font-size: 0.82rem; font-weight: 500; min-height: 16px; }
+        .em-status.ok { color: #10b981; }
+        .em-status.err { color: #ef4444; }
+        .em-account-list { display: flex; flex-direction: column; gap: 8px; }
+        .em-account-card { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; padding: 10px 14px; }
+        .em-account-card-left { display: flex; flex-direction: column; gap: 2px; }
+        .em-account-name { font-weight: 600; font-size: 0.9rem; color: #1e293b; }
+        .em-account-tag { font-size: 0.75rem; color: #94a3b8; }
+        .em-account-balance { font-weight: 700; color: #0052cc; font-size: 0.95rem; }
+        .em-new-account-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
+        .em-create-btn { background: #7c3aed; color: #fff; border: none; padding: 9px 14px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+        .em-create-btn:hover { background: #6d28d9; }
+        .em-divider { border: none; border-top: 1px solid #e2e8f0; margin: 4px 0; }
+        .em-sub-label { font-size: 0.76rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2px; }
     </style>
 </head>
 <body>
 
-    <header class="top-banner">
-        <a href="#" class="brand">HKS Bank</a>
-        <div class="user-controls">
-            <span>Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span></span>
-            <button onclick="executeLogout()" class="logout-btn">Log Out</button>
-        </div>
-    </header>
+<header class="top-banner">
+    <a href="#" class="brand">HKS Bank</a>
+    <div class="user-controls">
+        <span>Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span></span>
+        <button onclick="executeLogout()" class="logout-btn">Log Out</button>
+    </div>
+</header>
 
-    <main>
-        <div class="news-headline">
-            <h2>Welcome to HKS Bank</h2>
-        </div>
+<main>
+    <div class="news-headline">
+        <h2>Welcome to HKS Bank</h2>
+    </div>
 
-        <div class="account-panel">
+    <!-- Accounts grid: primary + any additional accounts -->
+    <div class="accounts-grid" id="accounts-grid">
+        <!-- Primary account card always rendered first by JS -->
+    </div>
+
+    <div id="admin-section" class="admin-panel" style="display:none;">
+        <h3>Admin — User Directory</h3>
+        <div style="margin-bottom:15px;">
+            <input type="text" id="user-search" placeholder="Search by username or name…" oninput="filterUsers()"
+                style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.92rem;outline:none;">
+        </div>
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Role</th>
+                    <th>Primary Balance</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="user-table-body"></tbody>
+        </table>
+    </div>
+</main>
+
+<!-- ── Transaction History Modal ── -->
+<div id="txModal" class="modal-overlay">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeTxModal()">&times;</button>
+        <h3 class="modal-title">Transaction History</h3>
+        <div id="tx-container" class="tx-list">
+            <p class="empty-text">Loading…</p>
+        </div>
+    </div>
+</div>
+
+<!-- ── Edit User Modal ── -->
+<div id="editUserModal" class="modal-overlay">
+    <div class="edit-modal-wrap">
+        <div class="edit-modal-header">
+            <div class="edit-modal-header-left">
+                <h3>Edit User</h3>
+                <span class="edit-user-pill" id="em-pill">username</span>
+            </div>
+            <button class="close-btn" style="position:static;margin-top:-4px;" onclick="closeEditModal()">&times;</button>
+        </div>
+        <div class="edit-modal-body">
+
+            <!-- Funds -->
+            <div class="em-section">
+                <div class="em-section-head">Manage Funds</div>
+                <div class="em-section-body">
+                    <div class="em-sub-label">Target Account</div>
+                    <select class="em-select" id="em-target-account">
+                        <option value="">Primary (Current Account)</option>
+                    </select>
+                    <div class="em-funds-row">
+                        <input type="number" id="em-amount" placeholder="Amount e.g. 50.00" min="0.01" step="0.01">
+                        <button class="em-add-btn" onclick="emFunds('add')">Add</button>
+                        <button class="em-sub-btn" onclick="emFunds('sub')">Subtract</button>
+                    </div>
+                    <select class="em-select" id="em-reason" onchange="emReasonChange()">
+                        <option value="Interest">Interest</option>
+                        <option value="Bonus">Bonus</option>
+                        <option value="Refund">Refund</option>
+                        <option value="Fee">Fee</option>
+                        <option value="Penalty">Penalty</option>
+                        <option value="Manual Adjustment">Manual Adjustment</option>
+                        <option value="Other">Other…</option>
+                    </select>
+                    <input type="text" id="em-reason-custom" class="em-text-input" placeholder="Custom reason…" style="display:none;">
+                    <div class="em-status" id="em-funds-msg"></div>
+                </div>
+            </div>
+
+            <!-- Role -->
+            <div class="em-section">
+                <div class="em-section-head">Role</div>
+                <div class="em-section-body">
+                    <button class="em-role-btn promote" id="em-role-btn" onclick="emToggleRole()">Promote to Admin</button>
+                    <div class="em-status" id="em-role-msg"></div>
+                </div>
+            </div>
+
+            <!-- Accounts -->
+            <div class="em-section">
+                <div class="em-section-head">Bank Accounts</div>
+                <div class="em-section-body">
+                    <div class="em-account-list" id="em-account-list">
+                        <p class="empty-text" style="padding:6px 0;font-size:0.88rem;">Loading accounts…</p>
+                    </div>
+                    <hr class="em-divider">
+                    <div class="em-sub-label">Create New Account</div>
+                    <div class="em-new-account-grid">
+                        <select class="em-select" id="em-acct-type" onchange="emAcctTypeChange()">
+                            <option value="Savings Account">Savings Account</option>
+                            <option value="Standard Account">Standard Account</option>
+                            <option value="Investment Account">Investment Account</option>
+                            <option value="Business Account">Business Account</option>
+                            <option value="Junior Account">Junior Account</option>
+                            <option value="Custom">Custom…</option>
+                        </select>
+                        <input type="number" class="em-text-input" id="em-acct-balance" placeholder="Opening balance" min="0" step="0.01">
+                        <button class="em-create-btn" onclick="emCreateAccount()">Create</button>
+                    </div>
+                    <input type="text" class="em-text-input" id="em-acct-custom" placeholder="Account name…" style="display:none;margin-top:6px;">
+                    <div class="em-status" id="em-acct-msg"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    // ── State ──────────────────────────────────────────────
+    let _me = null;
+    let _editUser = null;
+    let _editIsAdmin = false;
+
+    // ── Bootstrap ──────────────────────────────────────────
+    window.addEventListener('load', verifySession);
+
+    async function verifySession() {
+        try {
+            const data = await apiFetch('/api/current-user');
+            if (!data.loggedIn) { redirect(); return; }
+            _me = data.username;
+            document.getElementById('user-display').innerText = data.fullName || data.username;
+
+            // Render accounts grid (primary first, then additional)
+            await renderAccountsGrid(data.balance);
+
+            loadTransactions(null);
+
+            if (data.isAdmin) {
+                document.getElementById('admin-indicator').style.display = 'inline-block';
+                document.getElementById('admin-section').style.display = 'block';
+                loadAdminUsers();
+            }
+        } catch (e) { redirect(); }
+    }
+
+    function redirect() { window.location.href = '/hks-bank.html'; }
+    function fmt(n) { return parseFloat(n || 0).toFixed(2); }
+    async function apiFetch(url, opts) {
+        const r = await fetch(url, opts);
+        return r.json();
+    }
+
+    // ── Accounts grid on main screen ───────────────────────
+    async function renderAccountsGrid(primaryBalance) {
+        const grid = document.getElementById('accounts-grid');
+        grid.innerHTML = '';
+
+        // Primary account card
+        const primary = document.createElement('div');
+        primary.className = 'account-card primary';
+        primary.id = 'primary-account-card';
+        primary.innerHTML = `
             <div class="account-info">
-                <span class="account-title">Current Account Balance</span>
-                <span class="balance-heading" id="display-balance">$0.00</span>
+                <span class="account-title">Current Account</span>
+                <span class="balance-heading" id="display-balance">$${fmt(primaryBalance)}</span>
             </div>
-            <button class="tx-btn" onclick="openTxModal()">View History</button>
-        </div>
+            <button class="tx-btn" onclick="openTxModal()">View History</button>`;
+        grid.appendChild(primary);
 
-        <div id="admin-section" class="admin-panel" style="display: none;">
-            <h3>Admin User Directory</h3>
-            <div style="margin-bottom:15px;">
-                <input type="text" id="user-search" placeholder="Search by Username or Real Name..." oninput="filterUsers()" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px;">
-            </div>
-            <table class="user-table">
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Real Name</th>
-                        <th>Role</th>
-                        <th>Current Balance</th>
-                        <th>Funds</th>
-                        <th>Role Action</th>
-                    </tr>
-                </thead>
-                <tbody id="user-table-body">
-                    </tbody>
-            </table>
-        </div>
-    </main>
-
-    <div id="txModal" class="modal-overlay">
-        <div class="modal-content">
-            <span class="close-btn" onclick="closeTxModal()">&times;</span>
-            <h3 class="modal-title">Transaction History</h3>
-            
-            <div id="tx-container" class="tx-list">
-                <p class="empty-text">Loading transactions...</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Fund Action Confirmation Modal -->
-    <div id="fundActionModal" class="modal-overlay">
-        <div class="modal-content">
-            <span class="close-btn" onclick="closeFundModal()">&times;</span>
-            <div class="fund-modal-header">
-                <div id="fund-modal-icon" class="icon add">➕</div>
-                <h3 id="fund-modal-title">Add Funds</h3>
-            </div>
-            <div class="fund-modal-meta">
-                <div>
-                    <div class="meta-label">Account</div>
-                    <div class="meta-value" id="fund-modal-username">—</div>
-                </div>
-                <div style="text-align:right;">
-                    <div class="meta-label">Amount</div>
-                    <div class="meta-value" id="fund-modal-amount">—</div>
-                </div>
-            </div>
-            <div class="fund-modal-field">
-                <label for="fund-modal-reason">Reason</label>
-                <select id="fund-modal-reason" onchange="handleReasonChange()">
-                    <!-- Options injected by JS -->
-                </select>
-            </div>
-            <div class="fund-modal-field" id="fund-modal-custom-row">
-                <label for="fund-modal-custom">Custom reason</label>
-                <input type="text" id="fund-modal-custom" placeholder="Describe the reason...">
-            </div>
-            <div class="fund-modal-actions">
-                <button class="fund-cancel-btn" onclick="closeFundModal()">Cancel</button>
-                <button id="fund-confirm-btn" class="fund-confirm-btn add" onclick="confirmFundAction()">Confirm</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Modal Controls
-        const txModal = document.getElementById('txModal');
-
-        function openTxModal() {
-            txModal.style.display = 'flex';
-        }
-
-        function closeTxModal() {
-            txModal.style.display = 'none';
-        }
-
-        window.onclick = function(event) {
-            if (event.target === txModal) closeTxModal();
-            if (event.target === document.getElementById('fundActionModal')) closeFundModal();
-        }
-
-        // Core session validation
-        async function verifySession() {
-            try {
-                const response = await fetch('/api/current-user');
-                const data = await response.json();
-                
-                if (!data.loggedIn) {
-                    window.location.href = '/hks-bank.html';
-                } else {
-                    document.getElementById('user-display').innerText = data.fullName || data.username;
-                    
-                    // Format balance display immediately on the main card
-                    const balanceString = parseFloat(data.balance).toFixed(2);
-                    document.getElementById('display-balance').innerText = `$${balanceString}`;
-                    
-                    // Fetch transaction history in the background so it's ready for the popup
-                    loadTransactions();
-
-                    if (data.isAdmin) {
-                        document.getElementById('admin-indicator').style.display = 'inline-block';
-                        document.getElementById('admin-section').style.display = 'block';
-                        loadAdminUsers();
-                    }
-                }
-            } catch(err) {
-                window.location.href = '/hks-bank.html';
+        // Additional accounts from API
+        try {
+            const data = await apiFetch('/api/my-accounts');
+            if (data.success && data.accounts.length > 0) {
+                data.accounts.forEach(acc => {
+                    const card = document.createElement('div');
+                    card.className = 'account-card secondary';
+                    card.innerHTML = `
+                        <div class="account-info">
+                            <span class="account-title">${acc.account_type}</span>
+                            <span class="balance-heading">$${fmt(acc.balance)}</span>
+                        </div>
+                        <button class="tx-btn" onclick="openAccountTxModal(${acc.id}, '${acc.account_type.replace(/'/g,"\\'")}')">View History</button>`;
+                    grid.appendChild(card);
+                });
             }
+        } catch (e) {
+            // No additional accounts or endpoint missing — that's fine
         }
+    }
 
-        // Fetch and Render Transactions into the Modal
-        async function loadTransactions() {
-            const txContainer = document.getElementById('tx-container');
-            
-            try {
-                const response = await fetch('/api/transactions');
-                const data = await response.json();
-                
-                txContainer.innerHTML = ''; // Clear container
+    // ── Transaction modal ──────────────────────────────────
+    function openTxModal() {
+        document.querySelector('#txModal .modal-title').textContent = 'Transaction History — Current Account';
+        document.getElementById('txModal').style.display = 'flex';
+        loadTransactions(null);
+    }
 
-                if (data.success && data.transactions.length > 0) {
-                    data.transactions.forEach(tx => {
-                        const dateObj = new Date(tx.date);
-                        const dateString = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    function openAccountTxModal(accountId, accountName) {
+        document.querySelector('#txModal .modal-title').textContent = `Transaction History — ${accountName}`;
+        document.getElementById('txModal').style.display = 'flex';
+        loadTransactions(accountId);
+    }
 
-                        const isDebit = tx.amount < 0;
-                        const absAmount = Math.abs(tx.amount).toFixed(2);
-                        const amountDisplay = isDebit ? `-$${absAmount}` : `+$${absAmount}`;
+    function closeTxModal() { document.getElementById('txModal').style.display = 'none'; }
 
-                        const item = document.createElement('div');
-                        item.className = `transaction-item${isDebit ? ' debit' : ''}`;
-                        item.innerHTML = `
-                            <div class="tx-info">
-                                <span class="tx-title">${tx.title}</span>
-                                <span class="tx-date">${dateString}</span>
-                            </div>
-                            <div class="tx-amount${isDebit ? ' debit' : ''}">${amountDisplay}</div>
-                        `;
-                        txContainer.appendChild(item);
-                    });
-                } else {
-                    txContainer.innerHTML = '<p class="empty-text">Your transaction history is currently empty.</p>';
-                }
-            } catch (err) {
-                txContainer.innerHTML = '<p class="empty-text" style="color: #ef4444;">Failed to load transactions.</p>';
+    async function loadTransactions(accountId) {
+        const box = document.getElementById('tx-container');
+        box.innerHTML = '<p class="empty-text">Loading…</p>';
+        try {
+            const url = accountId ? `/api/account-transactions/${accountId}` : '/api/transactions';
+            const data = await apiFetch(url);
+            box.innerHTML = '';
+            if (data.success && data.transactions.length) {
+                data.transactions.forEach(tx => {
+                    const isDebit = tx.amount < 0;
+                    const abs = Math.abs(tx.amount).toFixed(2);
+                    const d = new Date(tx.date);
+                    const ds = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                    // Show account badge only in the primary "all transactions" view
+                    const badgeHtml = (!accountId && tx.account_label)
+                        ? `<span class="tx-account-badge">${tx.account_label}</span>`
+                        : '';
+                    const el = document.createElement('div');
+                    el.className = 'transaction-item' + (isDebit ? ' debit' : '');
+                    el.innerHTML = `
+                        <div class="tx-info">
+                            <span class="tx-title">${tx.title}</span>
+                            <span class="tx-date">${ds}</span>
+                            ${badgeHtml}
+                        </div>
+                        <div class="tx-amount${isDebit?' debit':''}">${isDebit?'-':'+'}\$${abs}</div>`;
+                    box.appendChild(el);
+                });
+            } else {
+                box.innerHTML = '<p class="empty-text">No transactions yet.</p>';
             }
+        } catch {
+            box.innerHTML = '<p class="empty-text" style="color:#ef4444">Failed to load.</p>';
         }
+    }
 
-        // Admin: Load User Directory
-        async function loadAdminUsers() {
-            try {
-                const response = await fetch('/api/admin/users');
-                const data = await response.json();
-                
-                if (data.success) {
-                    const tbody = document.getElementById('user-table-body');
-                    tbody.innerHTML = '';
-
-                    const meResp = await fetch('/api/current-user');
-                    const meData = await meResp.json();
-                    const currentUsername = meData.username;
-
-                    data.users.forEach(user => {
-                        const row = document.createElement('tr');
-                        const balanceFixed = parseFloat(user.balance).toFixed(2);
-                        const role = user.is_admin ? "Admin" : "User";
-                        const isSelf = user.username === currentUsername;
-
-                        const promoteLabel = user.is_admin ? "Demote" : "Promote";
-                        const promoteClass = user.is_admin ? "promote-btn demote" : "promote-btn";
-                        const promoteDisabled = isSelf ? "disabled title='Cannot change your own role'" : "";
-
-                        row.innerHTML = `
-                            <td><strong>${user.username}</strong></td>
-                            <td>${user.full_name || ''}</td>
-                            <td><span id="role-label-${user.username}">${role}</span></td>
-                            <td>$${balanceFixed}</td>
-                            <td>
-                                <div class="action-btns">
-                                    <input type="number" id="fund-${user.username}" class="fund-input" placeholder="0.00" min="0" step="10">
-                                    <button onclick="addFunds('${user.username}')" class="add-btn">Add</button>
-                                    <button onclick="subtractFunds('${user.username}')" class="sub-btn">Sub</button>
-                                </div>
-                            </td>
-                            <td>
-                                <button id="promote-btn-${user.username}" onclick="toggleRole('${user.username}')" class="${promoteClass}" ${promoteDisabled}>${promoteLabel}</button>
-                            </td>
-                        `;
-                        tbody.appendChild(row);
-                    });
-                }
-            } catch (err) {
-                console.error("Failed to load users:", err);
-            }
-        }
-
-        
-        function filterUsers() {
-            const term = document.getElementById('user-search').value.toLowerCase().trim();
-
-            document.querySelectorAll('#user-table-body tr').forEach(row => {
-                const username = row.cells[0].innerText.toLowerCase();
-                const realName = row.cells[1].innerText.toLowerCase();
-
-                row.style.display =
-                    username.includes(term) || realName.includes(term)
-                        ? ''
-                        : 'none';
+    // ── Admin: user table ──────────────────────────────────
+    async function loadAdminUsers() {
+        try {
+            const data = await apiFetch('/api/admin/users');
+            if (!data.success) return;
+            const tbody = document.getElementById('user-table-body');
+            tbody.innerHTML = '';
+            data.users.forEach(u => {
+                const tr = document.createElement('tr');
+                tr.dataset.username = u.username;
+                tr.dataset.fullname = u.full_name || '';
+                tr.innerHTML = `
+                    <td><strong>${u.username}</strong></td>
+                    <td>${u.full_name || '—'}</td>
+                    <td><span id="role-lbl-${u.username}">${u.is_admin ? 'Admin' : 'User'}</span></td>
+                    <td id="bal-lbl-${u.username}">$${fmt(u.balance)}</td>
+                    <td><button class="edit-user-btn" onclick="openEditModal('${u.username}', ${u.is_admin})">Edit</button></td>`;
+                tbody.appendChild(tr);
             });
+        } catch(e) { console.error(e); }
+    }
+
+    function filterUsers() {
+        const q = document.getElementById('user-search').value.toLowerCase();
+        document.querySelectorAll('#user-table-body tr').forEach(r => {
+            r.style.display = (r.dataset.username.includes(q) || r.dataset.fullname.toLowerCase().includes(q)) ? '' : 'none';
+        });
+    }
+
+    // ── Edit modal: open / close ───────────────────────────
+    async function openEditModal(username, isAdmin) {
+        _editUser = username;
+        _editIsAdmin = isAdmin;
+
+        document.getElementById('em-pill').textContent = username;
+        document.getElementById('em-amount').value = '';
+        document.getElementById('em-reason').value = 'Interest';
+        document.getElementById('em-reason-custom').style.display = 'none';
+        document.getElementById('em-reason-custom').value = '';
+        document.getElementById('em-acct-type').value = 'Savings Account';
+        document.getElementById('em-acct-balance').value = '';
+        document.getElementById('em-acct-custom').style.display = 'none';
+        document.getElementById('em-acct-custom').value = '';
+        setMsg('em-funds-msg', '', null);
+        setMsg('em-role-msg', '', null);
+        setMsg('em-acct-msg', '', null);
+
+        refreshRoleBtn(isAdmin, username === _me);
+        document.getElementById('editUserModal').style.display = 'flex';
+        await loadAdminAccountsForUser(username);
+    }
+
+    function closeEditModal() {
+        document.getElementById('editUserModal').style.display = 'none';
+        _editUser = null;
+    }
+
+    document.getElementById('txModal').addEventListener('click', e => { if (e.target.id==='txModal') closeTxModal(); });
+    document.getElementById('editUserModal').addEventListener('click', e => { if (e.target.id==='editUserModal') closeEditModal(); });
+
+    // ── Edit modal: helpers ────────────────────────────────
+    function setMsg(id, text, ok) {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = 'em-status' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+    }
+
+    function emReasonChange() {
+        const v = document.getElementById('em-reason').value;
+        document.getElementById('em-reason-custom').style.display = v === 'Other' ? 'block' : 'none';
+    }
+
+    function emAcctTypeChange() {
+        const v = document.getElementById('em-acct-type').value;
+        document.getElementById('em-acct-custom').style.display = v === 'Custom' ? 'block' : 'none';
+    }
+
+    function getReasonValue() {
+        const v = document.getElementById('em-reason').value;
+        if (v !== 'Other') return v;
+        const c = document.getElementById('em-reason-custom').value.trim();
+        if (!c) { setMsg('em-funds-msg', 'Enter a custom reason.', false); return null; }
+        return c;
+    }
+
+    function refreshRoleBtn(isAdmin, isSelf) {
+        const btn = document.getElementById('em-role-btn');
+        if (isSelf) {
+            btn.disabled = true;
+            btn.textContent = 'Cannot change your own role';
+            btn.className = 'em-role-btn promote';
+        } else if (isAdmin) {
+            btn.disabled = false;
+            btn.textContent = 'Demote to User';
+            btn.className = 'em-role-btn demote';
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Promote to Admin';
+            btn.className = 'em-role-btn promote';
         }
+    }
 
-        // Fund Action Modal State
-        let _fundAction = null; // { type: 'add'|'sub', username, amount }
+    // ── Edit modal: funds ──────────────────────────────────
+    async function emFunds(type) {
+        const amount = parseFloat(document.getElementById('em-amount').value);
+        if (isNaN(amount) || amount <= 0) { setMsg('em-funds-msg', 'Enter a valid amount greater than 0.', false); return; }
+        const reason = getReasonValue();
+        if (!reason) return;
+        const accountIdRaw = document.getElementById('em-target-account').value;
+        const account_id = accountIdRaw ? parseInt(accountIdRaw) : null;
 
-        const ADD_REASONS = ["Interest", "Bonus", "Refund", "Manual Adjustment", "Other"];
-        const SUB_REASONS = ["Fee", "Penalty", "Correction", "Manual Adjustment", "Other"];
-
-        function openFundModal(type, username) {
-            const amountInput = document.getElementById(`fund-${username}`);
-            const amount = parseFloat(amountInput.value);
-
-            if (isNaN(amount) || amount <= 0) {
-                alert("Please enter a valid amount greater than 0.");
-                return;
+        const endpoint = type === 'add' ? '/api/admin/add_funds' : '/api/admin/subtract_funds';
+        try {
+            const data = await apiFetch(endpoint, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username: _editUser, amount, reason, account_id })
+            });
+            if (data.success) {
+                setMsg('em-funds-msg', `✓ ${type === 'add' ? 'Added' : 'Subtracted'} $${amount.toFixed(2)} successfully.`, true);
+                document.getElementById('em-amount').value = '';
+                await loadAdminAccountsForUser(_editUser);
+                loadAdminUsers();
+                // If admin is editing themselves, refresh their own account cards too
+                if (_editUser === _me) verifySession();
+            } else {
+                setMsg('em-funds-msg', data.message, false);
             }
+        } catch { setMsg('em-funds-msg', 'Request failed.', false); }
+    }
 
-            _fundAction = { type, username, amount };
-
-            const isAdd = type === 'add';
-            const reasons = isAdd ? ADD_REASONS : SUB_REASONS;
-
-            document.getElementById('fund-modal-icon').textContent = isAdd ? '➕' : '➖';
-            document.getElementById('fund-modal-icon').className = `icon ${type}`;
-            document.getElementById('fund-modal-title').textContent = isAdd ? 'Add Funds' : 'Subtract Funds';
-            document.getElementById('fund-modal-username').textContent = username;
-            document.getElementById('fund-modal-amount').textContent = `$${amount.toFixed(2)}`;
-            document.getElementById('fund-modal-amount').className = `meta-value ${type}`;
-
-            const select = document.getElementById('fund-modal-reason');
-            select.innerHTML = reasons.map(r => `<option value="${r}">${r}</option>`).join('');
-            document.getElementById('fund-modal-custom-row').style.display = 'none';
-            document.getElementById('fund-modal-custom').value = '';
-
-            const confirmBtn = document.getElementById('fund-confirm-btn');
-            confirmBtn.className = `fund-confirm-btn ${type}`;
-            confirmBtn.textContent = isAdd ? 'Confirm Add' : 'Confirm Subtract';
-
-            document.getElementById('fundActionModal').style.display = 'flex';
-        }
-
-        function closeFundModal() {
-            document.getElementById('fundActionModal').style.display = 'none';
-            _fundAction = null;
-        }
-
-        function handleReasonChange() {
-            const val = document.getElementById('fund-modal-reason').value;
-            document.getElementById('fund-modal-custom-row').style.display = val === 'Other' ? 'block' : 'none';
-        }
-
-        async function confirmFundAction() {
-            if (!_fundAction) return;
-            const { type, username, amount } = _fundAction;
-
-            let reason = document.getElementById('fund-modal-reason').value;
-            if (reason === 'Other') {
-                reason = document.getElementById('fund-modal-custom').value.trim();
-                if (!reason) {
-                    alert("Please enter a custom reason.");
-                    return;
-                }
+    // ── Edit modal: role ───────────────────────────────────
+    async function emToggleRole() {
+        try {
+            const data = await apiFetch('/api/admin/promote_user', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username: _editUser })
+            });
+            if (data.success) {
+                _editIsAdmin = data.isAdmin;
+                refreshRoleBtn(data.isAdmin, false);
+                const lbl = document.getElementById(`role-lbl-${_editUser}`);
+                if (lbl) lbl.textContent = data.isAdmin ? 'Admin' : 'User';
+                setMsg('em-role-msg', `✓ ${data.message}`, true);
+            } else {
+                setMsg('em-role-msg', data.message, false);
             }
+        } catch { setMsg('em-role-msg', 'Request failed.', false); }
+    }
 
-            const endpoint = type === 'add' ? '/api/admin/add_funds' : '/api/admin/subtract_funds';
-
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, amount, reason })
+    // ── Edit modal: accounts (admin view) ──────────────────
+    async function loadAdminAccountsForUser(username) {
+        const list = document.getElementById('em-account-list');
+        const targetSelect = document.getElementById('em-target-account');
+        list.innerHTML = '<p class="empty-text" style="font-size:0.88rem;padding:6px 0">Loading…</p>';
+        // Reset account selector to primary only
+        targetSelect.innerHTML = '<option value="">Primary (Current Account)</option>';
+        try {
+            const data = await apiFetch(`/api/admin/accounts/${username}`);
+            list.innerHTML = '';
+            if (data.success && data.accounts.length) {
+                data.accounts.forEach(a => {
+                    // Account list card
+                    const card = document.createElement('div');
+                    card.className = 'em-account-card';
+                    card.innerHTML = `
+                        <div class="em-account-card-left">
+                            <span class="em-account-name">${a.account_type}</span>
+                            <span class="em-account-tag">Created ${new Date(a.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <span class="em-account-balance">$${fmt(a.balance)}</span>`;
+                    list.appendChild(card);
+                    // Populate target account dropdown
+                    const opt = document.createElement('option');
+                    opt.value = a.id;
+                    opt.textContent = `${a.account_type} ($${fmt(a.balance)})`;
+                    targetSelect.appendChild(opt);
                 });
-                const data = await response.json();
-                closeFundModal();
-                document.getElementById(`fund-${username}`).value = '';
-                if (data.success) {
-                    verifySession();
-                } else {
-                    alert(data.message);
+            } else {
+                list.innerHTML = '<p class="empty-text" style="font-size:0.88rem;padding:6px 0">No additional accounts yet.</p>';
+            }
+        } catch {
+            list.innerHTML = '<p class="empty-text" style="color:#ef4444;font-size:0.88rem;">Failed to load accounts.</p>';
+        }
+    }
+
+    async function emCreateAccount() {
+        let acctType = document.getElementById('em-acct-type').value;
+        if (acctType === 'Custom') {
+            acctType = document.getElementById('em-acct-custom').value.trim();
+            if (!acctType) { setMsg('em-acct-msg', 'Enter a custom account name.', false); return; }
+        }
+        const openingBalance = parseFloat(document.getElementById('em-acct-balance').value) || 0;
+
+        try {
+            const data = await apiFetch('/api/admin/create_account', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username: _editUser, account_type: acctType, opening_balance: openingBalance })
+            });
+            if (data.success) {
+                setMsg('em-acct-msg', `✓ ${acctType} created.`, true);
+                document.getElementById('em-acct-balance').value = '';
+                document.getElementById('em-acct-custom').value = '';
+                document.getElementById('em-acct-type').value = 'Savings Account';
+                document.getElementById('em-acct-custom').style.display = 'none';
+                await loadAdminAccountsForUser(_editUser);
+                // If the account was created for the logged-in user, refresh their main screen cards
+                if (_editUser === _me) {
+                    const meData = await apiFetch('/api/current-user');
+                    if (meData.loggedIn) renderAccountsGrid(meData.balance);
                 }
-            } catch (err) {
-                console.error("Fund action failed:", err);
+            } else {
+                setMsg('em-acct-msg', data.message, false);
             }
-        }
+        } catch { setMsg('em-acct-msg', 'Request failed.', false); }
+    }
 
-        // Admin: Add Funds Logic
-        async function addFunds(username) {
-            openFundModal('add', username);
-        }
-
-        // Admin: Subtract Funds Logic
-        async function subtractFunds(username) {
-            openFundModal('sub', username);
-        }
-
-        // Admin: Promote/Demote Logic
-        async function toggleRole(username) {
-            try {
-                const response = await fetch('/api/admin/promote_user', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    alert(data.message);
-                    verifySession(); // Refresh table to show updated role
-                } else {
-                    alert(data.message);
-                }
-            } catch (err) {
-                console.error("Role toggle failed:", err);
-            }
-        }
-
-        // Handle User Logout
-        async function executeLogout() {
-            try {
-                await fetch('/api/logout', { method: 'POST' });
-                window.location.href = '/hks-bank.html';
-            } catch(err) {
-                console.error("Logout error:", err);
-            }
-        }
-
-        // Initialize immediately upon page load
-        window.addEventListener('load', verifySession);
-    </script>
+    // ── Logout ─────────────────────────────────────────────
+    async function executeLogout() {
+        try { await fetch('/api/logout', {method:'POST'}); } catch {}
+        redirect();
+    }
+</script>
 </body>
 </html>
