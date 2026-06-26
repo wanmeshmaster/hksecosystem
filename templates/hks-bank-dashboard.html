@@ -133,10 +133,14 @@
     </div>
 
     <!-- Quick actions bar -->
-    <div style="margin-bottom:24px;">
+    <div style="margin-bottom:24px;display:flex;gap:12px;flex-wrap:wrap;">
         <button onclick="openSendModal()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:#0052cc;color:#fff;border:none;border-radius:8px;font-size:0.97rem;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,82,204,0.2);" onmouseover="this.style.background='#003d99'" onmouseout="this.style.background='#0052cc'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             Send Money
+        </button>
+        <button onclick="openMoveModal()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:0.97rem;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(124,58,237,0.2);" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            Transfer Money
         </button>
     </div>
 
@@ -213,6 +217,64 @@
             <p style="color:#64748b;font-size:0.92rem;margin-bottom:24px;" id="send-success-msg"></p>
             <button onclick="closeSendModal()"
                 style="width:100%;padding:12px;background:#0052cc;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;">
+                Done
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Move Between Accounts Modal ── -->
+<div id="moveModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:420px;">
+        <button class="close-btn" onclick="closeMoveModal()">&times;</button>
+        <h3 class="modal-title">Move Between Accounts</h3>
+
+        <div id="move-form-view">
+            <div id="move-no-accounts" style="display:none;text-align:center;padding:20px 0;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto 12px;display:block;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                <p style="color:#64748b;font-size:0.95rem;margin-bottom:4px;font-weight:600;">Only one account</p>
+                <p style="color:#94a3b8;font-size:0.88rem;">You need at least two accounts to move money between them. Contact your branch to open a savings account.</p>
+                <button onclick="closeMoveModal()" style="margin-top:18px;padding:10px 24px;background:#f1f5f9;color:#64748b;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Close</button>
+            </div>
+
+            <div id="move-fields">
+                <div style="margin-bottom:14px;">
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">From Account</label>
+                    <select id="move-from" onchange="clearMoveError()" style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.95rem;outline:none;background:#fff;"></select>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">To Account</label>
+                    <select id="move-to" onchange="clearMoveError()" style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.95rem;outline:none;background:#fff;"></select>
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label style="display:block;font-size:0.82rem;font-weight:600;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px;">Amount (USD)</label>
+                    <div style="position:relative;">
+                        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#64748b;font-weight:600;">$</span>
+                        <input type="number" id="move-amount" placeholder="0.00" min="0.01" step="0.01"
+                            style="width:100%;padding:11px 12px 11px 24px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.97rem;outline:none;"
+                            oninput="clearMoveError()">
+                    </div>
+                </div>
+                <p id="move-error" style="color:#ef4444;font-size:0.85rem;margin-bottom:12px;display:none;"></p>
+                <button onclick="executeMove()" id="move-submit-btn"
+                    style="width:100%;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;transition:background 0.2s;">
+                    Move Funds
+                </button>
+                <button onclick="closeMoveModal()"
+                    style="width:100%;padding:11px;background:#f1f5f9;color:#64748b;border:none;border-radius:6px;font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:10px;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+        <div id="move-success-view" style="display:none;text-align:center;padding:10px 0;">
+            <div style="width:56px;height:56px;background:#f5f3ff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h4 style="color:#1a1a1a;font-size:1.15rem;margin-bottom:8px;">Transfer Successful</h4>
+            <p style="color:#64748b;font-size:0.92rem;margin-bottom:24px;" id="move-success-msg"></p>
+            <button onclick="closeMoveModal()"
+                style="width:100%;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;">
                 Done
             </button>
         </div>
@@ -337,8 +399,6 @@
             // Render accounts grid (primary first, then additional)
             await renderAccountsGrid(data.balance);
 
-            loadTransactions(null);
-
             if (data.isAdmin) {
                 document.getElementById('admin-indicator').style.display = 'inline-block';
                 document.getElementById('admin-section').style.display = 'block';
@@ -396,7 +456,7 @@
     function openTxModal() {
         document.querySelector('#txModal .modal-title').textContent = 'Transaction History — Current Account';
         document.getElementById('txModal').style.display = 'flex';
-        loadTransactions(null);
+        loadTransactions('primary');
     }
 
     function openAccountTxModal(accountId, accountName) {
@@ -411,7 +471,14 @@
         const box = document.getElementById('tx-container');
         box.innerHTML = '<p class="empty-text">Loading…</p>';
         try {
-            const url = accountId ? `/api/account-transactions/${accountId}` : '/api/transactions';
+            let url;
+            if (accountId === 'primary') {
+                url = '/api/transactions?account=primary';
+            } else if (accountId) {
+                url = `/api/account-transactions/${accountId}`;
+            } else {
+                url = '/api/transactions';
+            }
             const data = await apiFetch(url);
             box.innerHTML = '';
             if (data.success && data.transactions.length) {
@@ -420,10 +487,8 @@
                     const abs = Math.abs(tx.amount).toFixed(2);
                     const d = new Date(tx.date);
                     const ds = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-                    // Show account badge only in the primary "all transactions" view
-                    const badgeHtml = (!accountId && tx.account_label)
-                        ? `<span class="tx-account-badge">${tx.account_label}</span>`
-                        : '';
+                    // Never show account badge for primary or specific account views
+                    const badgeHtml = '';
                     const el = document.createElement('div');
                     el.className = 'transaction-item' + (isDebit ? ' debit' : '');
                     el.innerHTML = `
@@ -777,6 +842,121 @@
     // Close send modal on backdrop click
     document.getElementById('sendModal').addEventListener('click', e => {
         if (e.target === document.getElementById('sendModal')) closeSendModal();
+    });
+
+    // ── Move Between Accounts modal ───────────────────────
+    let _moveAccounts = []; // [{id: null|int, label: string, balance: float}]
+
+    async function openMoveModal() {
+        // Reset UI
+        document.getElementById('move-form-view').style.display = 'block';
+        document.getElementById('move-success-view').style.display = 'none';
+        document.getElementById('move-no-accounts').style.display = 'none';
+        document.getElementById('move-fields').style.display = 'block';
+        document.getElementById('move-amount').value = '';
+        document.getElementById('move-error').style.display = 'none';
+        document.getElementById('moveModal').style.display = 'flex';
+
+        try {
+            const [meData, accData] = await Promise.all([
+                apiFetch('/api/current-user'),
+                apiFetch('/api/my-accounts')
+            ]);
+
+            _moveAccounts = [{ id: null, label: 'Current Account', balance: meData.balance || 0 }];
+            if (accData.success && accData.accounts.length > 0) {
+                accData.accounts.forEach(a => _moveAccounts.push({
+                    id: a.id, label: a.account_type, balance: a.balance
+                }));
+            }
+
+            if (_moveAccounts.length < 2) {
+                document.getElementById('move-no-accounts').style.display = 'block';
+                document.getElementById('move-fields').style.display = 'none';
+                return;
+            }
+
+            const fromSel = document.getElementById('move-from');
+            const toSel   = document.getElementById('move-to');
+            fromSel.innerHTML = '';
+            toSel.innerHTML   = '';
+            _moveAccounts.forEach((a, i) => {
+                const label = `${a.label} ($${fmt(a.balance)})`;
+                fromSel.appendChild(new Option(label, i));
+                toSel.appendChild(new Option(label, i));
+            });
+            fromSel.value = '0';
+            toSel.value   = '1';
+        } catch {
+            document.getElementById('move-error').innerText = 'Failed to load accounts.';
+            document.getElementById('move-error').style.display = 'block';
+        }
+    }
+
+    function closeMoveModal() {
+        document.getElementById('moveModal').style.display = 'none';
+    }
+
+    function clearMoveError() {
+        document.getElementById('move-error').style.display = 'none';
+    }
+
+    async function executeMove() {
+        const fromIdx   = parseInt(document.getElementById('move-from').value);
+        const toIdx     = parseInt(document.getElementById('move-to').value);
+        const amount    = parseFloat(document.getElementById('move-amount').value);
+        const errEl     = document.getElementById('move-error');
+        const submitBtn = document.getElementById('move-submit-btn');
+
+        errEl.style.display = 'none';
+
+        if (fromIdx === toIdx) {
+            errEl.innerText = 'Please choose two different accounts.';
+            errEl.style.display = 'block'; return;
+        }
+        if (!amount || amount <= 0) {
+            errEl.innerText = 'Please enter a valid amount greater than zero.';
+            errEl.style.display = 'block'; return;
+        }
+        if (amount > _moveAccounts[fromIdx].balance) {
+            errEl.innerText = `Insufficient balance in ${_moveAccounts[fromIdx].label}.`;
+            errEl.style.display = 'block'; return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Moving…';
+
+        try {
+            const data = await apiFetch('/api/move-funds', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from_account_id: _moveAccounts[fromIdx].id,
+                    to_account_id:   _moveAccounts[toIdx].id,
+                    amount
+                })
+            });
+
+            if (data.success) {
+                document.getElementById('move-form-view').style.display = 'none';
+                document.getElementById('move-success-msg').innerText = data.message;
+                document.getElementById('move-success-view').style.display = 'block';
+                verifySession(); // refresh balances on the main screen
+            } else {
+                errEl.innerText = data.message;
+                errEl.style.display = 'block';
+            }
+        } catch {
+            errEl.innerText = 'A network error occurred. Please try again.';
+            errEl.style.display = 'block';
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Move Funds';
+        }
+    }
+
+    document.getElementById('moveModal').addEventListener('click', e => {
+        if (e.target === document.getElementById('moveModal')) closeMoveModal();
     });
 
     // ── Logout ─────────────────────────────────────────────

@@ -190,12 +190,19 @@ def current_user():
 def get_transactions():
     if "username" not in session:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
+    primary_only = request.args.get('account') == 'primary'
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
-    cur.execute(
-        "SELECT title, amount, timestamp, account_label FROM transactions WHERE username=? ORDER BY timestamp DESC",
-        (session["username"],)
-    )
+    if primary_only:
+        cur.execute(
+            "SELECT title, amount, timestamp, account_label FROM transactions WHERE username=? AND account_label='Current Account' ORDER BY timestamp DESC",
+            (session["username"],)
+        )
+    else:
+        cur.execute(
+            "SELECT title, amount, timestamp, account_label FROM transactions WHERE username=? ORDER BY timestamp DESC",
+            (session["username"],)
+        )
     transactions = [{"title": r[0], "amount": r[1], "date": r[2], "account_label": r[3]} for r in cur.fetchall()]
     conn.close()
     return jsonify({"success": True, "transactions": transactions})
@@ -605,6 +612,97 @@ def transfer():
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": f"${amount:.2f} sent to {recipient_full} successfully.", "recipient_full": recipient_full})
+
+
+# ── Internal account-to-account move ──────────────────────────────────────────
+
+@app.route('/api/move-funds', methods=['POST'])
+def move_funds():
+    if "username" not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data            = request.get_json()
+    from_account_id = data.get("from_account_id")   # None = primary Current Account
+    to_account_id   = data.get("to_account_id")     # None = primary Current Account
+    try:
+        amount = round(float(data.get("amount", 0)), 2)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid amount."}), 400
+
+    username = session["username"]
+
+    if from_account_id == to_account_id:
+        return jsonify({"success": False, "message": "Source and destination must be different."}), 400
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Amount must be greater than zero."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+
+    # ── Resolve & validate source ──────────────────────────
+    if from_account_id is None:
+        cur.execute("SELECT balance FROM users WHERE username = ?", (username,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"success": False, "message": "User not found."}), 404
+        from_balance = row[0]
+        from_label   = "Current Account"
+    else:
+        cur.execute("SELECT balance, account_type, username FROM accounts WHERE id = ?", (from_account_id,))
+        row = cur.fetchone()
+        if not row or row[2] != username:
+            conn.close()
+            return jsonify({"success": False, "message": "Source account not found."}), 404
+        from_balance = row[0]
+        from_label   = row[1]
+
+    if from_balance < amount:
+        conn.close()
+        return jsonify({"success": False, "message": f"Insufficient balance in {from_label}."}), 400
+
+    # ── Resolve & validate destination ─────────────────────
+    if to_account_id is None:
+        to_label = "Current Account"
+    else:
+        cur.execute("SELECT account_type, username FROM accounts WHERE id = ?", (to_account_id,))
+        row = cur.fetchone()
+        if not row or row[1] != username:
+            conn.close()
+            return jsonify({"success": False, "message": "Destination account not found."}), 404
+        to_label = row[0]
+
+    # ── Debit source ───────────────────────────────────────
+    if from_account_id is None:
+        cur.execute("UPDATE users SET balance = balance - ? WHERE username = ?", (amount, username))
+    else:
+        cur.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", (amount, from_account_id))
+        cur.execute(
+            "INSERT INTO account_transactions (account_id, username, title, amount) VALUES (?, ?, ?, ?)",
+            (from_account_id, username, f"Internal transfer to {to_label}", -amount)
+        )
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (username, f"Internal transfer to {to_label}", -amount, from_label)
+    )
+
+    # ── Credit destination ─────────────────────────────────
+    if to_account_id is None:
+        cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, username))
+    else:
+        cur.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, to_account_id))
+        cur.execute(
+            "INSERT INTO account_transactions (account_id, username, title, amount) VALUES (?, ?, ?, ?)",
+            (to_account_id, username, f"Internal transfer from {from_label}", amount)
+        )
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (username, f"Internal transfer from {from_label}", amount, to_label)
+    )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"${amount:.2f} moved from {from_label} to {to_label}."})
 
 
 # ── Checkout ───────────────────────────────────────────────────────────────────
@@ -1095,14 +1193,6 @@ def hkmail_admin_users():
               "is_admin": bool(r[3]), "created_at": r[4]} for r in cur.fetchall()]
     conn.close()
     return jsonify({"success": True, "users": users})
-
-
-# ── HKMail: index route registration ──────────────────────────────────────────
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Entry point
-# ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
     init_db()
