@@ -20,6 +20,7 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             is_admin INTEGER NOT NULL DEFAULT 0,
+            is_employee INTEGER NOT NULL DEFAULT 0,
             balance REAL NOT NULL DEFAULT 0.0,
             full_name TEXT NOT NULL DEFAULT ''
         )
@@ -66,6 +67,7 @@ def init_db():
         "ALTER TABLE users ADD COLUMN balance REAL NOT NULL DEFAULT 0.0",
         "ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE transactions ADD COLUMN account_label TEXT NOT NULL DEFAULT 'Current Account'",
+        "ALTER TABLE users ADD COLUMN is_employee INTEGER NOT NULL DEFAULT 0",
     ]:
         try:
             cur.execute(stmt)
@@ -148,14 +150,15 @@ def login():
 
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT password_hash, is_admin FROM users WHERE username=?", (username,))
+    cur.execute("SELECT password_hash, is_admin, is_employee FROM users WHERE username=?", (username,))
     row = cur.fetchone()
     conn.close()
 
     if row and check_password_hash(row[0], password):
         session["username"] = username
         session["is_admin"] = bool(row[1])
-        return jsonify({"success": True, "username": username, "isAdmin": bool(row[1])})
+        session["is_employee"] = bool(row[2])
+        return jsonify({"success": True, "username": username, "isAdmin": bool(row[1]), "isEmployee": bool(row[2])})
     return jsonify({"success": False, "message": "Invalid username or password."}), 401
 
 
@@ -170,7 +173,7 @@ def current_user():
     if "username" in session:
         conn = sqlite3.connect(DATABASE)
         cur  = conn.cursor()
-        cur.execute("SELECT is_admin, balance, full_name FROM users WHERE username=?", (session["username"],))
+        cur.execute("SELECT is_admin, balance, full_name, is_employee FROM users WHERE username=?", (session["username"],))
         row = cur.fetchone()
         conn.close()
         if row:
@@ -180,6 +183,7 @@ def current_user():
                 "isAdmin":   bool(row[0]),
                 "balance":   row[1],
                 "fullName":  row[2] if row[2] else session["username"],
+                "isEmployee": bool(row[3]),
             })
     return jsonify({"loggedIn": False})
 
@@ -257,18 +261,21 @@ def get_account_transactions(account_id):
 def is_admin():
     return session.get("is_admin", False)
 
+def is_employee_or_admin():
+    return session.get("is_admin", False) or session.get("is_employee", False)
+
 
 # ── Admin: users ───────────────────────────────────────────────────────────────
 
 @app.route('/api/admin/users', methods=['GET'])
 def admin_users():
-    if not is_admin():
+    if not is_employee_or_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT id, username, full_name, balance, is_admin FROM users")
+    cur.execute("SELECT id, username, full_name, balance, is_admin, is_employee FROM users")
     users = [
-        {"id": r[0], "username": r[1], "full_name": r[2], "balance": r[3], "is_admin": bool(r[4])}
+        {"id": r[0], "username": r[1], "full_name": r[2], "balance": r[3], "is_admin": bool(r[4]), "is_employee": bool(r[5])}
         for r in cur.fetchall()
     ]
     conn.close()
@@ -279,7 +286,7 @@ def admin_users():
 
 @app.route('/api/admin/add_funds', methods=['POST'])
 def admin_add_funds():
-    if not is_admin():
+    if not is_employee_or_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
     data       = request.get_json()
     username   = data.get("username")
@@ -320,7 +327,7 @@ def admin_add_funds():
 
 @app.route('/api/admin/subtract_funds', methods=['POST'])
 def admin_subtract_funds():
-    if not is_admin():
+    if not is_employee_or_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
     data       = request.get_json()
     username   = data.get("username")
@@ -401,11 +408,43 @@ def admin_promote_user():
     return jsonify({"success": True, "message": f"{username} has been {action}.", "isAdmin": bool(new_role)})
 
 
+@app.route('/api/admin/set_employee', methods=['POST'])
+def admin_set_employee():
+    if not is_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+    data     = request.get_json()
+    username = data.get("username")
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+    if username == session.get("username"):
+        return jsonify({"success": False, "message": "You cannot change your own role."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT is_employee, is_admin FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+    if row[1]:
+        conn.close()
+        return jsonify({"success": False, "message": "Cannot set employee status on an Admin user."}), 400
+
+    new_val = 0 if row[0] else 1
+    cur.execute("UPDATE users SET is_employee = ? WHERE username = ?", (new_val, username))
+    conn.commit()
+    conn.close()
+
+    action = "promoted to Employee" if new_val else "demoted to User"
+    return jsonify({"success": True, "message": f"{username} has been {action}.", "isEmployee": bool(new_val)})
+
+
 # ── Admin: additional accounts ────────────────────────────────────────────────
 
 @app.route('/api/admin/accounts/<username>', methods=['GET'])
 def admin_get_accounts(username):
-    if not is_admin():
+    if not is_employee_or_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
 
     conn = sqlite3.connect(DATABASE)
@@ -424,7 +463,7 @@ def admin_get_accounts(username):
 
 @app.route('/api/admin/create_account', methods=['POST'])
 def admin_create_account():
-    if not is_admin():
+    if not is_employee_or_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
 
     data            = request.get_json()
@@ -475,7 +514,7 @@ def admin_create_account():
 
 @app.route('/api/admin/close_account', methods=['POST'])
 def admin_close_account():
-    if not is_admin():
+    if not is_employee_or_admin():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
 
     data       = request.get_json()

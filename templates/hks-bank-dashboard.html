@@ -57,6 +57,7 @@
         .tx-amount { font-weight: 700; color: #10b981; font-size: 1.1rem; }
         .tx-amount.debit { color: #ef4444; }
         .tx-account-badge { display: inline-block; font-size: 0.72rem; font-weight: 600; color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 4px; padding: 1px 7px; margin-top: 2px; width: fit-content; }
+        .employee-badge { background: #3b82f6; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 6px; text-transform: uppercase; }
 
         /* ── Admin Panel ── */
         .admin-panel { background: #fff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); }
@@ -122,7 +123,7 @@
 <header class="top-banner">
     <a href="#" class="brand">HKS Bank</a>
     <div class="user-controls">
-        <span>Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span></span>
+        <span>Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span><span id="employee-indicator" style="display:none;" class="employee-badge">Employee</span></span>
         <button onclick="executeLogout()" class="logout-btn">Log Out</button>
     </div>
 </header>
@@ -332,10 +333,11 @@
             </div>
 
             <!-- Role -->
-            <div class="em-section">
+            <div class="em-section" id="em-role-section">
                 <div class="em-section-head">Role</div>
                 <div class="em-section-body">
                     <button class="em-role-btn promote" id="em-role-btn" onclick="emToggleRole()">Promote to Admin</button>
+                    <button class="em-role-btn promote" id="em-employee-btn" onclick="emToggleEmployee()" style="background:#3b82f6;">Promote to Employee</button>
                     <div class="em-status" id="em-role-msg"></div>
                 </div>
             </div>
@@ -367,7 +369,7 @@
             </div>
 
             <!-- Danger Zone -->
-            <div class="em-section danger">
+            <div class="em-section danger" id="em-danger-section">
                 <div class="em-section-head">Danger Zone</div>
                 <div class="em-section-body">
                     <p style="font-size:0.85rem;color:#64748b;margin-bottom:4px;">Permanently delete this user and all their data. This cannot be undone.</p>
@@ -385,6 +387,7 @@
     let _me = null;
     let _editUser = null;
     let _editIsAdmin = false;
+    let _iAmEmployee = false; // tracks if the logged-in user is an employee (not full admin)
 
     // ── Bootstrap ──────────────────────────────────────────
     window.addEventListener('load', verifySession);
@@ -401,6 +404,11 @@
 
             if (data.isAdmin) {
                 document.getElementById('admin-indicator').style.display = 'inline-block';
+                document.getElementById('admin-section').style.display = 'block';
+                loadAdminUsers();
+            } else if (data.isEmployee) {
+                _iAmEmployee = true;
+                document.getElementById('employee-indicator').style.display = 'inline-block';
                 document.getElementById('admin-section').style.display = 'block';
                 loadAdminUsers();
             }
@@ -522,9 +530,9 @@
                 tr.innerHTML = `
                     <td><strong>${u.username}</strong></td>
                     <td>${u.full_name || '—'}</td>
-                    <td><span id="role-lbl-${u.username}">${u.is_admin ? 'Admin' : 'User'}</span></td>
+                    <td><span id="role-lbl-${u.username}">${u.is_admin ? 'Admin' : u.is_employee ? 'Employee' : 'User'}</span></td>
                     <td id="bal-lbl-${u.username}">$${fmt(u.balance)}</td>
-                    <td><button class="edit-user-btn" onclick="openEditModal('${u.username}', ${u.is_admin})">Edit</button></td>`;
+                    <td><button class="edit-user-btn" onclick="openEditModal('${u.username}', ${u.is_admin}, ${u.is_employee})">Edit</button></td>`;
                 tbody.appendChild(tr);
             });
         } catch(e) { console.error(e); }
@@ -538,7 +546,7 @@
     }
 
     // ── Edit modal: open / close ───────────────────────────
-    async function openEditModal(username, isAdmin) {
+    async function openEditModal(username, isAdmin, isEmployee = false) {
         _editUser = username;
         _editIsAdmin = isAdmin;
 
@@ -561,8 +569,14 @@
         delBtn.disabled = (username === _me);
         delBtn.title = (username === _me) ? 'You cannot delete your own account.' : '';
 
-        refreshRoleBtn(isAdmin, username === _me);
+        refreshRoleBtn(isAdmin, isEmployee, username === _me);
         document.getElementById('editUserModal').style.display = 'flex';
+
+        // Employees cannot change roles or delete users — hide those sections
+        const roleSection   = document.getElementById('em-role-section');
+        const dangerSection = document.getElementById('em-danger-section');
+        if (roleSection)   roleSection.style.display   = _iAmEmployee ? 'none' : '';
+        if (dangerSection) dangerSection.style.display = _iAmEmployee ? 'none' : '';
         await loadAdminAccountsForUser(username);
     }
 
@@ -599,20 +613,39 @@
         return c;
     }
 
-    function refreshRoleBtn(isAdmin, isSelf) {
-        const btn = document.getElementById('em-role-btn');
+    function refreshRoleBtn(isAdmin, isEmployee, isSelf) {
+        const adminBtn = document.getElementById('em-role-btn');
+        const empBtn   = document.getElementById('em-employee-btn');
+
         if (isSelf) {
-            btn.disabled = true;
-            btn.textContent = 'Cannot change your own role';
-            btn.className = 'em-role-btn promote';
+            adminBtn.disabled = true;
+            adminBtn.textContent = 'Cannot change your own role';
+            adminBtn.className = 'em-role-btn promote';
+            empBtn.style.display = 'none';
         } else if (isAdmin) {
-            btn.disabled = false;
-            btn.textContent = 'Demote to User';
-            btn.className = 'em-role-btn demote';
+            // User is Admin — show demote to User, hide employee button
+            adminBtn.disabled = false;
+            adminBtn.textContent = 'Demote to User';
+            adminBtn.className = 'em-role-btn demote';
+            empBtn.style.display = 'none';
+        } else if (isEmployee) {
+            // User is Employee — show demote to User (blue), hide promote to admin
+            adminBtn.disabled = false;
+            adminBtn.textContent = 'Promote to Admin';
+            adminBtn.className = 'em-role-btn promote';
+            empBtn.disabled = false;
+            empBtn.textContent = 'Demote to User';
+            empBtn.style.display = '';
+            empBtn.style.background = '#f59e0b';
         } else {
-            btn.disabled = false;
-            btn.textContent = 'Promote to Admin';
-            btn.className = 'em-role-btn promote';
+            // Plain User — show both promote buttons
+            adminBtn.disabled = false;
+            adminBtn.textContent = 'Promote to Admin';
+            adminBtn.className = 'em-role-btn promote';
+            empBtn.disabled = false;
+            empBtn.textContent = 'Promote to Employee';
+            empBtn.style.display = '';
+            empBtn.style.background = '#3b82f6';
         }
     }
 
@@ -655,9 +688,28 @@
             });
             if (data.success) {
                 _editIsAdmin = data.isAdmin;
-                refreshRoleBtn(data.isAdmin, false);
+                // If demoted from admin, they become a plain user (not employee)
+                refreshRoleBtn(data.isAdmin, false, false);
                 const lbl = document.getElementById(`role-lbl-${_editUser}`);
                 if (lbl) lbl.textContent = data.isAdmin ? 'Admin' : 'User';
+                setMsg('em-role-msg', `✓ ${data.message}`, true);
+            } else {
+                setMsg('em-role-msg', data.message, false);
+            }
+        } catch { setMsg('em-role-msg', 'Request failed.', false); }
+    }
+
+    async function emToggleEmployee() {
+        try {
+            const data = await apiFetch('/api/admin/set_employee', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username: _editUser })
+            });
+            if (data.success) {
+                refreshRoleBtn(false, data.isEmployee, false);
+                const lbl = document.getElementById(`role-lbl-${_editUser}`);
+                if (lbl) lbl.textContent = data.isEmployee ? 'Employee' : 'User';
                 setMsg('em-role-msg', `✓ ${data.message}`, true);
             } else {
                 setMsg('em-role-msg', data.message, false);
