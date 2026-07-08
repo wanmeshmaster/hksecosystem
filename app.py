@@ -88,6 +88,13 @@ def init_db():
 
 SYSTEM_MAIL_SENDER = "hksbank@hkmail.cn"
 
+# The HKMail administrator account. This is seeded as the very first row in
+# mail_users (ahead of the bank's system mailbox) so it is unambiguously the
+# "first user" of the HKMail service. It's the only account that can manage
+# other HKMail users, mark accounts as verified/official, etc.
+ADMIN_MAIL_USERNAME = "admin@hkmail.cn"
+ADMIN_MAIL_DEFAULT_PASSWORD = "AdminPass123!"  # demo credential, change in a real deployment
+
 
 def generate_signup_code(length=8):
     alphabet = string.ascii_uppercase + string.digits
@@ -974,9 +981,16 @@ def init_mail_db():
             password_hash TEXT NOT NULL,
             full_name    TEXT NOT NULL DEFAULT '',
             is_admin     INTEGER NOT NULL DEFAULT 0,
+            is_verified  INTEGER NOT NULL DEFAULT 0,
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Safe migration for existing databases created before is_verified existed
+    try:
+        cur.execute("ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
 
     # Emails table
     cur.execute("""
@@ -995,13 +1009,24 @@ def init_mail_db():
         )
     """)
 
+    # Ensure the HKMail administrator account exists. It's inserted first so
+    # it is literally the first user of the HKMail service, and it is both
+    # an admin and a verified/official account from the start.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (ADMIN_MAIL_USERNAME,))
+    if not cur.fetchone():
+        admin_password_hash = generate_password_hash(ADMIN_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 1, 1)",
+            (ADMIN_MAIL_USERNAME, admin_password_hash, "HKMail Administrator")
+        )
+
     # Ensure the HKS Bank system mailbox exists so it can send signup codes.
     # It gets a random, never-shared password since no one logs into it directly.
     cur.execute("SELECT id FROM mail_users WHERE username=?", (SYSTEM_MAIL_SENDER,))
     if not cur.fetchone():
         locked_password_hash = generate_password_hash(os.urandom(32).hex())
         cur.execute(
-            "INSERT INTO mail_users (username, password_hash, full_name, is_admin) VALUES (?, ?, ?, 0)",
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
             (SYSTEM_MAIL_SENDER, locked_password_hash, "HKS Bank")
         )
 
@@ -1057,11 +1082,12 @@ def hkmail_register():
     try:
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM mail_users")
-        is_admin = 1 if cur.fetchone()[0] == 0 else 0
+        # Self-registered accounts are always plain, unverified users. The
+        # only admin account is the dedicated one seeded at startup; official
+        # accounts are created and verified explicitly by that admin.
         cur.execute(
-            "INSERT INTO mail_users (username, password_hash, full_name, is_admin) VALUES (?, ?, ?, ?)",
-            (username, password_hash, full_name, is_admin)
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 0)",
+            (username, password_hash, full_name)
         )
         conn.commit()
         conn.close()
@@ -1078,7 +1104,7 @@ def hkmail_login_api():
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT password_hash, full_name, is_admin FROM mail_users WHERE username=?", (username,))
+    cur.execute("SELECT password_hash, full_name, is_admin, is_verified FROM mail_users WHERE username=?", (username,))
     row = cur.fetchone()
     conn.close()
 
@@ -1086,7 +1112,8 @@ def hkmail_login_api():
         session["mail_username"] = username
         session["mail_full_name"] = row[1]
         session["mail_is_admin"]  = bool(row[2])
-        return jsonify({"success": True, "username": username, "fullName": row[1], "isAdmin": bool(row[2])})
+        return jsonify({"success": True, "username": username, "fullName": row[1],
+                         "isAdmin": bool(row[2]), "isVerified": bool(row[3])})
     return jsonify({"success": False, "message": "Incorrect email or password."}), 401
 
 
@@ -1104,12 +1131,12 @@ def hkmail_current_user():
     if u:
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
-        cur.execute("SELECT full_name, is_admin FROM mail_users WHERE username=?", (u,))
+        cur.execute("SELECT full_name, is_admin, is_verified FROM mail_users WHERE username=?", (u,))
         row = cur.fetchone()
         conn.close()
         if row:
-            return jsonify({"loggedIn": True, "username": u,
-                            "fullName": row[0], "isAdmin": bool(row[1])})
+            return jsonify({"loggedIn": True, "username": u, "fullName": row[0],
+                            "isAdmin": bool(row[1]), "isVerified": bool(row[2])})
     return jsonify({"loggedIn": False})
 
 
@@ -1169,12 +1196,14 @@ def hkmail_inbox_api():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT id, sender, subject, sent_at, read
-        FROM emails
-        WHERE recipient=? AND deleted_by_recipient=0
-        ORDER BY sent_at DESC
+        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified
+        FROM emails e
+        LEFT JOIN mail_users mu ON mu.username = e.sender
+        WHERE e.recipient=? AND e.deleted_by_recipient=0
+        ORDER BY e.sent_at DESC
     """, (u,))
-    emails = [{"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4])}
+    emails = [{"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4]),
+               "from_is_admin": bool(r[5]), "from_is_verified": bool(r[6])}
               for r in cur.fetchall()]
     conn.close()
     return jsonify({"success": True, "emails": emails})
@@ -1199,6 +1228,9 @@ def hkmail_sent_api():
     return jsonify({"success": True, "emails": emails})
 
 
+
+
+
 @app.route('/api/hkmail/trash')
 def hkmail_trash_api():
     u = mail_current_user()
@@ -1208,18 +1240,20 @@ def hkmail_trash_api():
     cur  = conn.cursor()
     # Show emails deleted by this user (either as sender or recipient)
     cur.execute("""
-        SELECT id, sender, recipient, subject, sent_at,
-               deleted_by_sender, deleted_by_recipient
-        FROM emails
-        WHERE (sender=? AND deleted_by_sender=1)
-           OR (recipient=? AND deleted_by_recipient=1)
-        ORDER BY sent_at DESC
+        SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
+               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified
+        FROM emails e
+        LEFT JOIN mail_users mu ON mu.username = e.sender
+        WHERE (e.sender=? AND e.deleted_by_sender=1)
+           OR (e.recipient=? AND e.deleted_by_recipient=1)
+        ORDER BY e.sent_at DESC
     """, (u, u))
     emails = []
     for r in cur.fetchall():
         emails.append({
             "id": r[0], "from": r[1], "to": r[2],
-            "subject": r[3], "date": r[4]
+            "subject": r[3], "date": r[4],
+            "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8])
         })
     conn.close()
     return jsonify({"success": True, "emails": emails})
@@ -1236,8 +1270,11 @@ def hkmail_read_email(email_id):
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT id, sender, recipient, subject, body, sent_at, read
-        FROM emails WHERE id=?
+        SELECT e.id, e.sender, e.recipient, e.subject, e.body, e.sent_at, e.read,
+               mu.is_admin, mu.is_verified
+        FROM emails e
+        LEFT JOIN mail_users mu ON mu.username = e.sender
+        WHERE e.id=?
     """, (email_id,))
     row = cur.fetchone()
     if not row:
@@ -1259,7 +1296,8 @@ def hkmail_read_email(email_id):
         "success": True,
         "email": {
             "id": row[0], "from": row[1], "to": row[2],
-            "subject": row[3], "body": row[4], "date": row[5], "read": True
+            "subject": row[3], "body": row[4], "date": row[5], "read": True,
+            "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8])
         }
     })
 
@@ -1407,11 +1445,111 @@ def hkmail_admin_users():
         return jsonify({"success": False, "message": "Admin access required."}), 403
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT id, username, full_name, is_admin, created_at FROM mail_users ORDER BY created_at")
+    cur.execute("SELECT id, username, full_name, is_admin, is_verified, created_at FROM mail_users ORDER BY created_at")
     users = [{"id": r[0], "username": r[1], "full_name": r[2],
-              "is_admin": bool(r[3]), "created_at": r[4]} for r in cur.fetchall()]
+              "is_admin": bool(r[3]), "is_verified": bool(r[4]), "created_at": r[5]}
+             for r in cur.fetchall()]
     conn.close()
     return jsonify({"success": True, "users": users})
+
+
+# ── HKMail: admin — promote / demote admin role ───────────────────────────────
+
+@app.route('/api/hkmail/admin/promote', methods=['POST'])
+def hkmail_admin_promote():
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+    data     = request.get_json()
+    username = (data.get("username", "") or "").strip().lower()
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+    if username == mail_current_user():
+        return jsonify({"success": False, "message": "You cannot change your own role."}), 400
+    if username == SYSTEM_MAIL_SENDER:
+        return jsonify({"success": False, "message": "The bank system mailbox's role can't be changed."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT is_admin FROM mail_users WHERE username=?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+
+    new_role = 0 if row[0] else 1
+    cur.execute("UPDATE mail_users SET is_admin=? WHERE username=?", (new_role, username))
+    conn.commit()
+    conn.close()
+
+    action = "promoted to Admin" if new_role else "demoted to User"
+    return jsonify({"success": True, "message": f"{username} has been {action}.", "isAdmin": bool(new_role)})
+
+
+# ── HKMail: admin — verify / unverify an account ──────────────────────────────
+
+@app.route('/api/hkmail/admin/verify', methods=['POST'])
+def hkmail_admin_verify():
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+    data     = request.get_json()
+    username = (data.get("username", "") or "").strip().lower()
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT is_verified FROM mail_users WHERE username=?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+
+    new_val = 0 if row[0] else 1
+    cur.execute("UPDATE mail_users SET is_verified=? WHERE username=?", (new_val, username))
+    conn.commit()
+    conn.close()
+
+    action = "marked as a verified official account" if new_val else "unmarked as verified"
+    return jsonify({"success": True, "message": f"{username} has been {action}.", "isVerified": bool(new_val)})
+
+
+# ── HKMail: admin — create an official account ────────────────────────────────
+
+@app.route('/api/hkmail/admin/create-account', methods=['POST'])
+def hkmail_admin_create_account():
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+    data       = request.get_json()
+    username   = (data.get("username", "") or "").strip().lower()
+    password   = (data.get("password", "") or "").strip()
+    full_name  = (data.get("full_name", "") or "").strip()
+    is_verified = 1 if data.get("is_verified", True) else 0
+
+    if "@" not in username and username:
+        username = username + "@hkmail.cn"
+
+    if not username or not password:
+        return jsonify({"success": False, "message": "Address and password are required."}), 400
+    if len(password) < 8:
+        return jsonify({"success": False, "message": "Password must be at least 8 characters."}), 400
+    if not full_name:
+        full_name = username.split("@")[0].replace(".", " ").title()
+
+    password_hash = generate_password_hash(password)
+    try:
+        conn = sqlite3.connect(MAIL_DATABASE)
+        cur  = conn.cursor()
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, ?)",
+            (username, password_hash, full_name, is_verified)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "message": f"Official account {username} created.", "username": username})
+    except sqlite3.IntegrityError:
+        return jsonify({"success": False, "message": "That email address is already taken."}), 400
 
 if __name__ == '__main__':
     init_db()
