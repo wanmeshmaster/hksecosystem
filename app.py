@@ -1089,6 +1089,29 @@ def hkmail_register():
             "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 0)",
             (username, password_hash, full_name)
         )
+
+        # Drop a welcome email from the admin account into the new inbox so
+        # every user's very first message shows what an official HKMail
+        # admin/verified sender looks like.
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (
+                ADMIN_MAIL_USERNAME,
+                username,
+                "Welcome to HKMail!",
+                f"Hi {first_name or 'there'},\n\n"
+                f"Welcome to HKMail — your new address is {username}.\n\n"
+                "A couple of things worth knowing as you get started:\n\n"
+                "  • Messages from this address (admin@hkmail.cn) carry an \"Admin\" badge, "
+                "so you can always tell when HKMail's administrators are contacting you.\n"
+                "  • Some senders — like official service accounts — carry a blue \"Verified\" "
+                "badge. If a message claims to be from an official service but has no badge, "
+                "be cautious.\n\n"
+                "That's it — enjoy your inbox!\n\n"
+                "— HKMail Administrator"
+            )
+        )
+
         conn.commit()
         conn.close()
         return jsonify({"success": True, "message": "Account created."})
