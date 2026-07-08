@@ -77,19 +77,54 @@
                 <label for="reg-password">Choose a Password</label>
                 <input type="password" id="reg-password" placeholder="New password">
             </div>
+            <div class="input-group">
+                <label for="reg-email">HKMail Address</label>
+                <input type="text" id="reg-email" placeholder="you@hkmail.cn" onblur="checkHkmailAddress()">
+                <p id="reg-email-hint" style="font-size:0.8rem;color:#64748b;margin-top:5px;">A sign-up code will be emailed to this address.</p>
+            </div>
             <p id="reg-error" class="error-msg">Please fill out both fields.</p>
+            <p id="reg-needs-hkmail" style="display:none;font-size:0.85rem;margin-top:-10px;margin-bottom:15px;">
+                No HKMail account found for this address.
+                <a href="/hkmail.html" target="_blank" style="color:#0052cc;font-weight:600;">Create one on HKMail &rarr;</a>
+            </p>
             <button onclick="registerAccount()" class="primary-btn">Create Account</button>
+        </div>
+    </div>
+
+    <!-- Confirmation Code Modal -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-btn" onclick="cancelConfirm()">&times;</span>
+            <h2>Check Your HKMail</h2>
+            <p style="color:#64748b; font-size:0.9rem; margin-top:-15px; margin-bottom:20px;">
+                We sent a confirmation code to <strong id="confirm-email-display">your HKMail address</strong>.
+                Enter it below to finish creating your account.
+            </p>
+            <div class="input-group">
+                <label for="confirm-code">Confirmation Code</label>
+                <input type="text" id="confirm-code" placeholder="e.g. A1B2C3D4" style="text-transform:uppercase; letter-spacing:2px; text-align:center;">
+            </div>
+            <p id="confirm-error" class="error-msg">Incorrect code.</p>
+            <button onclick="submitConfirmCode()" class="primary-btn">Confirm &amp; Create Account</button>
+            <button onclick="resendConfirmCode()" class="secondary-btn" style="margin-top:10px;">Resend Code</button>
+            <p id="confirm-status" style="font-size:0.8rem; color:#10b981; margin-top:12px; display:none;"></p>
         </div>
     </div>
 
     <script>
         const registerModal = document.getElementById('registerModal');
+        const confirmModal = document.getElementById('confirmModal');
         const loginError = document.getElementById('login-error');
         const regError = document.getElementById('reg-error');
+        const confirmError = document.getElementById('confirm-error');
 
         function openRegisterModal() {
             registerModal.style.display = 'flex';
             regError.style.display = 'none';
+            document.getElementById('reg-needs-hkmail').style.display = 'none';
+            document.getElementById('reg-email-hint').innerText = 'A sign-up code will be emailed to this address.';
+            document.getElementById('reg-email-hint').style.color = '#64748b';
+            hkmailAddressConfirmed = false;
         }
 
         function closeRegisterModal() { 
@@ -98,15 +133,53 @@
 
         window.onclick = (e) => { 
             if (e.target === registerModal) closeRegisterModal(); 
+            if (e.target === confirmModal) cancelConfirm();
         }
+
+        let hkmailAddressConfirmed = false;
+
+        async function checkHkmailAddress() {
+            const hint = document.getElementById('reg-email-hint');
+            const needsHkmail = document.getElementById('reg-needs-hkmail');
+            let email = document.getElementById('reg-email').value.trim().toLowerCase();
+            needsHkmail.style.display = 'none';
+
+            if (!email) return;
+            if (!email.includes('@')) email = email + '@hkmail.cn';
+
+            try {
+                const response = await fetch(`/api/hkmail/account-exists?email=${encodeURIComponent(email)}`);
+                const data = await response.json();
+
+                if (data.success && data.exists) {
+                    hkmailAddressConfirmed = true;
+                    hint.innerText = `Sign-up code will be sent to ${data.email}.`;
+                    hint.style.color = '#10b981';
+                } else {
+                    hkmailAddressConfirmed = false;
+                    hint.innerText = "A sign-up code will be emailed to this address.";
+                    hint.style.color = '#64748b';
+                    needsHkmail.style.display = 'block';
+                }
+            } catch (err) {
+                // If the check itself fails, let the actual registration call surface the error.
+                hkmailAddressConfirmed = false;
+            }
+        }
+
+        let pendingRegisteredUsername = '';
 
         async function registerAccount() {
             const firstName = document.getElementById('reg-firstname').value.trim();
             const lastName = document.getElementById('reg-lastname').value.trim();
             const user = document.getElementById('reg-username').value.trim();
             const pass = document.getElementById('reg-password').value.trim();
-            
-            if (!firstName || !lastName || !user || !pass) {
+            const email = document.getElementById('reg-email').value.trim();
+            const needsHkmail = document.getElementById('reg-needs-hkmail');
+
+            needsHkmail.style.display = 'none';
+
+            if (!firstName || !lastName || !user || !pass || !email) {
                 regError.innerText = "Please fill out all fields.";
                 regError.style.display = 'block';
                 return;
@@ -116,26 +189,103 @@
                 const response = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ first_name: firstName, last_name: lastName, username: user, password: pass })
+                    body: JSON.stringify({ first_name: firstName, last_name: lastName, username: user, password: pass, email: email })
                 });
                 
                 const data = await response.json();
                 
-                if (data.success) {
-                    alert("Account created successfully!");
+                if (data.success && data.pendingVerification) {
+                    // Account isn't created yet — a code was emailed, so switch to the confirmation popup.
+                    pendingRegisteredUsername = user;
                     closeRegisterModal();
-                    document.getElementById('reg-firstname').value = '';
-                    document.getElementById('reg-lastname').value = '';
-                    document.getElementById('login-username').value = user;
-                    document.getElementById('login-password').value = '';
-                } else {
+                    openConfirmModal(data.email);
+                } else if (!data.success) {
                     regError.innerText = data.message;
                     regError.style.display = 'block';
+                    if (data.needsHkmail) {
+                        needsHkmail.style.display = 'block';
+                    }
                 }
             } catch (err) {
                 regError.innerText = "Server error occurred.";
                 regError.style.display = 'block';
             }
+        }
+
+        function openConfirmModal(email) {
+            document.getElementById('confirm-email-display').innerText = email || 'your HKMail address';
+            document.getElementById('confirm-code').value = '';
+            confirmError.style.display = 'none';
+            document.getElementById('confirm-status').style.display = 'none';
+            confirmModal.style.display = 'flex';
+        }
+
+        function closeConfirmModal() {
+            confirmModal.style.display = 'none';
+        }
+
+        async function submitConfirmCode() {
+            const code = document.getElementById('confirm-code').value.trim();
+            confirmError.style.display = 'none';
+
+            if (!code) {
+                confirmError.innerText = "Please enter the code from your email.";
+                confirmError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/register/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert("Account created successfully!");
+                    closeConfirmModal();
+                    document.getElementById('reg-firstname').value = '';
+                    document.getElementById('reg-lastname').value = '';
+                    document.getElementById('reg-email').value = '';
+                    document.getElementById('login-username').value = data.username || pendingRegisteredUsername;
+                    document.getElementById('login-password').value = '';
+                } else {
+                    confirmError.innerText = data.message;
+                    confirmError.style.display = 'block';
+                    if (data.message && data.message.includes("start registration again")) {
+                        // Too many attempts — pending signup was cleared server-side.
+                        setTimeout(() => { closeConfirmModal(); openRegisterModal(); }, 1500);
+                    }
+                }
+            } catch (err) {
+                confirmError.innerText = "Server error occurred.";
+                confirmError.style.display = 'block';
+            }
+        }
+
+        async function resendConfirmCode() {
+            const status = document.getElementById('confirm-status');
+            confirmError.style.display = 'none';
+            try {
+                const response = await fetch('/api/register/resend', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    status.innerText = data.message;
+                    status.style.display = 'block';
+                } else {
+                    confirmError.innerText = data.message;
+                    confirmError.style.display = 'block';
+                }
+            } catch (err) {
+                confirmError.innerText = "Server error occurred.";
+                confirmError.style.display = 'block';
+            }
+        }
+
+        async function cancelConfirm() {
+            closeConfirmModal();
+            try { await fetch('/api/register/cancel', { method: 'POST' }); } catch (err) {}
         }
 
         async function attemptLogin() {

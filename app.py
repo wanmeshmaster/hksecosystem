@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
+import random
+import string
 from datetime import datetime
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
@@ -68,6 +70,7 @@ def init_db():
         "ALTER TABLE users ADD COLUMN full_name TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE transactions ADD COLUMN account_label TEXT NOT NULL DEFAULT 'Current Account'",
         "ALTER TABLE users ADD COLUMN is_employee INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             cur.execute(stmt)
@@ -76,6 +79,54 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+# ── HKS Bank ↔ HKMail integration ───────────────────────────────────────────────
+# HKS Bank requires every new customer to have an HKMail address on file. Signup
+# confirmation codes are delivered as regular emails from a dedicated system
+# account (hksbank@hkmail.cn) inside HKMail — no separate email infrastructure.
+
+SYSTEM_MAIL_SENDER = "hksbank@hkmail.cn"
+
+
+def generate_signup_code(length=8):
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(alphabet, k=length))
+
+
+def normalize_mail_address(email):
+    email = (email or "").strip().lower()
+    if email and "@" not in email:
+        email = email + "@hkmail.cn"
+    return email
+
+
+def hkmail_account_lookup(email):
+    """Return True if an HKMail account exists for the given address."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+    return row is not None
+
+
+def send_system_mail(recipient, subject, body):
+    """Deliver an email into HKMail from the HKS Bank system account.
+    Returns True if delivered, False if the recipient has no HKMail account."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
+    if not cur.fetchone():
+        conn.close()
+        return False
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (SYSTEM_MAIL_SENDER, recipient, subject, body)
+    )
+    conn.commit()
+    conn.close()
+    return True
 
 
 # ── Page routes ────────────────────────────────────────────────────────────────
@@ -118,28 +169,137 @@ def register():
     password   = data.get("password", "").strip()
     first_name = data.get("first_name", "").strip()
     last_name  = data.get("last_name", "").strip()
+    email      = normalize_mail_address(data.get("email", ""))
     full_name  = f"{first_name} {last_name}".strip()
 
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password required."}), 400
     if not first_name or not last_name:
         return jsonify({"success": False, "message": "First and last name required."}), 400
+    if not email:
+        return jsonify({"success": False, "message": "An HKMail email address is required to sign up."}), 400
 
-    password_hash = generate_password_hash(password)
+    # HKS Bank accounts must be tied to an existing HKMail address.
+    if not hkmail_account_lookup(email):
+        return jsonify({
+            "success": False,
+            "message": f"We couldn't find an HKMail account for {email}. Please create one first.",
+            "needsHkmail": True,
+            "email": email
+        }), 400
+
+    # Check the username isn't already taken before we bother sending a code.
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE username=?", (username,))
+    already_taken = cur.fetchone() is not None
+    conn.close()
+    if already_taken:
+        return jsonify({"success": False, "message": "Username already exists."}), 400
+
+    # Registration isn't finalized yet — stash the pending details in the
+    # session and email a confirmation code. The account is only created
+    # once that code is verified via /api/register/confirm.
+    signup_code = generate_signup_code()
+    session["pending_bank_signup"] = {
+        "username": username,
+        "password_hash": generate_password_hash(password),
+        "first_name": first_name,
+        "last_name": last_name,
+        "full_name": full_name,
+        "email": email,
+        "code": signup_code,
+        "attempts": 0,
+    }
+
+    delivered = send_system_mail(
+        email,
+        "Your HKS Bank Sign-Up Code",
+        f"Hi {first_name},\n\n"
+        f"Use the code below to finish creating your HKS Bank account (username: {username}):\n\n"
+        f"    {signup_code}\n\n"
+        f"This code is required to complete registration. If you didn't request this, you can ignore this email.\n\n"
+        f"— HKS Bank"
+    )
+    if not delivered:
+        session.pop("pending_bank_signup", None)
+        return jsonify({"success": False, "message": "Couldn't deliver the confirmation email. Please try again."}), 400
+
+    return jsonify({
+        "success": True,
+        "pendingVerification": True,
+        "email": email,
+        "message": f"We've sent a confirmation code to {email}."
+    })
+
+
+@app.route('/api/register/confirm', methods=['POST'])
+def register_confirm():
+    pending = session.get("pending_bank_signup")
+    if not pending:
+        return jsonify({"success": False, "message": "No pending registration found. Please start over."}), 400
+
+    data = request.get_json()
+    code = (data.get("code", "") or "").strip().upper()
+
+    if not code:
+        return jsonify({"success": False, "message": "Confirmation code is required."}), 400
+
+    pending["attempts"] = pending.get("attempts", 0) + 1
+    session["pending_bank_signup"] = pending
+
+    if pending["attempts"] > 5:
+        session.pop("pending_bank_signup", None)
+        return jsonify({"success": False, "message": "Too many incorrect attempts. Please start registration again."}), 400
+
+    if code != pending["code"]:
+        remaining = 5 - pending["attempts"]
+        return jsonify({"success": False, "message": f"Incorrect code. {remaining} attempt(s) remaining."}), 400
+
+    # Code confirmed — actually create the account now.
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM users")
+    is_admin = 1 if cur.fetchone()[0] == 0 else 0
     try:
-        conn = sqlite3.connect(DATABASE)
-        cur  = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM users")
-        is_admin = 1 if cur.fetchone()[0] == 0 else 0
         cur.execute(
-            "INSERT INTO users (username, password_hash, is_admin, balance, full_name) VALUES (?, ?, ?, 0.0, ?)",
-            (username, password_hash, is_admin, full_name)
+            "INSERT INTO users (username, password_hash, is_admin, balance, full_name, email) VALUES (?, ?, ?, 0.0, ?, ?)",
+            (pending["username"], pending["password_hash"], is_admin, pending["full_name"], pending["email"])
         )
         conn.commit()
-        conn.close()
-        return jsonify({"success": True, "message": "Account created."})
     except sqlite3.IntegrityError:
+        conn.close()
+        session.pop("pending_bank_signup", None)
         return jsonify({"success": False, "message": "Username already exists."}), 400
+    conn.close()
+
+    session.pop("pending_bank_signup", None)
+    return jsonify({"success": True, "username": pending["username"], "message": "Account created successfully."})
+
+
+@app.route('/api/register/resend', methods=['POST'])
+def register_resend():
+    pending = session.get("pending_bank_signup")
+    if not pending:
+        return jsonify({"success": False, "message": "No pending registration found. Please start over."}), 400
+
+    new_code = generate_signup_code()
+    pending["code"] = new_code
+    pending["attempts"] = 0
+    session["pending_bank_signup"] = pending
+
+    send_system_mail(
+        pending["email"],
+        "Your HKS Bank Sign-Up Code (Resent)",
+        f"Hi {pending['first_name']},\n\nHere is your new confirmation code:\n\n    {new_code}\n\n— HKS Bank"
+    )
+    return jsonify({"success": True, "message": f"A new code was sent to {pending['email']}."})
+
+
+@app.route('/api/register/cancel', methods=['POST'])
+def register_cancel():
+    session.pop("pending_bank_signup", None)
+    return jsonify({"success": True})
 
 
 @app.route('/api/login', methods=['POST'])
@@ -835,6 +995,16 @@ def init_mail_db():
         )
     """)
 
+    # Ensure the HKS Bank system mailbox exists so it can send signup codes.
+    # It gets a random, never-shared password since no one logs into it directly.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (SYSTEM_MAIL_SENDER,))
+    if not cur.fetchone():
+        locked_password_hash = generate_password_hash(os.urandom(32).hex())
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin) VALUES (?, ?, ?, 0)",
+            (SYSTEM_MAIL_SENDER, locked_password_hash, "HKS Bank")
+        )
+
     conn.commit()
     conn.close()
 
@@ -856,6 +1026,16 @@ def hkmail_inbox():
 
 
 # ── HKMail Auth API ────────────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/account-exists')
+def hkmail_account_exists():
+    """Public lookup used by other apps (e.g. HKS Bank signup) to verify an
+    HKMail address exists before allowing registration."""
+    email = normalize_mail_address(request.args.get("email", ""))
+    if not email:
+        return jsonify({"success": False, "message": "Email is required."}), 400
+    return jsonify({"success": True, "email": email, "exists": hkmail_account_lookup(email)})
+
 
 @app.route('/api/hkmail/register', methods=['POST'])
 def hkmail_register():
