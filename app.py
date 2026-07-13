@@ -1243,7 +1243,14 @@ def process_checkout():
 
 def _debit_for_card_payment(cur, card_row, amount, description):
     """Shared debit logic for a card payment. card_row is a full cards row tuple.
-    Returns (ok, message)."""
+    Returns (ok, message).
+
+    Writes to the `transactions` table exactly like a balance payment does
+    (same title, same shape) so anything that matches on transaction title —
+    e.g. the coming-soon contribution progress bar — behaves identically
+    regardless of whether the customer paid by balance or by card. The
+    card-specific detail (last 4 digits) is still recorded in the per-account
+    `account_transactions` history for the customer's own reference."""
     card_id, username, account_id, account_label = card_row[0], card_row[1], card_row[2], card_row[3]
 
     if account_id:
@@ -1269,7 +1276,7 @@ def _debit_for_card_payment(cur, card_row, amount, description):
 
     cur.execute(
         "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
-        (username, f"{description} (Card •••• {card_row[4][-4:]})", -amount, account_label)
+        (username, description, -amount, account_label)
     )
     return True, "Payment approved."
 

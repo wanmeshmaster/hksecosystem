@@ -45,6 +45,7 @@
         .method-option input[type="radio"] { width: auto; margin: 0; }
         .method-option-label { font-weight: 600; color: #1a1a1a; font-size: 0.95rem; }
         .method-option-sub { font-size: 0.78rem; color: #64748b; }
+        .method-option-icon { flex-shrink: 0; width: 38px; height: 26px; border-radius: 4px; background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: #fff; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.3px; display: flex; align-items: center; justify-content: center; }
         .paying-as { color: #64748b; margin-bottom: 16px; font-size: 0.9rem; }
     </style>
 </head>
@@ -283,28 +284,30 @@
             list.innerHTML = '';
             _selectedMethod = null;
 
-            // Account balance option
-            addMethodOption(list, {
-                label: `Current Account balance`,
-                sub: `$${parseFloat(meData.balance || 0).toFixed(2)} available`,
-                value: { type: 'balance' }
-            });
+            if (!cards.length) {
+                list.innerHTML = `<p style="color:#64748b;font-size:0.88rem;text-align:left;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;">
+                    No active HKS Bank card found on this account. Ask HKS Bank to issue you a card, or
+                    <a href="#" onclick="switchTab('card');return false;" style="color:#0052cc;font-weight:600;">enter card details manually</a>.
+                </p>`;
+                return;
+            }
 
-            // Card options — details are pulled automatically server-side, never shown here
+            // Card options only — details are pulled automatically server-side, never shown here
             cards.forEach(c => {
                 addMethodOption(list, {
                     label: `HKS Bank Card ${c.masked_number}`,
                     sub: `${c.account_label} · Exp ${c.expiry}`,
-                    value: { type: 'card', card_id: c.id }
+                    value: { type: 'card', card_id: c.id },
+                    showIcon: true
                 });
             });
 
-            // Auto-select the first card if one exists, otherwise the balance option
+            // Auto-select the first card
             const firstOption = list.querySelector('.method-option');
             if (firstOption) firstOption.click();
         }
 
-        function addMethodOption(list, { label, sub, value }) {
+        function addMethodOption(list, { label, sub, value, showIcon }) {
             const el = document.createElement('label');
             el.className = 'method-option';
             const radio = document.createElement('input');
@@ -316,6 +319,12 @@
                 _selectedMethod = value;
             };
             el.appendChild(radio);
+            if (showIcon) {
+                const icon = document.createElement('div');
+                icon.className = 'method-option-icon';
+                icon.innerText = 'HKS';
+                el.appendChild(icon);
+            }
             const textWrap = document.createElement('div');
             textWrap.innerHTML = `<div class="method-option-label">${label}</div><div class="method-option-sub">${sub}</div>`;
             el.appendChild(textWrap);
@@ -327,8 +336,8 @@
             const btn = document.getElementById('method-pay-btn');
             err.style.display = 'none';
 
-            if (!_selectedMethod) {
-                err.innerText = 'Please choose a payment method.';
+            if (!_selectedMethod || _selectedMethod.type !== 'card') {
+                err.innerText = 'Please choose a card to pay with.';
                 err.style.display = 'block';
                 return;
             }
@@ -337,20 +346,11 @@
             btn.innerText = 'Processing…';
 
             try {
-                let response;
-                if (_selectedMethod.type === 'card') {
-                    response = await fetch('/api/checkout/pay-with-session-card', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ card_id: _selectedMethod.card_id, amount: checkoutAmount, description: checkoutDesc })
-                    });
-                } else {
-                    response = await fetch('/api/checkout/process', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ amount: checkoutAmount, description: checkoutDesc })
-                    });
-                }
+                const response = await fetch('/api/checkout/pay-with-session-card', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ card_id: _selectedMethod.card_id, amount: checkoutAmount, description: checkoutDesc })
+                });
                 const data = await response.json();
                 if (data.success) {
                     alert("Payment successful!");
