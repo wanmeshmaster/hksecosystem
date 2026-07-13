@@ -116,6 +116,43 @@
         .em-danger-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .em-section.danger { border-color: #fca5a5; }
         .em-section.danger .em-section-head { background: #fff5f5; color: #b91c1c; border-bottom-color: #fca5a5; }
+
+        /* ── Cards ── */
+        .cards-panel { background: #fff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); margin-bottom: 30px; }
+        .cards-panel h3 { color: #1a1a1a; margin-bottom: 15px; font-size: 1.2rem; }
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+        .bank-card { position: relative; border-radius: 16px; padding: 22px 24px; color: #fff; min-height: 170px; display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(135deg, #0052cc 0%, #002244 100%); box-shadow: 0 8px 20px rgba(0,34,68,0.25); overflow: hidden; }
+        .bank-card.account-secondary { background: linear-gradient(135deg, #7c3aed 0%, #2e1065 100%); box-shadow: 0 8px 20px rgba(46,16,101,0.25); }
+        .bank-card.frozen { filter: grayscale(0.6); }
+        .bank-card.cancelled { filter: grayscale(1); opacity: 0.55; }
+        .bank-card.expired { filter: grayscale(0.85); opacity: 0.7; }
+        .bank-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+        .bank-card-logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem; letter-spacing: 0.5px; }
+        .bank-card-logo-icon { width: 26px; height: 26px; border-radius: 6px; background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; }
+        .bank-card-status-pill { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(255,255,255,0.18); padding: 3px 9px; border-radius: 20px; }
+        .bank-card-status-pill.frozen { background: #f59e0b; color: #1a1a1a; }
+        .bank-card-status-pill.cancelled { background: #ef4444; }
+        .bank-card-status-pill.expired { background: #64748b; }
+        .bank-card-number { font-size: 1.25rem; font-weight: 600; letter-spacing: 2.5px; margin: 18px 0 12px; font-family: 'Courier New', monospace; }
+        .bank-card-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
+        .bank-card-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.75; margin-bottom: 3px; }
+        .bank-card-value { font-size: 0.88rem; font-weight: 600; }
+        .cards-empty { color: #94a3b8; font-style: italic; font-size: 0.95rem; padding: 10px 0; }
+
+        /* ── Admin: cards section in edit modal ── */
+        .em-card-row { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 7px; padding: 10px 14px; gap: 10px; flex-wrap: wrap; }
+        .em-card-row-left { display: flex; flex-direction: column; gap: 2px; }
+        .em-card-number-mono { font-family: 'Courier New', monospace; font-weight: 700; font-size: 0.92rem; color: #1e293b; }
+        .em-card-meta { font-size: 0.75rem; color: #94a3b8; }
+        .em-card-status-tag { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; background: #dcfce7; color: #15803d; width: fit-content; }
+        .em-card-status-tag.frozen { background: #fef3c7; color: #b45309; }
+        .em-card-status-tag.cancelled { background: #fee2e2; color: #b91c1c; }
+        .em-card-status-tag.expired { background: #e2e8f0; color: #475569; }
+        .em-card-actions { display: flex; gap: 6px; }
+        .em-freeze-btn { background: transparent; color: #f59e0b; border: 1px solid #fcd34d; padding: 4px 10px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .em-freeze-btn:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
+        .em-new-card-reveal { margin-top: 10px; padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.85rem; }
+        .em-new-card-reveal code { font-family: 'Courier New', monospace; font-weight: 700; }
     </style>
 </head>
 <body>
@@ -148,6 +185,13 @@
     <!-- Accounts grid: primary + any additional accounts -->
     <div class="accounts-grid" id="accounts-grid">
         <!-- Primary account card always rendered first by JS -->
+    </div>
+
+    <div class="cards-panel" id="cards-panel" style="display:none;">
+        <h3>My Cards</h3>
+        <div class="cards-grid" id="cards-grid">
+            <p class="cards-empty">Loading…</p>
+        </div>
     </div>
 
     <div id="admin-section" class="admin-panel" style="display:none;">
@@ -368,6 +412,25 @@
                 </div>
             </div>
 
+            <!-- Cards -->
+            <div class="em-section">
+                <div class="em-section-head">Bank Cards</div>
+                <div class="em-section-body">
+                    <div id="em-card-list" style="display:flex;flex-direction:column;gap:8px;">
+                        <p class="empty-text" style="padding:6px 0;font-size:0.88rem;">Loading cards…</p>
+                    </div>
+                    <hr class="em-divider">
+                    <div class="em-sub-label">Issue New Card</div>
+                    <div class="em-new-account-grid">
+                        <select class="em-select" id="em-card-account"></select>
+                        <span></span>
+                        <button class="em-create-btn" onclick="emIssueCard()">Issue Card</button>
+                    </div>
+                    <div class="em-status" id="em-card-msg"></div>
+                    <div id="em-new-card-reveal" class="em-new-card-reveal" style="display:none;"></div>
+                </div>
+            </div>
+
             <!-- Danger Zone -->
             <div class="em-section danger" id="em-danger-section">
                 <div class="em-section-head">Danger Zone</div>
@@ -401,6 +464,7 @@
 
             // Render accounts grid (primary first, then additional)
             await renderAccountsGrid(data.balance);
+            await renderCardsGrid();
 
             if (data.isAdmin) {
                 document.getElementById('admin-indicator').style.display = 'inline-block';
@@ -457,6 +521,51 @@
             }
         } catch (e) {
             // No additional accounts or endpoint missing — that's fine
+        }
+    }
+
+    // ── Cards panel on main screen ──────────────────────────
+    async function renderCardsGrid() {
+        const panel = document.getElementById('cards-panel');
+        const grid = document.getElementById('cards-grid');
+        try {
+            const data = await apiFetch('/api/my-cards?full=1');
+            if (!data.success || !data.cards.length) {
+                panel.style.display = 'none';
+                return;
+            }
+            panel.style.display = 'block';
+            grid.innerHTML = '';
+            data.cards.forEach(c => {
+                const el = document.createElement('div');
+                const isSecondary = c.account_label !== 'Current Account';
+                el.className = `bank-card ${isSecondary ? 'account-secondary' : ''} ${c.status}`.trim();
+                const statusPill = c.status !== 'active' ? `<span class="bank-card-status-pill ${c.status}">${c.status}</span>` : '';
+                const displayNumber = c.card_number ? c.card_number.replace(/(.{4})/g, '$1 ').trim() : c.masked_number;
+                el.innerHTML = `
+                    <div class="bank-card-top">
+                        <div class="bank-card-logo"><span class="bank-card-logo-icon">HKS</span> HKS Bank</div>
+                        ${statusPill}
+                    </div>
+                    <div class="bank-card-number">${displayNumber}</div>
+                    <div class="bank-card-bottom">
+                        <div>
+                            <div class="bank-card-label">Card Holder</div>
+                            <div class="bank-card-value">${c.cardholder_name}</div>
+                        </div>
+                        <div>
+                            <div class="bank-card-label">Expires</div>
+                            <div class="bank-card-value">${c.expiry}</div>
+                        </div>
+                        ${c.cvv ? `<div>
+                            <div class="bank-card-label">CVV</div>
+                            <div class="bank-card-value">${c.cvv}</div>
+                        </div>` : ''}
+                    </div>`;
+                grid.appendChild(el);
+            });
+        } catch (e) {
+            panel.style.display = 'none';
         }
     }
 
@@ -563,6 +672,8 @@
         setMsg('em-role-msg', '', null);
         setMsg('em-acct-msg', '', null);
         setMsg('em-delete-msg', '', null);
+        setMsg('em-card-msg', '', null);
+        document.getElementById('em-new-card-reveal').style.display = 'none';
 
         // Cannot delete yourself
         const delBtn = document.getElementById('em-delete-user-btn');
@@ -721,9 +832,11 @@
     async function loadAdminAccountsForUser(username) {
         const list = document.getElementById('em-account-list');
         const targetSelect = document.getElementById('em-target-account');
+        const cardAcctSelect = document.getElementById('em-card-account');
         list.innerHTML = '<p class="empty-text" style="font-size:0.88rem;padding:6px 0">Loading…</p>';
-        // Reset account selector to primary only
+        // Reset account selectors to primary only
         targetSelect.innerHTML = '<option value="">Primary (Current Account)</option>';
+        cardAcctSelect.innerHTML = '<option value="">Primary (Current Account)</option>';
         try {
             const data = await apiFetch(`/api/admin/accounts/${username}`);
             list.innerHTML = '';
@@ -743,11 +856,13 @@
                             <button class="em-close-acct-btn" onclick="emCloseAccount(${a.id}, '${a.account_type.replace(/'/g,"\\'")}')">Close</button>
                         </div>`;
                     list.appendChild(card);
-                    // Populate target account dropdown
+                    // Populate target account dropdowns
                     const opt = document.createElement('option');
                     opt.value = a.id;
                     opt.textContent = `${a.account_type} ($${fmt(a.balance)})`;
                     targetSelect.appendChild(opt);
+                    const cardOpt = opt.cloneNode(true);
+                    cardAcctSelect.appendChild(cardOpt);
                 });
             } else {
                 list.innerHTML = '<p class="empty-text" style="font-size:0.88rem;padding:6px 0">No additional accounts yet.</p>';
@@ -755,6 +870,102 @@
         } catch {
             list.innerHTML = '<p class="empty-text" style="color:#ef4444;font-size:0.88rem;">Failed to load accounts.</p>';
         }
+        await loadAdminCardsForUser(username);
+    }
+
+    // ── Edit modal: cards (admin view) ─────────────────────
+    async function loadAdminCardsForUser(username) {
+        const list = document.getElementById('em-card-list');
+        list.innerHTML = '<p class="empty-text" style="font-size:0.88rem;padding:6px 0">Loading cards…</p>';
+        document.getElementById('em-new-card-reveal').style.display = 'none';
+        try {
+            const data = await apiFetch(`/api/admin/cards/${username}`);
+            list.innerHTML = '';
+            if (data.success && data.cards.length) {
+                data.cards.forEach(c => {
+                    const row = document.createElement('div');
+                    row.className = 'em-card-row';
+                    row.id = `em-card-row-${c.id}`;
+                    const statusTag = `<span class="em-card-status-tag ${c.status}">${c.status}</span>`;
+                    const freezeBtn = c.raw_status === 'cancelled' ? '' :
+                        `<button class="em-freeze-btn" onclick="emToggleCardFreeze(${c.id})">${c.raw_status === 'frozen' ? 'Unfreeze' : 'Freeze'}</button>`;
+                    const cancelBtn = c.raw_status === 'cancelled' ? '' :
+                        `<button class="em-close-acct-btn" onclick="emCancelCard(${c.id})">Cancel</button>`;
+                    row.innerHTML = `
+                        <div class="em-card-row-left">
+                            <span class="em-card-number-mono">${c.masked_number}</span>
+                            <span class="em-card-meta">${c.account_label} · Exp ${c.expiry} · ${c.cardholder_name}</span>
+                            ${statusTag}
+                        </div>
+                        <div class="em-card-actions">${freezeBtn}${cancelBtn}</div>`;
+                    list.appendChild(row);
+                });
+            } else {
+                list.innerHTML = '<p class="empty-text" style="font-size:0.88rem;padding:6px 0">No cards issued yet.</p>';
+            }
+        } catch {
+            list.innerHTML = '<p class="empty-text" style="color:#ef4444;font-size:0.88rem;">Failed to load cards.</p>';
+        }
+    }
+
+    async function emIssueCard() {
+        const accountIdRaw = document.getElementById('em-card-account').value;
+        const account_id = accountIdRaw ? parseInt(accountIdRaw) : null;
+        document.getElementById('em-new-card-reveal').style.display = 'none';
+
+        try {
+            const data = await apiFetch('/api/admin/create_card', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ username: _editUser, account_id })
+            });
+            if (data.success) {
+                setMsg('em-card-msg', `✓ ${data.message}`, true);
+                const reveal = document.getElementById('em-new-card-reveal');
+                reveal.innerHTML = `New card details (shown once — also emailed to the customer via HKMail):<br>
+                    Number: <code>${data.card.card_number}</code> &nbsp; CVV: <code>${data.card.cvv}</code> &nbsp; Exp: <code>${data.card.expiry}</code>`;
+                reveal.style.display = 'block';
+                await loadAdminCardsForUser(_editUser);
+                if (_editUser === _me) renderCardsGrid();
+            } else {
+                setMsg('em-card-msg', data.message, false);
+            }
+        } catch { setMsg('em-card-msg', 'Request failed.', false); }
+    }
+
+    async function emToggleCardFreeze(cardId) {
+        try {
+            const data = await apiFetch('/api/admin/card/freeze', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ card_id: cardId })
+            });
+            if (data.success) {
+                setMsg('em-card-msg', `✓ ${data.message}`, true);
+                await loadAdminCardsForUser(_editUser);
+                if (_editUser === _me) renderCardsGrid();
+            } else {
+                setMsg('em-card-msg', data.message, false);
+            }
+        } catch { setMsg('em-card-msg', 'Request failed.', false); }
+    }
+
+    async function emCancelCard(cardId) {
+        if (!confirm('Cancel this card? This cannot be undone.')) return;
+        try {
+            const data = await apiFetch('/api/admin/card/cancel', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ card_id: cardId })
+            });
+            if (data.success) {
+                setMsg('em-card-msg', `✓ ${data.message}`, true);
+                await loadAdminCardsForUser(_editUser);
+                if (_editUser === _me) renderCardsGrid();
+            } else {
+                setMsg('em-card-msg', data.message, false);
+            }
+        } catch { setMsg('em-card-msg', 'Request failed.', false); }
     }
 
     async function emCreateAccount() {

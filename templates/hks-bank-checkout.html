@@ -6,130 +6,373 @@
     <title>HKS Bank - Secure Checkout</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { display: flex; align-items: center; justify-content: center; height: 100vh; background-color: #f4f6f8; color: #333; }
-        .checkout-container { background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 400px; width: 100%; text-align: center; }
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background-color: #f4f6f8; color: #333; padding: 20px; }
+        .checkout-container { background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 420px; width: 100%; text-align: center; }
         .logo { max-width: 120px; margin-bottom: 20px; }
         h2 { margin-bottom: 10px; color: #1a1a1a; }
         .amount-display { font-size: 2.5rem; font-weight: 700; color: #10b981; margin: 15px 0; }
-        .desc-display { color: #64748b; margin-bottom: 25px; font-size: 0.95rem; }
-        
+        .desc-display { color: #64748b; margin-bottom: 20px; font-size: 0.95rem; }
+
         .input-group { margin-bottom: 15px; text-align: left; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; }
-        
+        input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+        input[type="text"]:focus, input[type="password"]:focus { border-color: #0052cc; }
+
         button { width: 100%; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; margin-top: 10px; }
         .btn-approve { background-color: #0052cc; color: white; }
         .btn-approve:hover { background-color: #003d99; }
+        .btn-approve:disabled { background-color: #94a3b8; cursor: not-allowed; }
         .btn-cancel { background-color: #f1f5f9; color: #64748b; margin-top: 15px; }
         .btn-cancel:hover { background-color: #e2e8f0; }
-        .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
+        .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; text-align: left; }
+
+        /* Method tabs */
+        .method-tabs { display: flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+        .method-tab { flex: 1; padding: 10px; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 0.9rem; border: none; border-radius: 0; margin: 0; cursor: pointer; transition: all 0.2s; }
+        .method-tab.active { background: #0052cc; color: #fff; }
+
+        /* Card number field with brand recognition */
+        .card-number-wrap { position: relative; }
+        .card-brand-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); background: #0052cc; color: #fff; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.3px; padding: 4px 6px; border-radius: 4px; display: none; align-items: center; justify-content: center; z-index: 2; }
+        .card-number-wrap input { font-family: 'Courier New', monospace; letter-spacing: 1px; }
+        .card-number-wrap input.has-icon { padding-left: 52px; }
+        .card-row { display: flex; gap: 10px; }
+        .card-row .input-group { flex: 1; margin-bottom: 15px; }
+
+        /* Payment method selection (after login) */
+        .method-option { display: flex; align-items: center; gap: 12px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; text-align: left; transition: all 0.2s; }
+        .method-option:hover { border-color: #0052cc; background: #f8fafc; }
+        .method-option.selected { border-color: #0052cc; background: #eff6ff; }
+        .method-option input[type="radio"] { width: auto; margin: 0; }
+        .method-option-label { font-weight: 600; color: #1a1a1a; font-size: 0.95rem; }
+        .method-option-sub { font-size: 0.78rem; color: #64748b; }
+        .paying-as { color: #64748b; margin-bottom: 16px; font-size: 0.9rem; }
     </style>
 </head>
 <body>
 
     <div class="checkout-container">
         <img src="source/hks-bank.jpg" alt="HKS Bank" class="logo">
-        
-        <div id="login-view" style="display: none;">
-            <h2>Log in to pay</h2>
-            <p class="desc-display">Secure your transaction with HKS Bank</p>
-            <div class="input-group">
-                <input type="text" id="login-username" placeholder="Username">
-            </div>
-            <div class="input-group">
-                <input type="password" id="login-password" placeholder="Password">
-            </div>
-            <p id="auth-error" class="error-msg">Invalid credentials.</p>
-            <button onclick="attemptLogin()" class="btn-approve">Log In</button>
-            <button onclick="cancelCheckout()" class="btn-cancel">Cancel Return to Merchant</button>
+
+        <div id="invalid-view" style="display:none;">
+            <h3>Invalid Checkout Request</h3>
+            <p style="color:#64748b;margin-top:10px;">Missing or invalid amount.</p>
         </div>
 
-        <div id="approval-view" style="display: none;">
-            <h2>Confirm Payment</h2>
-            <p class="desc-display">Paying as <strong id="logged-in-user">User</strong></p>
-            
+        <div id="checkout-body" style="display:none;">
             <div class="amount-display" id="display-amount">$0.00</div>
             <p class="desc-display" id="display-desc">Loading description...</p>
-            
-            <p id="checkout-error" class="error-msg"></p>
-            
-            <button onclick="approvePayment()" class="btn-approve">Approve & Pay</button>
-            <button onclick="cancelCheckout()" class="btn-cancel">Cancel</button>
+
+            <div class="method-tabs" id="method-tabs">
+                <button class="method-tab active" id="tab-card" onclick="switchTab('card')">Pay by Card</button>
+                <button class="method-tab" id="tab-login" onclick="switchTab('login')">Log in to HKS Bank</button>
+            </div>
+
+            <!-- Manual card entry -->
+            <div id="card-view">
+                <div class="input-group card-number-wrap">
+                    <span id="card-brand-icon" class="card-brand-icon">HKS</span>
+                    <input type="text" id="card-number" placeholder="Card number" maxlength="19" inputmode="numeric" oninput="onCardNumberInput()">
+                </div>
+                <div class="card-row">
+                    <div class="input-group">
+                        <input type="text" id="card-expiry" placeholder="MM/YY" maxlength="5" inputmode="numeric" oninput="onCardExpiryInput()">
+                    </div>
+                    <div class="input-group">
+                        <input type="text" id="card-cvv" placeholder="CVV" maxlength="3" inputmode="numeric" oninput="clearCardError()">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="card-name" placeholder="Name on card" oninput="clearCardError()">
+                </div>
+                <p id="card-error" class="error-msg"></p>
+                <button onclick="payWithManualCard()" id="card-pay-btn" class="btn-approve">Pay Now</button>
+                <button onclick="cancelCheckout()" class="btn-cancel">Cancel &amp; Return to Merchant</button>
+            </div>
+
+            <!-- Login view -->
+            <div id="login-view" style="display:none;">
+                <div class="input-group">
+                    <input type="text" id="login-username" placeholder="Username">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="login-password" placeholder="Password">
+                </div>
+                <p id="auth-error" class="error-msg"></p>
+                <button onclick="attemptLogin()" class="btn-approve">Log In</button>
+                <button onclick="cancelCheckout()" class="btn-cancel">Cancel &amp; Return to Merchant</button>
+            </div>
+
+            <!-- Payment method selection (after login: card pulled automatically, or account balance) -->
+            <div id="method-select-view" style="display:none;">
+                <p class="paying-as">Paying as <strong id="logged-in-user">User</strong></p>
+                <div id="payment-methods-list"></div>
+                <p id="method-error" class="error-msg"></p>
+                <button onclick="approveSelectedMethod()" id="method-pay-btn" class="btn-approve">Approve &amp; Pay</button>
+                <button onclick="cancelCheckout()" class="btn-cancel">Cancel</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // Extract parameters from the URL
+        const CARD_BIN = "457124"; // HKS Bank's card prefix — safe to recognize client-side
+
         const urlParams = new URLSearchParams(window.location.search);
         const checkoutAmount = urlParams.get('amount');
         const checkoutDesc = urlParams.get('desc') || 'External Payment';
         const returnUrl = urlParams.get('return_url');
 
+        let _selectedMethod = null; // { type: 'card', card_id } or { type: 'balance' }
+
         window.onload = async () => {
             if (!checkoutAmount || isNaN(checkoutAmount)) {
-                document.querySelector('.checkout-container').innerHTML = "<h3>Invalid Checkout Request</h3><p>Missing or invalid amount.</p>";
+                document.getElementById('invalid-view').style.display = 'block';
                 return;
             }
-
+            document.getElementById('checkout-body').style.display = 'block';
             document.getElementById('display-amount').innerText = `$${parseFloat(checkoutAmount).toFixed(2)}`;
             document.getElementById('display-desc').innerText = checkoutDesc;
+            document.getElementById('card-pay-btn').innerText = `Pay $${parseFloat(checkoutAmount).toFixed(2)}`;
 
-            // Check if user is already logged in
+            // If already logged in to HKS Bank, skip straight to method selection
             const response = await fetch('/api/current-user');
             const data = await response.json();
-
             if (data.loggedIn) {
-                document.getElementById('logged-in-user').innerText = data.username;
-                document.getElementById('approval-view').style.display = 'block';
-            } else {
-                document.getElementById('login-view').style.display = 'block';
+                await enterMethodSelectView(data);
             }
         };
 
+        // ── Tabs ─────────────────────────────────────────────
+        function switchTab(tab) {
+            document.getElementById('tab-card').classList.toggle('active', tab === 'card');
+            document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+            document.getElementById('card-view').style.display = tab === 'card' ? 'block' : 'none';
+            document.getElementById('login-view').style.display = tab === 'login' ? 'block' : 'none';
+            document.getElementById('method-select-view').style.display = 'none';
+        }
+
+        // ── Manual card entry: formatting + brand recognition ─
+        function onCardNumberInput() {
+            const input = document.getElementById('card-number');
+            const icon = document.getElementById('card-brand-icon');
+            clearCardError();
+
+            let digits = input.value.replace(/\D/g, '').slice(0, 16);
+            input.value = digits.replace(/(.{4})/g, '$1 ').trim();
+
+            if (digits.startsWith(CARD_BIN) && digits.length >= CARD_BIN.length) {
+                icon.style.display = 'flex';
+                input.classList.add('has-icon');
+            } else {
+                icon.style.display = 'none';
+                input.classList.remove('has-icon');
+            }
+        }
+
+        function onCardExpiryInput() {
+            clearCardError();
+            const input = document.getElementById('card-expiry');
+            let digits = input.value.replace(/\D/g, '').slice(0, 4);
+            if (digits.length > 2) digits = digits.slice(0, 2) + '/' + digits.slice(2);
+            input.value = digits;
+        }
+
+        function clearCardError() {
+            document.getElementById('card-error').style.display = 'none';
+        }
+
+        async function payWithManualCard() {
+            const errEl = document.getElementById('card-error');
+            const btn = document.getElementById('card-pay-btn');
+            errEl.style.display = 'none';
+
+            const rawNumber = document.getElementById('card-number').value;
+            const cardNumber = rawNumber.replace(/\D/g, '');
+            const expiryRaw = document.getElementById('card-expiry').value.trim();
+            const cvv = document.getElementById('card-cvv').value.trim();
+            const name = document.getElementById('card-name').value.trim();
+
+            if (cardNumber.length !== 16) {
+                errEl.innerText = 'Enter a valid 16-digit card number.'; errEl.style.display = 'block'; return;
+            }
+            const expMatch = expiryRaw.match(/^(\d{2})\/(\d{2})$/);
+            if (!expMatch) {
+                errEl.innerText = 'Enter expiry as MM/YY.'; errEl.style.display = 'block'; return;
+            }
+            if (!/^\d{3}$/.test(cvv)) {
+                errEl.innerText = 'Enter a valid 3-digit CVV.'; errEl.style.display = 'block'; return;
+            }
+            if (!name) {
+                errEl.innerText = 'Enter the name on the card.'; errEl.style.display = 'block'; return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Processing…';
+
+            try {
+                const response = await fetch('/api/checkout/pay-with-card', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        card_number: cardNumber,
+                        expiry_month: expMatch[1],
+                        expiry_year: expMatch[2],
+                        cvv: cvv,
+                        cardholder_name: name,
+                        amount: checkoutAmount,
+                        description: checkoutDesc
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert("Payment successful!");
+                    finishCheckout();
+                } else {
+                    errEl.innerText = data.message;
+                    errEl.style.display = 'block';
+                }
+            } catch (err) {
+                errEl.innerText = 'Server error occurred.';
+                errEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.innerText = `Pay $${parseFloat(checkoutAmount).toFixed(2)}`;
+            }
+        }
+
+        // ── Login flow ───────────────────────────────────────
         async function attemptLogin() {
             const user = document.getElementById('login-username').value;
             const pass = document.getElementById('login-password').value;
             const err = document.getElementById('auth-error');
-            
+            err.style.display = 'none';
+
             const response = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: user, password: pass })
             });
-            
             const data = await response.json();
             if (data.success) {
-                // Hide login, show approval
-                document.getElementById('login-view').style.display = 'none';
-                document.getElementById('logged-in-user').innerText = user;
-                document.getElementById('approval-view').style.display = 'block';
+                const meResponse = await fetch('/api/current-user');
+                const meData = await meResponse.json();
+                await enterMethodSelectView(meData);
             } else {
                 err.style.display = 'block';
                 err.innerText = data.message;
             }
         }
 
-        async function approvePayment() {
-            const err = document.getElementById('checkout-error');
-            err.style.display = 'none';
+        // ── Payment method selection (after login) ────────────
+        async function enterMethodSelectView(meData) {
+            document.getElementById('method-tabs').style.display = 'none';
+            document.getElementById('card-view').style.display = 'none';
+            document.getElementById('login-view').style.display = 'none';
+            document.getElementById('method-select-view').style.display = 'block';
+            document.getElementById('logged-in-user').innerText = meData.fullName || meData.username;
 
-            const response = await fetch('/api/checkout/process', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount: checkoutAmount, description: checkoutDesc })
+            const list = document.getElementById('payment-methods-list');
+            list.innerHTML = '<p style="color:#94a3b8;font-size:0.9rem;">Loading your cards…</p>';
+
+            let cards = [];
+            try {
+                const cardsResp = await fetch('/api/my-cards');
+                const cardsData = await cardsResp.json();
+                if (cardsData.success) cards = cardsData.cards.filter(c => c.status === 'active');
+            } catch (e) { /* fall through */ }
+
+            list.innerHTML = '';
+            _selectedMethod = null;
+
+            // Account balance option
+            addMethodOption(list, {
+                label: `Current Account balance`,
+                sub: `$${parseFloat(meData.balance || 0).toFixed(2)} available`,
+                value: { type: 'balance' }
             });
 
-            const data = await response.json();
-            
-            if (data.success) {
-                alert("Payment successful!");
-                if (returnUrl) {
-                    window.location.href = returnUrl; // Send them back to the store
-                } else {
-                    window.location.href = '/hks-bank-dashboard.html';
-                }
-            } else {
+            // Card options — details are pulled automatically server-side, never shown here
+            cards.forEach(c => {
+                addMethodOption(list, {
+                    label: `HKS Bank Card ${c.masked_number}`,
+                    sub: `${c.account_label} · Exp ${c.expiry}`,
+                    value: { type: 'card', card_id: c.id }
+                });
+            });
+
+            // Auto-select the first card if one exists, otherwise the balance option
+            const firstOption = list.querySelector('.method-option');
+            if (firstOption) firstOption.click();
+        }
+
+        function addMethodOption(list, { label, sub, value }) {
+            const el = document.createElement('label');
+            el.className = 'method-option';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'payment-method';
+            radio.onchange = () => {
+                document.querySelectorAll('.method-option').forEach(o => o.classList.remove('selected'));
+                el.classList.add('selected');
+                _selectedMethod = value;
+            };
+            el.appendChild(radio);
+            const textWrap = document.createElement('div');
+            textWrap.innerHTML = `<div class="method-option-label">${label}</div><div class="method-option-sub">${sub}</div>`;
+            el.appendChild(textWrap);
+            list.appendChild(el);
+        }
+
+        async function approveSelectedMethod() {
+            const err = document.getElementById('method-error');
+            const btn = document.getElementById('method-pay-btn');
+            err.style.display = 'none';
+
+            if (!_selectedMethod) {
+                err.innerText = 'Please choose a payment method.';
                 err.style.display = 'block';
-                err.innerText = data.message;
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Processing…';
+
+            try {
+                let response;
+                if (_selectedMethod.type === 'card') {
+                    response = await fetch('/api/checkout/pay-with-session-card', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ card_id: _selectedMethod.card_id, amount: checkoutAmount, description: checkoutDesc })
+                    });
+                } else {
+                    response = await fetch('/api/checkout/process', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: checkoutAmount, description: checkoutDesc })
+                    });
+                }
+                const data = await response.json();
+                if (data.success) {
+                    alert("Payment successful!");
+                    finishCheckout();
+                } else {
+                    err.innerText = data.message;
+                    err.style.display = 'block';
+                }
+            } catch (e) {
+                err.innerText = 'Server error occurred.';
+                err.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Approve & Pay';
+            }
+        }
+
+        function finishCheckout() {
+            if (returnUrl) {
+                window.location.href = returnUrl;
+            } else {
+                window.location.href = '/hks-bank-dashboard.html';
             }
         }
 

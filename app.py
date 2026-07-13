@@ -4,7 +4,7 @@ import sqlite3
 import os
 import random
 import string
-from datetime import datetime
+from datetime import datetime, date
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
 app.secret_key = os.urandom(32)
@@ -60,6 +60,26 @@ def init_db():
             title TEXT NOT NULL,
             amount REAL NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts(id)
+        )
+    """)
+
+    # Bank cards — issued by an admin/employee, tied to a user and (optionally)
+    # a specific account. Not every account has a card; cards are opt-in.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS cards (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            username        TEXT NOT NULL,
+            account_id      INTEGER,                 -- NULL = draws from primary Current Account
+            account_label   TEXT NOT NULL DEFAULT 'Current Account',
+            card_number     TEXT UNIQUE NOT NULL,
+            cvv             TEXT NOT NULL,
+            expiry_month    INTEGER NOT NULL,
+            expiry_year     INTEGER NOT NULL,
+            cardholder_name TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'active',   -- active | frozen | cancelled
+            issued_by       TEXT NOT NULL DEFAULT '',
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES accounts(id)
         )
     """)
@@ -134,6 +154,105 @@ def send_system_mail(recipient, subject, body):
     conn.commit()
     conn.close()
     return True
+
+
+# ── HKS Bank cards ───────────────────────────────────────────────────────────────
+# Fictitious 6-digit issuer prefix (IIN) for HKS Bank cards. It's fine for this
+# to be public/hardcoded — real banks' BINs are public too — so the checkout
+# page can instantly recognize an HKS Bank card as the customer types.
+CARD_BIN = "457124"
+
+
+def _luhn_checksum(number_str):
+    digits = [int(d) for d in number_str]
+    odd_digits = digits[-1::-2]
+    even_digits = digits[-2::-2]
+    total = sum(odd_digits)
+    for d in even_digits:
+        total += sum(divmod(d * 2, 10))
+    return total % 10
+
+
+def generate_card_number():
+    """Generate a unique 16-digit, Luhn-valid card number starting with CARD_BIN."""
+    remaining = 16 - len(CARD_BIN) - 1
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    try:
+        while True:
+            body = CARD_BIN + ''.join(random.choices(string.digits, k=remaining))
+            check_digit = (10 - _luhn_checksum(body + '0')) % 10
+            candidate = body + str(check_digit)
+            cur.execute("SELECT 1 FROM cards WHERE card_number=?", (candidate,))
+            if not cur.fetchone():
+                return candidate
+    finally:
+        conn.close()
+
+
+def generate_cvv():
+    return f"{random.randint(0, 999):03d}"
+
+
+def compute_expiry(from_date=None):
+    """Card expires exactly 3 years from the date it was opened."""
+    d = from_date or date.today()
+    try:
+        expiry = d.replace(year=d.year + 3)
+    except ValueError:
+        # Feb 29 on a non-leap target year
+        expiry = d.replace(year=d.year + 3, day=28)
+    return expiry.month, expiry.year
+
+
+def mask_card_number(card_number):
+    return "•••• •••• •••• " + card_number[-4:]
+
+
+def is_hks_bank_card_number(card_number):
+    digits = ''.join(ch for ch in (card_number or '') if ch.isdigit())
+    return digits.startswith(CARD_BIN)
+
+
+def is_card_expired(expiry_month, expiry_year):
+    """A card is expired once we're past the end of its expiry month."""
+    today = date.today()
+    if today.year > expiry_year:
+        return True
+    if today.year == expiry_year and today.month > expiry_month:
+        return True
+    return False
+
+
+def card_to_dict(row, reveal_number=False, reveal_cvv=False):
+    """row columns: id, username, account_id, account_label, card_number, cvv,
+    expiry_month, expiry_year, cardholder_name, status, issued_by, created_at"""
+    expired = is_card_expired(row[6], row[7])
+    raw_status = row[9]
+    # cancelled stays cancelled even past expiry; otherwise expired takes
+    # display priority over active/frozen since it can no longer be used.
+    display_status = raw_status if raw_status == 'cancelled' else ('expired' if expired else raw_status)
+
+    d = {
+        "id": row[0],
+        "username": row[1],
+        "account_id": row[2],
+        "account_label": row[3],
+        "last4": row[4][-4:],
+        "masked_number": mask_card_number(row[4]),
+        "expiry": f"{row[6]:02d}/{str(row[7])[-2:]}",
+        "cardholder_name": row[8],
+        "status": display_status,
+        "raw_status": raw_status,
+        "expired": expired,
+        "issued_by": row[10],
+        "created_at": row[11],
+    }
+    if reveal_number:
+        d["card_number"] = row[4]
+    if reveal_cvv:
+        d["cvv"] = row[5]
+    return d
 
 
 # ── Page routes ────────────────────────────────────────────────────────────────
@@ -709,6 +828,9 @@ def admin_close_account():
     cur.execute("DELETE FROM account_transactions WHERE account_id = ?", (account_id,))
     cur.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
 
+    # Cards tied to this account can no longer draw funds — cancel them.
+    cur.execute("UPDATE cards SET status = 'cancelled' WHERE account_id = ?", (account_id,))
+
     # Transfer any remaining balance to the user's primary account
     if balance > 0:
         cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (balance, owner))
@@ -751,11 +873,179 @@ def admin_delete_user():
         cur.execute("DELETE FROM account_transactions WHERE account_id = ?", (aid,))
     cur.execute("DELETE FROM accounts WHERE username = ?", (username,))
     cur.execute("DELETE FROM transactions WHERE username = ?", (username,))
+    cur.execute("DELETE FROM cards WHERE username = ?", (username,))
     cur.execute("DELETE FROM users WHERE username = ?", (username,))
 
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": f"User '{username}' and all associated data deleted."})
+
+
+# ── Admin: cards ───────────────────────────────────────────────────────────────
+
+@app.route('/api/admin/cards/<username>', methods=['GET'])
+def admin_get_cards(username):
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at
+        FROM cards WHERE username = ? ORDER BY created_at DESC
+    """, (username,))
+    cards = [card_to_dict(r) for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "cards": cards})
+
+
+@app.route('/api/admin/create_card', methods=['POST'])
+def admin_create_card():
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data       = request.get_json()
+    username   = data.get("username", "").strip()
+    account_id = data.get("account_id")  # None/omitted = primary Current Account
+
+    if not username:
+        return jsonify({"success": False, "message": "Username is required."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+
+    cur.execute("SELECT full_name, email FROM users WHERE username = ?", (username,))
+    user_row = cur.fetchone()
+    if not user_row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+    full_name, email = user_row
+    cardholder_name = (full_name or username).strip().upper()
+
+    if account_id:
+        cur.execute("SELECT account_type FROM accounts WHERE id = ? AND username = ?", (account_id, username))
+        acc_row = cur.fetchone()
+        if not acc_row:
+            conn.close()
+            return jsonify({"success": False, "message": "Account not found for this user."}), 404
+        account_label = acc_row[0]
+    else:
+        account_id = None
+        account_label = "Current Account"
+
+    card_number = generate_card_number()
+    cvv = generate_cvv()
+    expiry_month, expiry_year = compute_expiry()
+    issued_by = session.get("username", "")
+
+    cur.execute("""
+        INSERT INTO cards (username, account_id, account_label, card_number, cvv,
+                            expiry_month, expiry_year, cardholder_name, status, issued_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+    """, (username, account_id, account_label, card_number, cvv, expiry_month, expiry_year, cardholder_name, issued_by))
+    new_card_id = cur.lastrowid
+    conn.commit()
+
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at
+        FROM cards WHERE id = ?
+    """, (new_card_id,))
+    card = card_to_dict(cur.fetchone(), reveal_number=True, reveal_cvv=True)
+    conn.close()
+
+    # Let the customer know via HKMail, if they have an address on file.
+    if email:
+        send_system_mail(
+            email,
+            "Your New HKS Bank Card",
+            f"Hi {full_name or username},\n\n"
+            f"A new HKS Bank card has been opened for your {account_label} (username: {username}).\n\n"
+            f"    Card number: {card_number}\n"
+            f"    CVV:         {cvv}\n"
+            f"    Expires:     {expiry_month:02d}/{str(expiry_year)[-2:]}\n"
+            f"    Name on card: {cardholder_name}\n\n"
+            f"Keep these details safe — anyone with them can use this card. If you didn't request this, "
+            f"please contact HKS Bank support immediately.\n\n"
+            f"— HKS Bank"
+        )
+
+    return jsonify({"success": True, "message": f"Card issued for {username}.", "card": card})
+
+
+@app.route('/api/admin/card/freeze', methods=['POST'])
+def admin_freeze_card():
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data    = request.get_json()
+    card_id = data.get("card_id")
+    if not card_id:
+        return jsonify({"success": False, "message": "Card ID required."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT status FROM cards WHERE id = ?", (card_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Card not found."}), 404
+    if row[0] == 'cancelled':
+        conn.close()
+        return jsonify({"success": False, "message": "Cancelled cards cannot be frozen or unfrozen."}), 400
+
+    new_status = 'active' if row[0] == 'frozen' else 'frozen'
+    cur.execute("UPDATE cards SET status = ? WHERE id = ?", (new_status, card_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "status": new_status, "message": f"Card is now {new_status}."})
+
+
+@app.route('/api/admin/card/cancel', methods=['POST'])
+def admin_cancel_card():
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data    = request.get_json()
+    card_id = data.get("card_id")
+    if not card_id:
+        return jsonify({"success": False, "message": "Card ID required."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT status FROM cards WHERE id = ?", (card_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Card not found."}), 404
+
+    cur.execute("UPDATE cards SET status = 'cancelled' WHERE id = ?", (card_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Card cancelled."})
+
+
+# ── User: own cards ────────────────────────────────────────────────────────────
+
+@app.route('/api/my-cards')
+def my_cards():
+    if "username" not in session:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    # ?full=1 reveals the complete card number and CVV (used on the user's own
+    # profile page, where the owner legitimately needs both to make a payment).
+    # Without it, cards stay masked — this is what the checkout flow requests.
+    reveal = request.args.get("full") in ("1", "true", "yes")
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at
+        FROM cards WHERE username = ? ORDER BY created_at DESC
+    """, (session["username"],))
+    cards = [card_to_dict(r, reveal_number=reveal, reveal_cvv=reveal) for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "cards": cards})
 
 
 # ── User-to-user transfer ──────────────────────────────────────────────────────
@@ -949,6 +1239,162 @@ def process_checkout():
     conn.close()
     session.clear()
     return jsonify({"success": True, "message": "Payment approved securely and session closed."})
+
+
+def _debit_for_card_payment(cur, card_row, amount, description):
+    """Shared debit logic for a card payment. card_row is a full cards row tuple.
+    Returns (ok, message)."""
+    card_id, username, account_id, account_label = card_row[0], card_row[1], card_row[2], card_row[3]
+
+    if account_id:
+        cur.execute("SELECT balance FROM accounts WHERE id = ?", (account_id,))
+        bal_row = cur.fetchone()
+        if not bal_row:
+            return False, "The account linked to this card no longer exists."
+        if bal_row[0] < amount:
+            return False, "Card declined — insufficient funds."
+        cur.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", (amount, account_id))
+        cur.execute(
+            "INSERT INTO account_transactions (account_id, username, title, amount) VALUES (?, ?, ?, ?)",
+            (account_id, username, f"{description} (Card •••• {card_row[4][-4:]})", -amount)
+        )
+    else:
+        cur.execute("SELECT balance FROM users WHERE username = ?", (username,))
+        bal_row = cur.fetchone()
+        if not bal_row:
+            return False, "The account linked to this card no longer exists."
+        if bal_row[0] < amount:
+            return False, "Card declined — insufficient funds."
+        cur.execute("UPDATE users SET balance = balance - ? WHERE username = ?", (amount, username))
+
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (username, f"{description} (Card •••• {card_row[4][-4:]})", -amount, account_label)
+    )
+    return True, "Payment approved."
+
+
+@app.route('/api/checkout/pay-with-card', methods=['POST'])
+def checkout_pay_with_card():
+    """Manual card entry payment — no HKS Bank login required."""
+    data = request.get_json()
+    raw_number   = data.get("card_number", "")
+    card_number  = ''.join(ch for ch in raw_number if ch.isdigit())
+    cvv          = (data.get("cvv", "") or "").strip()
+    exp_month    = data.get("expiry_month")
+    exp_year     = data.get("expiry_year")
+    description  = (data.get("description", "") or "External Payment").strip()
+
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid amount format."}), 400
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Checkout amount must be greater than zero."}), 400
+
+    if not card_number or not cvv or not exp_month or not exp_year:
+        return jsonify({"success": False, "message": "Please fill in all card details."}), 400
+
+    try:
+        exp_month = int(exp_month)
+        exp_year  = int(exp_year)
+        if exp_year < 100:  # accept 2-digit year input
+            exp_year += 2000
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid expiry date."}), 400
+
+    if not is_hks_bank_card_number(card_number):
+        return jsonify({"success": False, "message": "This does not appear to be a valid HKS Bank card number."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status
+        FROM cards WHERE card_number = ?
+    """, (card_number,))
+    card = cur.fetchone()
+
+    if not card:
+        conn.close()
+        return jsonify({"success": False, "message": "Card not found. Please check the card number."}), 404
+    if card[5] != cvv:
+        conn.close()
+        return jsonify({"success": False, "message": "Incorrect CVV."}), 400
+    if (card[6], card[7]) != (exp_month, exp_year):
+        conn.close()
+        return jsonify({"success": False, "message": "Incorrect expiry date."}), 400
+    if card[9] == 'cancelled':
+        conn.close()
+        return jsonify({"success": False, "message": "This card has been cancelled."}), 400
+    if is_card_expired(card[6], card[7]):
+        conn.close()
+        return jsonify({"success": False, "message": "This card has expired."}), 400
+    if card[9] == 'frozen':
+        conn.close()
+        return jsonify({"success": False, "message": "This card is frozen. Contact HKS Bank to unfreeze it."}), 400
+
+    ok, message = _debit_for_card_payment(cur, card, amount, description)
+    if not ok:
+        conn.close()
+        return jsonify({"success": False, "message": message}), 400
+
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": message})
+
+
+@app.route('/api/checkout/pay-with-session-card', methods=['POST'])
+def checkout_pay_with_session_card():
+    """Card payment where the card details are pulled automatically from the
+    logged-in HKS Bank session — the browser never sees the full card number/CVV."""
+    if "username" not in session:
+        return jsonify({"success": False, "message": "You must log in to approve this transaction."}), 401
+
+    data    = request.get_json()
+    card_id = data.get("card_id")
+    description = (data.get("description", "") or "External Payment").strip()
+
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid amount format."}), 400
+    if amount <= 0:
+        return jsonify({"success": False, "message": "Checkout amount must be greater than zero."}), 400
+    if not card_id:
+        return jsonify({"success": False, "message": "Please choose a card."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status
+        FROM cards WHERE id = ?
+    """, (card_id,))
+    card = cur.fetchone()
+
+    if not card or card[1] != session["username"]:
+        conn.close()
+        return jsonify({"success": False, "message": "Card not found."}), 404
+    if card[9] == 'cancelled':
+        conn.close()
+        return jsonify({"success": False, "message": "This card has been cancelled."}), 400
+    if is_card_expired(card[6], card[7]):
+        conn.close()
+        return jsonify({"success": False, "message": "This card has expired."}), 400
+    if card[9] == 'frozen':
+        conn.close()
+        return jsonify({"success": False, "message": "This card is frozen. Contact HKS Bank to unfreeze it."}), 400
+
+    ok, message = _debit_for_card_payment(cur, card, amount, description)
+    if not ok:
+        conn.close()
+        return jsonify({"success": False, "message": message}), 400
+
+    conn.commit()
+    conn.close()
+    session.clear()
+    return jsonify({"success": True, "message": message})
 
 
 # ── Contribution status ────────────────────────────────────────────────────────
