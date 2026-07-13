@@ -320,6 +320,18 @@
                 window.location.href = '/hks-bank-dashboard.html';
             }
         });
+        // Allow Enter key to submit
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Enter') return;
+
+            if (confirmModal.style.display === 'flex') {
+                submitConfirmCode();
+            } else if (registerModal.style.display === 'flex') {
+                registerAccount();
+            } else {
+                attemptLogin();
+            }
+        });
     </script>
 </body>
 </html>
