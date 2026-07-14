@@ -1036,6 +1036,35 @@ def admin_cancel_card():
     return jsonify({"success": True, "message": "Card cancelled."})
 
 
+@app.route('/api/admin/card/delete', methods=['POST'])
+def admin_delete_card():
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data    = request.get_json()
+    card_id = data.get("card_id")
+    if not card_id:
+        return jsonify({"success": False, "message": "Card ID required."}), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT status, expiry_month, expiry_year FROM cards WHERE id = ?", (card_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Card not found."}), 404
+
+    status, expiry_month, expiry_year = row
+    if status != 'cancelled' and not is_card_expired(expiry_month, expiry_year):
+        conn.close()
+        return jsonify({"success": False, "message": "Only cancelled or expired cards can be deleted."}), 400
+
+    cur.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Card deleted."})
+
+
 # ── User: own cards ────────────────────────────────────────────────────────────
 
 @app.route('/api/my-cards')

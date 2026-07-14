@@ -891,13 +891,15 @@
                         `<button class="em-freeze-btn" onclick="emToggleCardFreeze(${c.id})">${c.raw_status === 'frozen' ? 'Unfreeze' : 'Freeze'}</button>`;
                     const cancelBtn = c.raw_status === 'cancelled' ? '' :
                         `<button class="em-close-acct-btn" onclick="emCancelCard(${c.id})">Cancel</button>`;
+                    const deleteBtn = (c.status === 'cancelled' || c.status === 'expired') ?
+                        `<button class="em-close-acct-btn" onclick="emDeleteCard(${c.id})" title="Permanently remove this card">Delete</button>` : '';
                     row.innerHTML = `
                         <div class="em-card-row-left">
                             <span class="em-card-number-mono">${c.masked_number}</span>
                             <span class="em-card-meta">${c.account_label} · Exp ${c.expiry} · ${c.cardholder_name}</span>
                             ${statusTag}
                         </div>
-                        <div class="em-card-actions">${freezeBtn}${cancelBtn}</div>`;
+                        <div class="em-card-actions">${freezeBtn}${cancelBtn}${deleteBtn}</div>`;
                     list.appendChild(row);
                 });
             } else {
@@ -954,6 +956,24 @@
         if (!confirm('Cancel this card? This cannot be undone.')) return;
         try {
             const data = await apiFetch('/api/admin/card/cancel', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ card_id: cardId })
+            });
+            if (data.success) {
+                setMsg('em-card-msg', `✓ ${data.message}`, true);
+                await loadAdminCardsForUser(_editUser);
+                if (_editUser === _me) renderCardsGrid();
+            } else {
+                setMsg('em-card-msg', data.message, false);
+            }
+        } catch { setMsg('em-card-msg', 'Request failed.', false); }
+    }
+
+    async function emDeleteCard(cardId) {
+        if (!confirm('Permanently delete this card? This cannot be undone.')) return;
+        try {
+            const data = await apiFetch('/api/admin/card/delete', {
                 method: 'POST',
                 headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ card_id: cardId })
