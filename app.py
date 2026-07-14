@@ -121,6 +121,10 @@ ADMIN_MAIL_DEFAULT_PASSWORD = "AdminPass123!"  # demo credential, change in a re
 # password as the admin account so it's easy to check what it's sending.
 NOREPLY_MAIL_USERNAME = "noreply@hkmail.cn"
 
+# Fixed demo credential for the HKS Bank system mailbox (SYSTEM_MAIL_SENDER),
+# same pattern as ADMIN_MAIL_DEFAULT_PASSWORD — change in a real deployment.
+HKSBANK_MAIL_DEFAULT_PASSWORD = "HksBankSys456!"
+
 
 def generate_signup_code(length=8):
     alphabet = string.ascii_uppercase + string.digits
@@ -1549,13 +1553,14 @@ def init_mail_db():
         )
 
     # Ensure the HKS Bank system mailbox exists so it can send signup codes.
-    # It gets a random, never-shared password since no one logs into it directly.
+    # It uses the same fixed demo-credential pattern as admin/noreply so it
+    # can genuinely be signed into if needed.
     cur.execute("SELECT id FROM mail_users WHERE username=?", (SYSTEM_MAIL_SENDER,))
     if not cur.fetchone():
-        locked_password_hash = generate_password_hash(os.urandom(32).hex())
+        system_password_hash = generate_password_hash(HKSBANK_MAIL_DEFAULT_PASSWORD)
         cur.execute(
             "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
-            (SYSTEM_MAIL_SENDER, locked_password_hash, "HKS Bank")
+            (SYSTEM_MAIL_SENDER, system_password_hash, "HKS Bank")
         )
 
     conn.commit()
