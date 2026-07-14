@@ -1291,6 +1291,7 @@ def checkout_pay_with_card():
     exp_month    = data.get("expiry_month")
     exp_year     = data.get("expiry_year")
     description  = (data.get("description", "") or "External Payment").strip()
+    meta         = (data.get("meta", "") or "").strip()
 
     try:
         amount = float(data.get("amount", 0))
@@ -1348,6 +1349,10 @@ def checkout_pay_with_card():
 
     conn.commit()
     conn.close()
+
+    if meta.startswith("hkmail_premium:"):
+        _activate_mail_premium(session.get("mail_username"), meta.split(":", 1)[1], card[0])
+
     return jsonify({"success": True, "message": message})
 
 
@@ -1361,6 +1366,7 @@ def checkout_pay_with_session_card():
     data    = request.get_json()
     card_id = data.get("card_id")
     description = (data.get("description", "") or "External Payment").strip()
+    meta        = (data.get("meta", "") or "").strip()
 
     try:
         amount = float(data.get("amount", 0))
@@ -1400,6 +1406,12 @@ def checkout_pay_with_session_card():
 
     conn.commit()
     conn.close()
+
+    # Finalize before clearing the session — session.clear() below wipes the
+    # shared cookie, including the HKMail login state read here.
+    if meta.startswith("hkmail_premium:"):
+        _activate_mail_premium(session.get("mail_username"), meta.split(":", 1)[1], card[0])
+
     session.clear()
     return jsonify({"success": True, "message": message})
 
@@ -1421,6 +1433,30 @@ def contribution_status():
 
 MAIL_DATABASE = "mail.db"
 
+# ── HKMail storage plans ────────────────────────────────────────────────────────
+# Every mailbox starts on the Free plan. Users can subscribe to one paid tier at
+# a time; paid tiers add storage and a "Premium" badge shown next to their name
+# wherever they appear as a sender. Billing runs monthly through HKS Bank.
+FREE_STORAGE_MB = 1024  # 1GB for free users
+
+MAIL_PLANS = {
+    "5gb":   {"id": "5gb",   "label": "Premium 5GB",   "storage_mb": 5   * 1024, "price": 1.99,  "badge": True},
+    "25gb":  {"id": "25gb",  "label": "Premium 25GB",  "storage_mb": 25  * 1024, "price": 4.99,  "badge": True},
+    "50gb":  {"id": "50gb",  "label": "Premium 50GB",  "storage_mb": 50  * 1024, "price": 9.99,  "badge": True},
+    "100gb": {"id": "100gb", "label": "Premium 100GB", "storage_mb": 100 * 1024, "price": 19.99, "badge": True},
+}
+
+
+def add_one_month(d):
+    """Return the date one calendar month after d (clamped to a valid day)."""
+    month = d.month + 1
+    year  = d.year + (month - 1) // 12
+    month = ((month - 1) % 12) + 1
+    is_leap = (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0))
+    days_in_month = [31, 29 if is_leap else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    day = min(d.day, days_in_month[month - 1])
+    return date(year, month, day)
+
 
 def init_mail_db():
     conn = sqlite3.connect(MAIL_DATABASE)
@@ -1440,10 +1476,20 @@ def init_mail_db():
     """)
 
     # Safe migration for existing databases created before is_verified existed
-    try:
-        cur.execute("ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    for stmt in [
+        "ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0",
+        # Storage / premium subscription columns
+        "ALTER TABLE mail_users ADD COLUMN premium_plan TEXT",                 # '5gb' | '25gb' | '50gb' | '100gb' | NULL
+        "ALTER TABLE mail_users ADD COLUMN premium_status TEXT",               # 'active' | 'cancelled' | NULL
+        "ALTER TABLE mail_users ADD COLUMN premium_price REAL NOT NULL DEFAULT 0.0",
+        "ALTER TABLE mail_users ADD COLUMN premium_card_id INTEGER",           # HKS Bank cards.id used for billing
+        "ALTER TABLE mail_users ADD COLUMN premium_next_billing TEXT",         # ISO date of next charge
+        "ALTER TABLE mail_users ADD COLUMN premium_started_at DATETIME",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
 
     # Emails table
     cur.execute("""
@@ -1490,6 +1536,192 @@ def init_mail_db():
 def mail_current_user():
     """Return the HKMail username from session, or None."""
     return session.get("mail_username")
+
+
+# ── HKMail: storage & premium subscription helpers ─────────────────────────────
+
+def mail_get_premium_row(username):
+    """Return (premium_plan, premium_status, premium_price, premium_card_id,
+    premium_next_billing) for a mailbox, or None if the user doesn't exist."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT premium_plan, premium_status, premium_price, premium_card_id, premium_next_billing
+        FROM mail_users WHERE username=?
+    """, (username,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def mail_storage_limit_mb(username):
+    """Current storage cap in MB — the plan's limit if Premium is active, else Free."""
+    row = mail_get_premium_row(username)
+    if row and row[0] and row[1] == "active":
+        plan = MAIL_PLANS.get(row[0])
+        if plan:
+            return plan["storage_mb"]
+    return FREE_STORAGE_MB
+
+
+def mail_storage_used_bytes(username):
+    """Bytes of mail currently stored for this mailbox (sent copies the user
+    hasn't trashed, plus received copies the user hasn't trashed). Each email
+    row is counted once even for self-sends, since it's a single stored row."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT COALESCE(SUM(LENGTH(subject) + LENGTH(body)), 0)
+        FROM emails
+        WHERE (sender=? AND deleted_by_sender=0) OR (recipient=? AND deleted_by_recipient=0)
+    """, (username, username))
+    total = cur.fetchone()[0] or 0
+    conn.close()
+    return total
+
+
+def mail_is_premium_active(username):
+    row = mail_get_premium_row(username)
+    return bool(row and row[0] and row[1] == "active")
+
+
+def _activate_mail_premium(mail_username, plan_id, card_id):
+    """Called right after a successful HKS Bank payment for an HKMail Premium
+    subscription. Records the plan, price, and billing card on the mailbox and
+    schedules the first renewal one month out."""
+    plan = MAIL_PLANS.get(plan_id)
+    if not plan or not mail_username:
+        return False
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (mail_username,))
+    if not cur.fetchone():
+        conn.close()
+        return False
+
+    next_billing = add_one_month(date.today())
+    cur.execute("""
+        UPDATE mail_users
+        SET premium_plan=?, premium_status='active', premium_price=?,
+            premium_card_id=?, premium_next_billing=?, premium_started_at=CURRENT_TIMESTAMP
+        WHERE username=?
+    """, (plan_id, plan["price"], card_id, next_billing.isoformat(), mail_username))
+
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (
+            ADMIN_MAIL_USERNAME, mail_username, "Welcome to HKMail Premium!",
+            f"Hi,\n\nYou're now subscribed to HKMail {plan['label']} — "
+            f"{plan['storage_mb'] // 1024}GB of storage for ${plan['price']:.2f}/month.\n\n"
+            "Your Premium badge will now appear next to your name whenever you send or "
+            f"receive mail. Your next billing date is {next_billing.isoformat()}.\n\n"
+            "You can cancel anytime from the Storage page — you'll keep Premium until "
+            "the end of the period you've already paid for.\n\n"
+            "— HKMail"
+        )
+    )
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def mail_run_billing_cycle(username):
+    """Check whether this mailbox's next billing date has arrived and, if so,
+    either renew (charging the saved HKS Bank card) or let a cancellation take
+    effect. Safe to call on every page load — it's a no-op unless a charge is
+    actually due."""
+    row = mail_get_premium_row(username)
+    if not row or not row[0] or not row[4]:
+        return
+    plan_id, status, price, card_id, next_billing_str = row
+    if status not in ("active", "cancelled"):
+        return
+
+    try:
+        next_billing = date.fromisoformat(next_billing_str)
+    except (TypeError, ValueError):
+        return
+    if date.today() < next_billing:
+        return
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    plan = MAIL_PLANS.get(plan_id, {})
+    plan_label = plan.get("label", "HKMail Premium")
+
+    if status == "cancelled":
+        # Grace period the user already paid for has ended — downgrade to Free.
+        cur.execute("""
+            UPDATE mail_users
+            SET premium_plan=NULL, premium_status=NULL, premium_price=0,
+                premium_card_id=NULL, premium_next_billing=NULL
+            WHERE username=?
+        """, (username,))
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (ADMIN_MAIL_USERNAME, username, "Your HKMail Premium plan has ended",
+             f"Your {plan_label} subscription was cancelled and its final billing period has "
+             f"now ended. Your account has reverted to the Free plan ({FREE_STORAGE_MB // 1024}GB storage).")
+        )
+        conn.commit()
+        conn.close()
+        return
+
+    # status == 'active' and a renewal charge is due
+    if not card_id:
+        cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (username,))
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (ADMIN_MAIL_USERNAME, username, "HKMail Premium renewal needed",
+             f"We couldn't automatically renew your {plan_label} subscription because no HKS Bank "
+             "card is saved for billing. Please renew manually from the Storage page before your "
+             "current period ends, or it will move to the Free plan.")
+        )
+        conn.commit()
+        conn.close()
+        return
+
+    bank_conn = sqlite3.connect(DATABASE)
+    bank_cur  = bank_conn.cursor()
+    bank_cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status
+        FROM cards WHERE id=?
+    """, (card_id,))
+    card = bank_cur.fetchone()
+
+    charge_ok = False
+    if card and card[9] == "active" and not is_card_expired(card[6], card[7]):
+        charge_ok, _msg = _debit_for_card_payment(
+            bank_cur, card, price, f"HKMail Premium — {plan_label} (monthly renewal)"
+        )
+
+    if charge_ok:
+        bank_conn.commit()
+        new_next = add_one_month(next_billing)
+        cur.execute("UPDATE mail_users SET premium_next_billing=? WHERE username=?",
+                    (new_next.isoformat(), username))
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (ADMIN_MAIL_USERNAME, username, "HKMail Premium renewed",
+             f"Your {plan_label} subscription renewed for ${price:.2f}. "
+             f"Next billing date: {new_next.isoformat()}.")
+        )
+    else:
+        bank_conn.rollback()
+        cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (username,))
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (ADMIN_MAIL_USERNAME, username, "HKMail Premium renewal failed",
+             f"We couldn't renew your {plan_label} subscription — the card on file was declined "
+             "or is no longer available. Your plan has been cancelled and will move to Free once "
+             "your current period ends.")
+        )
+    bank_conn.close()
+    conn.commit()
+    conn.close()
 
 
 # ── HKMail page routes ─────────────────────────────────────────────────────────
@@ -1605,14 +1837,22 @@ def hkmail_logout():
 def hkmail_current_user():
     u = mail_current_user()
     if u:
+        mail_run_billing_cycle(u)
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
-        cur.execute("SELECT full_name, is_admin, is_verified FROM mail_users WHERE username=?", (u,))
+        cur.execute("""
+            SELECT full_name, is_admin, is_verified, premium_plan, premium_status
+            FROM mail_users WHERE username=?
+        """, (u,))
         row = cur.fetchone()
         conn.close()
         if row:
+            is_premium = bool(row[3] and row[4] == 'active')
+            plan = MAIL_PLANS.get(row[3]) if is_premium else None
             return jsonify({"loggedIn": True, "username": u, "fullName": row[0],
-                            "isAdmin": bool(row[1]), "isVerified": bool(row[2])})
+                            "isAdmin": bool(row[1]), "isVerified": bool(row[2]),
+                            "isPremium": is_premium,
+                            "premiumLabel": plan["label"] if plan else None})
     return jsonify({"loggedIn": False})
 
 
@@ -1636,6 +1876,19 @@ def hkmail_send():
     if "@" not in recipient:
         recipient = recipient + "@hkmail.cn"
 
+    # Renewals/downgrades may have just changed either mailbox's limit
+    mail_run_billing_cycle(u)
+    mail_run_billing_cycle(recipient)
+
+    message_size = len(subject.encode("utf-8")) + len(body.encode("utf-8"))
+
+    sender_limit_bytes = mail_storage_limit_mb(u) * 1024 * 1024
+    if mail_storage_used_bytes(u) + message_size > sender_limit_bytes:
+        return jsonify({
+            "success": False,
+            "message": "Your mailbox is full. Delete some mail or upgrade to Premium for more storage."
+        }), 400
+
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
 
@@ -1644,6 +1897,15 @@ def hkmail_send():
     if not cur.fetchone():
         conn.close()
         return jsonify({"success": False, "message": f"No HKMail account found for {recipient}."}), 404
+
+    if recipient != u:
+        recipient_limit_bytes = mail_storage_limit_mb(recipient) * 1024 * 1024
+        if mail_storage_used_bytes(recipient) + message_size > recipient_limit_bytes:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": f"{recipient}'s mailbox is full and can't accept this message right now."
+            }), 400
 
     # Self-send: one row, shows in both sent & inbox
     if recipient == u:
@@ -1662,6 +1924,147 @@ def hkmail_send():
     return jsonify({"success": True, "message": f"Message sent to {recipient}."})
 
 
+# ── HKMail: storage & premium subscription ─────────────────────────────────────
+
+def _mail_plans_payload():
+    return [
+        {"id": p["id"], "label": p["label"], "storage_mb": p["storage_mb"],
+         "storage_gb": p["storage_mb"] // 1024, "price": p["price"], "badge": p["badge"]}
+        for p in MAIL_PLANS.values()
+    ]
+
+
+@app.route('/api/hkmail/premium/plans')
+def hkmail_premium_plans():
+    return jsonify({"success": True, "free_storage_mb": FREE_STORAGE_MB, "plans": _mail_plans_payload()})
+
+
+@app.route('/api/hkmail/storage')
+def hkmail_storage():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    mail_run_billing_cycle(u)
+
+    row = mail_get_premium_row(u)
+    plan_id, status, price, card_id, next_billing = row if row else (None, None, 0.0, None, None)
+    is_premium = bool(plan_id and status == 'active')
+    is_cancelled_pending = bool(plan_id and status == 'cancelled')
+    plan = MAIL_PLANS.get(plan_id) if (is_premium or is_cancelled_pending) else None
+
+    used_bytes = mail_storage_used_bytes(u)
+    limit_mb   = mail_storage_limit_mb(u)
+
+    return jsonify({
+        "success": True,
+        "used_bytes": used_bytes,
+        "used_mb": round(used_bytes / (1024 * 1024), 3),
+        "limit_mb": limit_mb,
+        "plan": plan_id,
+        "plan_label": plan["label"] if plan else "Free",
+        "status": status,
+        "price": price,
+        "next_billing": next_billing,
+        "is_premium": is_premium,
+        "auto_renews": bool(is_premium and card_id),
+        "plans": _mail_plans_payload(),
+        "free_storage_mb": FREE_STORAGE_MB,
+    })
+
+
+@app.route('/api/hkmail/premium/start', methods=['POST'])
+def hkmail_premium_start():
+    """Kick off a subscription purchase. Returns a URL to HKS Bank's checkout —
+    the frontend redirects the browser there to complete payment."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data    = request.get_json() or {}
+    plan_id = (data.get("plan", "") or "").strip().lower()
+    plan    = MAIL_PLANS.get(plan_id)
+    if not plan:
+        return jsonify({"success": False, "message": "Unknown plan."}), 400
+
+    row = mail_get_premium_row(u)
+    if row and row[0] == plan_id and row[1] == 'active':
+        return jsonify({"success": False, "message": f"You're already subscribed to {plan['label']}."}), 400
+
+    from urllib.parse import quote
+    desc      = f"HKMail {plan['label']} Subscription"
+    meta      = f"hkmail_premium:{plan_id}"
+    return_url = "/hkmail-inbox.html?upgraded=1"
+    checkout_url = (
+        f"/hks-bank-checkout.html?amount={plan['price']}"
+        f"&desc={quote(desc)}&return_url={quote(return_url)}&meta={quote(meta)}"
+    )
+    return jsonify({"success": True, "checkout_url": checkout_url})
+
+
+@app.route('/api/hkmail/premium/cancel', methods=['POST'])
+def hkmail_premium_cancel():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    row = mail_get_premium_row(u)
+    if not row or not row[0] or row[1] != 'active':
+        return jsonify({"success": False, "message": "You don't have an active Premium plan."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (u,))
+    conn.commit()
+    conn.close()
+
+    plan = MAIL_PLANS.get(row[0], {})
+    return jsonify({
+        "success": True,
+        "message": f"Your {plan.get('label','Premium')} subscription has been cancelled. "
+                    f"You'll keep your storage and badge until {row[4]}, and won't be charged again."
+    })
+
+
+# ── HKMail: account deletion ────────────────────────────────────────────────────
+
+@app.route('/api/hkmail/account/delete', methods=['POST'])
+def hkmail_delete_account():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER):
+        return jsonify({"success": False, "message": "This account can't be deleted."}), 400
+
+    data     = request.get_json() or {}
+    password = (data.get("password", "") or "").strip()
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT password_hash FROM mail_users WHERE username=?", (u,))
+    row = cur.fetchone()
+    if not row or not check_password_hash(row[0], password):
+        conn.close()
+        return jsonify({"success": False, "message": "Incorrect password."}), 401
+
+    # Cancelling immediately (rather than at period end) since the mailbox
+    # and its billing record are about to be removed entirely.
+    cur.execute("""
+        UPDATE mail_users
+        SET premium_plan=NULL, premium_status=NULL, premium_price=0,
+            premium_card_id=NULL, premium_next_billing=NULL
+        WHERE username=?
+    """, (u,))
+    cur.execute("DELETE FROM mail_users WHERE username=?", (u,))
+    conn.commit()
+    conn.close()
+
+    session.pop("mail_username", None)
+    session.pop("mail_full_name", None)
+    session.pop("mail_is_admin", None)
+    return jsonify({"success": True, "message": "Your HKMail account has been deleted."})
+
+
 # ── HKMail: list folders ───────────────────────────────────────────────────────
 
 @app.route('/api/hkmail/inbox')
@@ -1669,18 +2072,25 @@ def hkmail_inbox_api():
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
+    mail_run_billing_cycle(u)
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified
+        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
+               mu.premium_plan, mu.premium_status
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.recipient=? AND e.deleted_by_recipient=0
         ORDER BY e.sent_at DESC
     """, (u,))
-    emails = [{"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4]),
-               "from_is_admin": bool(r[5]), "from_is_verified": bool(r[6])}
-              for r in cur.fetchall()]
+    emails = []
+    for r in cur.fetchall():
+        is_premium = bool(r[7] and r[8] == 'active')
+        plan = MAIL_PLANS.get(r[7]) if is_premium else None
+        emails.append({"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4]),
+                        "from_is_admin": bool(r[5]), "from_is_verified": bool(r[6]),
+                        "from_is_premium": is_premium,
+                        "from_premium_label": plan["label"] if plan else None})
     conn.close()
     return jsonify({"success": True, "emails": emails})
 
@@ -1717,7 +2127,8 @@ def hkmail_trash_api():
     # Show emails deleted by this user (either as sender or recipient)
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
-               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified
+               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
+               mu.premium_plan, mu.premium_status
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE (e.sender=? AND e.deleted_by_sender=1)
@@ -1726,10 +2137,14 @@ def hkmail_trash_api():
     """, (u, u))
     emails = []
     for r in cur.fetchall():
+        is_premium = bool(r[9] and r[10] == 'active')
+        plan = MAIL_PLANS.get(r[9]) if is_premium else None
         emails.append({
             "id": r[0], "from": r[1], "to": r[2],
             "subject": r[3], "date": r[4],
-            "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8])
+            "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8]),
+            "from_is_premium": is_premium,
+            "from_premium_label": plan["label"] if plan else None
         })
     conn.close()
     return jsonify({"success": True, "emails": emails})
@@ -1747,7 +2162,7 @@ def hkmail_read_email(email_id):
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.body, e.sent_at, e.read,
-               mu.is_admin, mu.is_verified
+               mu.is_admin, mu.is_verified, mu.premium_plan, mu.premium_status
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.id=?
@@ -1768,12 +2183,16 @@ def hkmail_read_email(email_id):
         conn.commit()
 
     conn.close()
+    is_premium = bool(row[9] and row[10] == 'active')
+    plan = MAIL_PLANS.get(row[9]) if is_premium else None
     return jsonify({
         "success": True,
         "email": {
             "id": row[0], "from": row[1], "to": row[2],
             "subject": row[3], "body": row[4], "date": row[5], "read": True,
-            "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8])
+            "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8]),
+            "from_is_premium": is_premium,
+            "from_premium_label": plan["label"] if plan else None
         }
     })
 

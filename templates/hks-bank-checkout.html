@@ -121,6 +121,7 @@
         const checkoutAmount = urlParams.get('amount');
         const checkoutDesc = urlParams.get('desc') || 'External Payment';
         const returnUrl = urlParams.get('return_url');
+        const checkoutMeta = urlParams.get('meta') || '';
 
         let _selectedMethod = null; // { type: 'card', card_id } or { type: 'balance' }
 
@@ -220,7 +221,8 @@
                         cvv: cvv,
                         cardholder_name: name,
                         amount: checkoutAmount,
-                        description: checkoutDesc
+                        description: checkoutDesc,
+                        meta: checkoutMeta
                     })
                 });
                 const data = await response.json();
@@ -349,7 +351,7 @@
                 const response = await fetch('/api/checkout/pay-with-session-card', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ card_id: _selectedMethod.card_id, amount: checkoutAmount, description: checkoutDesc })
+                    body: JSON.stringify({ card_id: _selectedMethod.card_id, amount: checkoutAmount, description: checkoutDesc, meta: checkoutMeta })
                 });
                 const data = await response.json();
                 if (data.success) {

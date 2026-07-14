@@ -112,7 +112,22 @@
             border: 1px solid #BBDBFF;
         }
 
-        .badge-verified svg, .badge-admin svg { width: 9px; height: 9px; }
+        .badge-premium {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            background: linear-gradient(135deg, #F5B301, #D68A00);
+            color: #fff;
+            font-size: 0.66rem;
+            font-weight: 800;
+            letter-spacing: 0.2px;
+            text-transform: uppercase;
+            padding: 1px 6px;
+            border-radius: 4px;
+            vertical-align: middle;
+        }
+
+        .badge-verified svg, .badge-admin svg, .badge-premium svg { width: 9px; height: 9px; }
 
         .topbar-badge-admin {
             background: var(--red);
@@ -659,6 +674,52 @@
         .create-acct-row { display: flex; gap: 10px; }
         .create-acct-row > div { flex: 1; }
         .acct-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--navy); font-weight: 600; }
+
+        /* ── Storage / Premium modal ── */
+        .storage-modal-card {
+            background: var(--white);
+            border-radius: 14px;
+            width: 100%;
+            max-width: 720px;
+            max-height: 86vh;
+            overflow-y: auto;
+            padding: 28px 32px 32px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .storage-usage-box { border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 18px 0 22px; background: var(--bg); }
+        .storage-usage-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: 0.85rem; }
+        .storage-usage-top strong { color: var(--navy); font-size: 0.95rem; }
+        .storage-bar-track { height: 8px; background: var(--slate); border-radius: 4px; overflow: hidden; }
+        .storage-bar-fill { height: 100%; background: var(--red); border-radius: 4px; transition: width 0.3s; }
+        .storage-bar-fill.ok { background: #1A7A3C; }
+        .storage-plan-label { margin-top: 8px; font-size: 0.8rem; color: var(--muted); }
+
+        .plan-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .plan-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 16px 14px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
+        .plan-card.current { border-color: #F5B301; background: #FFF9EC; }
+        .plan-card-size { font-size: 1.3rem; font-weight: 800; color: var(--navy); }
+        .plan-card-price { font-size: 0.95rem; font-weight: 700; color: var(--red); }
+        .plan-card-price span { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+        .plan-card-badge-note { font-size: 0.72rem; color: var(--muted); line-height: 1.4; flex: 1; }
+        .plan-card-btn {
+            background: var(--navy); color: #fff; border: none; border-radius: 7px;
+            padding: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: background 0.15s;
+        }
+        .plan-card-btn:hover { background: var(--navy-lt); }
+        .plan-card-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+        .storage-cancel-box { border: 1px solid #FCC8CC; background: #FEF3F4; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .storage-cancel-box p { font-size: 0.82rem; color: var(--navy); }
+        .btn-cancel-plan { background: transparent; border: 1.5px solid var(--red); color: var(--red); border-radius: 7px; padding: 8px 14px; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        .btn-cancel-plan:hover { background: #FEE8EB; }
+
+        .danger-zone { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 16px; }
+        .danger-zone summary { cursor: pointer; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+        .danger-zone-body { margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .btn-delete-account { background: var(--red); color: #fff; border: none; border-radius: 7px; padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+        .btn-delete-account:hover { background: var(--red-dk); }
     </style>
 </head>
 <body>
@@ -678,6 +739,7 @@
     <div class="topbar-user">
         <span class="topbar-email" id="topbar-email">—</span>
         <span class="topbar-badge-admin" id="topbar-admin-badge" style="display:none;">Admin</span>
+        <span class="badge-premium" id="topbar-premium-badge" style="display:none; cursor:pointer;" onclick="openStorageModal()" title="Manage your Premium subscription">★ Premium</span>
         <button class="btn-compose" onclick="openCompose()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                  stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
@@ -722,6 +784,15 @@
                     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
                 </svg>
                 Trash
+            </div>
+            <div class="nav-item" id="nav-storage" onclick="openStorageModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                </svg>
+                Storage
             </div>
             <div class="nav-item" id="nav-admin" onclick="openAdminPanel()" style="display:none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -856,6 +927,40 @@
     </div>
 </div>
 
+<!-- ── Storage / Premium modal ── -->
+<div class="modal-overlay" id="storage-modal">
+    <div class="storage-modal-card">
+        <span class="compose-close" onclick="closeStorageModal()">&times;</span>
+        <h3>Storage &amp; Premium</h3>
+        <p class="admin-modal-sub">Free accounts get 1GB. Upgrade for more space and a Premium badge on your mail.</p>
+
+        <div class="storage-usage-box" id="storage-usage-box">
+            <div class="storage-usage-top"><span>Loading…</span></div>
+            <div class="storage-bar-track"><div class="storage-bar-fill" id="storage-bar-fill" style="width:0%"></div></div>
+            <div class="storage-plan-label" id="storage-plan-label"></div>
+        </div>
+
+        <div class="storage-cancel-box" id="storage-cancel-box" style="display:none;">
+            <p id="storage-cancel-text"></p>
+            <button class="btn-cancel-plan" onclick="cancelPremium()">Cancel plan</button>
+        </div>
+
+        <div class="plan-grid" id="plan-grid">
+            <div class="empty-state"><p>Loading plans…</p></div>
+        </div>
+
+        <div class="admin-status-msg" id="storage-msg"></div>
+
+        <details class="danger-zone">
+            <summary>Danger zone</summary>
+            <div class="danger-zone-body">
+                <button class="btn-delete-account" onclick="promptDeleteAccount()">Delete my HKMail account</button>
+                <span style="font-size:0.78rem;color:var(--muted);">This cancels any Premium plan immediately and can't be undone.</span>
+            </div>
+        </details>
+    </div>
+</div>
+
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
 
@@ -882,12 +987,23 @@
             document.getElementById('topbar-admin-badge').style.display = 'inline-block';
             document.getElementById('nav-admin').style.display = 'flex';
         }
+        if (data.isPremium) {
+            document.getElementById('topbar-premium-badge').style.display = 'inline-flex';
+        }
         await loadFolder('inbox');
         refreshUnread();
+
+        // Returning from HKS Bank checkout after subscribing
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('upgraded') === '1') {
+            showToast('Subscription updated!');
+            openStorageModal();
+            window.history.replaceState({}, '', '/hkmail-inbox.html');
+        }
     })();
 
     // ── Sender badges ──────────────────────────────────────────────────────────
-    function senderBadges(isAdmin, isVerified) {
+    function senderBadges(isAdmin, isVerified, isPremium, premiumLabel) {
         let html = '';
         if (isAdmin) {
             html += `<span class="badge-admin" title="HKMail administrative account">
@@ -898,6 +1014,9 @@
             html += `<span class="badge-verified" title="Verified official account">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 Verified</span>`;
+        }
+        if (isPremium) {
+            html += `<span class="badge-premium" title="${escHtml(premiumLabel || 'HKMail Premium')} subscriber">★ Premium</span>`;
         }
         return html;
     }
@@ -949,7 +1068,7 @@
             const displayName = currentFolder === 'sent' ? (e.to || '') : (e.from || '');
             const label = currentFolder === 'sent' ? `To: ${displayName}` : displayName;
             const dateStr = formatDate(e.date);
-            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified);
+            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label);
             return `
                 <div class="email-item ${isUnread ? 'unread' : ''}" id="ei-${e.id}"
                      onclick="openEmail(${e.id})">
@@ -1016,7 +1135,7 @@
         document.getElementById('email-view-header').innerHTML = `
             <div class="email-view-subject">${escHtml(e.subject)}</div>
             <div class="email-view-meta">
-                <span><strong>From:</strong> ${escHtml(e.from)} ${senderBadges(e.from_is_admin, e.from_is_verified)}</span>
+                <span><strong>From:</strong> ${escHtml(e.from)} ${senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label)}</span>
                 <span><strong>To:</strong> ${escHtml(e.to)}</span>
                 <span><strong>Date:</strong> ${formatDate(e.date, true)}</span>
             </div>
@@ -1312,6 +1431,135 @@
         }
     }
 
+    // ── Storage / Premium panel ───────────────────────────────────────────────
+    function openStorageModal() {
+        document.getElementById('storage-modal').classList.add('open');
+        loadStorageInfo();
+    }
+
+    function closeStorageModal() {
+        document.getElementById('storage-modal').classList.remove('open');
+    }
+
+    function fmtGB(mb) {
+        return (mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1) + 'GB';
+    }
+
+    async function loadStorageInfo() {
+        const msg = document.getElementById('storage-msg');
+        msg.textContent = '';
+        msg.className = 'admin-status-msg';
+        try {
+            const res  = await fetch('/api/hkmail/storage');
+            const data = await res.json();
+            if (!data.success) return;
+
+            const usedMb = data.used_mb;
+            const pct = Math.min(100, (usedMb / data.limit_mb) * 100);
+            document.getElementById('storage-usage-box').querySelector('.storage-usage-top').innerHTML =
+                `<span>${usedMb < 1 ? Math.round(usedMb * 1024) + ' KB' : usedMb.toFixed(1) + ' MB'} used</span>
+                 <strong>${fmtGB(data.limit_mb)} total</strong>`;
+            const fill = document.getElementById('storage-bar-fill');
+            fill.style.width = pct + '%';
+            fill.className = 'storage-bar-fill' + (pct < 85 ? ' ok' : '');
+            document.getElementById('storage-plan-label').textContent =
+                data.is_premium ? `Current plan: ${data.plan_label}` : 'Current plan: Free';
+
+            const cancelBox = document.getElementById('storage-cancel-box');
+            if (data.is_premium && data.status === 'active') {
+                cancelBox.style.display = 'flex';
+                document.getElementById('storage-cancel-text').textContent =
+                    `Renews at $${data.price.toFixed(2)}/mo on ${data.next_billing}` +
+                    (data.auto_renews ? '' : ' — no card on file, renew manually before then.');
+            } else if (data.status === 'cancelled') {
+                cancelBox.style.display = 'flex';
+                document.getElementById('storage-cancel-box').querySelector('.btn-cancel-plan').style.display = 'none';
+                document.getElementById('storage-cancel-text').textContent =
+                    `Cancelled — Premium and your extra storage stay active until ${data.next_billing}.`;
+            } else {
+                cancelBox.style.display = 'none';
+            }
+
+            renderStoragePlans(data.plans, data.plan, data.is_premium);
+        } catch {
+            msg.textContent = 'Could not load storage info.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    function renderStoragePlans(plans, currentPlanId, isPremium) {
+        const grid = document.getElementById('plan-grid');
+        grid.innerHTML = plans.map(p => {
+            const isCurrent = isPremium && p.id === currentPlanId;
+            return `
+                <div class="plan-card ${isCurrent ? 'current' : ''}">
+                    <div class="plan-card-size">${p.storage_gb}GB</div>
+                    <div class="plan-card-price">$${p.price.toFixed(2)}<span> /mo</span></div>
+                    <div class="plan-card-badge-note">Premium badge on your mail</div>
+                    <button class="plan-card-btn" ${isCurrent ? 'disabled' : ''} onclick="subscribeToPlan('${p.id}')">
+                        ${isCurrent ? 'Current plan' : 'Subscribe'}
+                    </button>
+                </div>`;
+        }).join('');
+    }
+
+    async function subscribeToPlan(planId) {
+        const msg = document.getElementById('storage-msg');
+        msg.textContent = '';
+        try {
+            const res  = await fetch('/api/hkmail/premium/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: planId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = data.checkout_url;
+            } else {
+                msg.textContent = data.message || 'Could not start checkout.';
+                msg.className = 'admin-status-msg err';
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function cancelPremium() {
+        if (!confirm("Cancel your Premium plan? You'll keep it until the end of the current billing period.")) return;
+        const msg = document.getElementById('storage-msg');
+        try {
+            const res  = await fetch('/api/hkmail/premium/cancel', { method: 'POST' });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) await loadStorageInfo();
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function promptDeleteAccount() {
+        const password = prompt('This permanently deletes your HKMail account and cancels any Premium plan.\nEnter your password to confirm:');
+        if (!password) return;
+        try {
+            const res  = await fetch('/api/hkmail/account/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = '/hkmail.html';
+            } else {
+                alert(data.message || 'Could not delete account.');
+            }
+        } catch {
+            alert('Connection error.');
+        }
+    }
+
     // ── Logout ─────────────────────────────────────────────────────────────────
     async function doLogout() {
         await fetch('/api/hkmail/logout', { method: 'POST' });
@@ -1355,6 +1603,11 @@
     // Close admin panel on overlay click
     document.getElementById('admin-modal').addEventListener('click', e => {
         if (e.target === document.getElementById('admin-modal')) closeAdminPanel();
+    });
+
+    // Close storage panel on overlay click
+    document.getElementById('storage-modal').addEventListener('click', e => {
+        if (e.target === document.getElementById('storage-modal')) closeStorageModal();
     });
 
     // Auto-refresh inbox every 30s
