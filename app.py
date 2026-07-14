@@ -115,6 +115,12 @@ SYSTEM_MAIL_SENDER = "hksbank@hkmail.cn"
 ADMIN_MAIL_USERNAME = "admin@hkmail.cn"
 ADMIN_MAIL_DEFAULT_PASSWORD = "AdminPass123!"  # demo credential, change in a real deployment
 
+# Automated, no-reply mailbox used as the sender for system-generated notices
+# (welcome emails, Premium subscription confirmations/renewals/cancellations)
+# that were previously sent from the admin account. Logs in with the same
+# password as the admin account so it's easy to check what it's sending.
+NOREPLY_MAIL_USERNAME = "noreply@hkmail.cn"
+
 
 def generate_signup_code(length=8):
     alphabet = string.ascii_uppercase + string.digits
@@ -1519,6 +1525,18 @@ def init_mail_db():
             (ADMIN_MAIL_USERNAME, admin_password_hash, "HKMail Administrator")
         )
 
+    # Ensure the no-reply account exists. It sends HKMail's own automated
+    # notices (welcome emails, Premium confirmations/renewals/cancellations)
+    # that used to come from the admin account. It shares the admin account's
+    # password so admins can log in as noreply@hkmail.cn to check its outbox.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (NOREPLY_MAIL_USERNAME,))
+    if not cur.fetchone():
+        noreply_password_hash = generate_password_hash(ADMIN_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
+            (NOREPLY_MAIL_USERNAME, noreply_password_hash, "HKMail (No-Reply)")
+        )
+
     # Ensure the HKS Bank system mailbox exists so it can send signup codes.
     # It gets a random, never-shared password since no one logs into it directly.
     cur.execute("SELECT id FROM mail_users WHERE username=?", (SYSTEM_MAIL_SENDER,))
@@ -1611,7 +1629,7 @@ def _activate_mail_premium(mail_username, plan_id, card_id):
     cur.execute(
         "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
         (
-            ADMIN_MAIL_USERNAME, mail_username, "Welcome to HKMail Premium!",
+            NOREPLY_MAIL_USERNAME, mail_username, "Welcome to HKMail Premium!",
             f"Hi,\n\nYou're now subscribed to HKMail {plan['label']} — "
             f"{plan['storage_mb'] // 1024}GB of storage for ${plan['price']:.2f}/month.\n\n"
             "Your Premium badge will now appear next to your name whenever you send or "
@@ -1661,7 +1679,7 @@ def mail_run_billing_cycle(username):
         """, (username,))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (ADMIN_MAIL_USERNAME, username, "Your HKMail Premium plan has ended",
+            (NOREPLY_MAIL_USERNAME, username, "Your HKMail Premium plan has ended",
              f"Your {plan_label} subscription was cancelled and its final billing period has "
              f"now ended. Your account has reverted to the Free plan ({FREE_STORAGE_MB // 1024}GB storage).")
         )
@@ -1674,7 +1692,7 @@ def mail_run_billing_cycle(username):
         cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (username,))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (ADMIN_MAIL_USERNAME, username, "HKMail Premium renewal needed",
+            (NOREPLY_MAIL_USERNAME, username, "HKMail Premium renewal needed",
              f"We couldn't automatically renew your {plan_label} subscription because no HKS Bank "
              "card is saved for billing. Please renew manually from the Storage page before your "
              "current period ends, or it will move to the Free plan.")
@@ -1705,7 +1723,7 @@ def mail_run_billing_cycle(username):
                     (new_next.isoformat(), username))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (ADMIN_MAIL_USERNAME, username, "HKMail Premium renewed",
+            (NOREPLY_MAIL_USERNAME, username, "HKMail Premium renewed",
              f"Your {plan_label} subscription renewed for ${price:.2f}. "
              f"Next billing date: {new_next.isoformat()}.")
         )
@@ -1714,7 +1732,7 @@ def mail_run_billing_cycle(username):
         cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (username,))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (ADMIN_MAIL_USERNAME, username, "HKMail Premium renewal failed",
+            (NOREPLY_MAIL_USERNAME, username, "HKMail Premium renewal failed",
              f"We couldn't renew your {plan_label} subscription — the card on file was declined "
              "or is no longer available. Your plan has been cancelled and will move to Free once "
              "your current period ends.")
@@ -1775,25 +1793,27 @@ def hkmail_register():
             (username, password_hash, full_name)
         )
 
-        # Drop a welcome email from the admin account into the new inbox so
-        # every user's very first message shows what an official HKMail
-        # admin/verified sender looks like.
+        # Drop a welcome email from the no-reply system account into the new
+        # inbox so every user's very first message shows what an official
+        # HKMail sender looks like (and explains the badges they'll see).
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
             (
-                ADMIN_MAIL_USERNAME,
+                NOREPLY_MAIL_USERNAME,
                 username,
                 "Welcome to HKMail!",
                 f"Hi {first_name or 'there'},\n\n"
                 f"Welcome to HKMail — your new address is {username}.\n\n"
                 "A couple of things worth knowing as you get started:\n\n"
-                "  • Messages from this address (admin@hkmail.cn) carry an \"Admin\" badge, "
-                "so you can always tell when HKMail's administrators are contacting you.\n"
-                "  • Some senders — like official service accounts — carry a blue \"Verified\" "
-                "badge. If a message claims to be from an official service but has no badge, "
-                "be cautious.\n\n"
+                "  • This message comes from noreply@hkmail.cn — HKMail's automated system "
+                "account. Don't reply to it; nobody reads that inbox.\n"
+                "  • Messages from admin@hkmail.cn carry an \"Admin\" badge, so you can always "
+                "tell when HKMail's administrators are contacting you.\n"
+                "  • Some senders — like official service accounts and Premium subscribers — "
+                "carry a \"Verified\" or \"Premium\" badge. If a message claims to be from an "
+                "official service but has no badge, be cautious.\n\n"
                 "That's it — enjoy your inbox!\n\n"
-                "— HKMail Administrator"
+                "— HKMail"
             )
         )
 
@@ -1809,6 +1829,10 @@ def hkmail_login_api():
     data     = request.get_json()
     username = data.get("username", "").strip().lower()
     password = data.get("password", "").strip()
+
+    # Auto-append @hkmail.cn if no domain given (e.g. "noreply" -> "noreply@hkmail.cn")
+    if username and "@" not in username:
+        username = username + "@hkmail.cn"
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
@@ -2033,7 +2057,7 @@ def hkmail_delete_account():
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
-    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER):
+    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME):
         return jsonify({"success": False, "message": "This account can't be deleted."}), 400
 
     data     = request.get_json() or {}
