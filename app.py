@@ -1627,18 +1627,43 @@ def mail_storage_limit_mb(username):
     return total
 
 
-def mail_storage_used_bytes(username):
-    """Bytes of mail currently stored for this mailbox (sent copies the user
-    hasn't trashed, plus received copies the user hasn't trashed). Each email
-    row is counted once even for self-sends, since it's a single stored row."""
-    conn = sqlite3.connect(MAIL_DATABASE)
-    cur  = conn.cursor()
-    cur.execute("""
-        SELECT COALESCE(SUM(LENGTH(subject) + LENGTH(body)), 0)
+def mail_storage_used_bytes(username, cur=None):
+    """Bytes of mail currently stored for this mailbox (sent copies plus
+    received copies). Each email row is counted once even for self-sends,
+    since it's a single stored row.
+
+    Byte counting: uses SQL's LENGTH() cast to BLOB rather than plain
+    LENGTH(subject)/LENGTH(body). SQLite's LENGTH() on a TEXT value returns
+    the character count, not the byte count — for any non-ASCII text that
+    silently undercounts and drifts from the byte-based check applied at
+    send time (len(subject.encode("utf-8")) + len(body.encode("utf-8"))).
+    Casting to BLOB first makes LENGTH() measure UTF-8 bytes, so this query
+    matches the send-time check exactly.
+
+    Trash counts toward quota: a soft-deleted email (deleted_by_sender=1 or
+    deleted_by_recipient=1) still occupies a row in `emails` — the content
+    isn't actually freed until it's permanently deleted (DELETE FROM emails,
+    see /email/<id>/delete-permanent). So trashed mail is intentionally
+    still counted here; only a permanent delete reduces used_bytes. Emptying
+    Trash is therefore how a user actually frees up space, not just
+    dragging mail there.
+    """
+    query = """
+        SELECT COALESCE(SUM(LENGTH(CAST(subject AS BLOB)) + LENGTH(CAST(body AS BLOB))), 0)
         FROM emails
-        WHERE (sender=? AND deleted_by_sender=0) OR (recipient=? AND deleted_by_recipient=0)
-    """, (username, username))
-    total = cur.fetchone()[0] or 0
+        WHERE sender=? OR recipient=?
+    """
+    if cur is not None:
+        # Reuse the caller's cursor/connection so this read happens inside
+        # whatever transaction the caller already holds (see hkmail_send,
+        # where this must be read atomically with the INSERT that follows).
+        cur.execute(query, (username, username))
+        return cur.fetchone()[0] or 0
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    c = conn.cursor()
+    c.execute(query, (username, username))
+    total = c.fetchone()[0] or 0
     conn.close()
     return total
 
@@ -1971,45 +1996,63 @@ def hkmail_send():
 
     message_size = len(subject.encode("utf-8")) + len(body.encode("utf-8"))
 
-    sender_limit_bytes = mail_storage_limit_mb(u) * 1024 * 1024
-    if mail_storage_used_bytes(u) + message_size > sender_limit_bytes:
-        return jsonify({
-            "success": False,
-            "message": "Your mailbox is full. Delete some mail or upgrade to Premium for more storage."
-        }), 400
-
-    conn = sqlite3.connect(MAIL_DATABASE)
+    # The quota check-then-insert below has to be atomic: read used_bytes,
+    # compare to the limit, then INSERT. Done as three separate statements
+    # on separate connections, two concurrent sends near the limit could
+    # both read a used_bytes that's still under quota, both pass the check,
+    # and both insert — pushing the mailbox over quota.
+    #
+    # BEGIN IMMEDIATE grabs SQLite's write lock up front (rather than only
+    # at the first write), so a second concurrent request blocks here until
+    # the first one has committed or rolled back. By the time it re-reads
+    # used_bytes, it sees the first send's row already counted, closing the
+    # race. isolation_level=None puts the connection in autocommit mode so
+    # "BEGIN IMMEDIATE" is issued exactly as written instead of sqlite3's
+    # default implicit-transaction handling getting in the way.
+    conn = sqlite3.connect(MAIL_DATABASE, isolation_level=None)
     cur  = conn.cursor()
+    try:
+        cur.execute("BEGIN IMMEDIATE")
 
-    # Verify recipient exists
-    cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
-    if not cur.fetchone():
-        conn.close()
-        return jsonify({"success": False, "message": f"No HKMail account found for {recipient}."}), 404
+        # Verify recipient exists
+        cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
+        if not cur.fetchone():
+            conn.rollback()
+            return jsonify({"success": False, "message": f"No HKMail account found for {recipient}."}), 404
 
-    if recipient != u:
-        recipient_limit_bytes = mail_storage_limit_mb(recipient) * 1024 * 1024
-        if mail_storage_used_bytes(recipient) + message_size > recipient_limit_bytes:
-            conn.close()
+        sender_limit_bytes = mail_storage_limit_mb(u) * 1024 * 1024
+        if mail_storage_used_bytes(u, cur=cur) + message_size > sender_limit_bytes:
+            conn.rollback()
             return jsonify({
                 "success": False,
-                "message": f"{recipient}'s mailbox is full and can't accept this message right now."
+                "message": "Your mailbox is full. Delete some mail or upgrade to Premium for more storage."
             }), 400
 
-    # Self-send: one row, shows in both sent & inbox
-    if recipient == u:
-        cur.execute(
-            "INSERT INTO emails (sender, recipient, subject, body, folder_sender, folder_recipient) VALUES (?,?,?,?,?,?)",
-            (u, recipient, subject, body, 'sent', 'inbox')
-        )
-    else:
-        cur.execute(
-            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?,?,?,?)",
-            (u, recipient, subject, body)
-        )
+        if recipient != u:
+            recipient_limit_bytes = mail_storage_limit_mb(recipient) * 1024 * 1024
+            if mail_storage_used_bytes(recipient, cur=cur) + message_size > recipient_limit_bytes:
+                conn.rollback()
+                return jsonify({
+                    "success": False,
+                    "message": f"{recipient}'s mailbox is full and can't accept this message right now."
+                }), 400
 
-    conn.commit()
-    conn.close()
+        # Self-send: one row, shows in both sent & inbox
+        if recipient == u:
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body, folder_sender, folder_recipient) VALUES (?,?,?,?,?,?)",
+                (u, recipient, subject, body, 'sent', 'inbox')
+            )
+        else:
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?,?,?,?)",
+                (u, recipient, subject, body)
+            )
+
+        conn.commit()
+    finally:
+        conn.close()
+
     return jsonify({"success": True, "message": f"Message sent to {recipient}."})
 
 
