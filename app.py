@@ -1482,20 +1482,31 @@ def init_mail_db():
     """)
 
     # Safe migration for existing databases created before is_verified existed
-    for stmt in [
-        "ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0",
-        # Storage / premium subscription columns
-        "ALTER TABLE mail_users ADD COLUMN premium_plan TEXT",                 # '5gb' | '25gb' | '50gb' | '100gb' | NULL
-        "ALTER TABLE mail_users ADD COLUMN premium_status TEXT",               # 'active' | 'cancelled' | NULL
-        "ALTER TABLE mail_users ADD COLUMN premium_price REAL NOT NULL DEFAULT 0.0",
-        "ALTER TABLE mail_users ADD COLUMN premium_card_id INTEGER",           # HKS Bank cards.id used for billing
-        "ALTER TABLE mail_users ADD COLUMN premium_next_billing TEXT",         # ISO date of next charge
-        "ALTER TABLE mail_users ADD COLUMN premium_started_at DATETIME",
-    ]:
-        try:
-            cur.execute(stmt)
-        except sqlite3.OperationalError:
-            pass
+    try:
+        cur.execute("ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    # Premium subscriptions — one row per plan a mailbox has purchased. Plans
+    # stack: a mailbox can hold several rows at once (e.g. both 50gb and
+    # 100gb), and its total storage is Free + the sum of all rows here that
+    # are still in effect ('active' or 'cancelled'-but-not-yet-expired).
+    # UNIQUE(username, plan_id) means re-subscribing to a plan you already
+    # have (even one you'd cancelled) reactivates the same row rather than
+    # creating a duplicate.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS mail_subscriptions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            username     TEXT NOT NULL,
+            plan_id      TEXT NOT NULL,              -- '5gb' | '25gb' | '50gb' | '100gb'
+            price        REAL NOT NULL,
+            status       TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'cancelled'
+            card_id      INTEGER,                    -- HKS Bank cards.id used for billing
+            next_billing TEXT,                        -- ISO date of next charge, or of grace-period end
+            started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(username, plan_id)
+        )
+    """)
 
     # Emails table
     cur.execute("""
@@ -1558,28 +1569,28 @@ def mail_current_user():
 
 # ── HKMail: storage & premium subscription helpers ─────────────────────────────
 
-def mail_get_premium_row(username):
-    """Return (premium_plan, premium_status, premium_price, premium_card_id,
-    premium_next_billing) for a mailbox, or None if the user doesn't exist."""
+def mail_get_subscriptions(username):
+    """All subscription rows for a mailbox: (id, plan_id, price, status, card_id, next_billing)."""
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT premium_plan, premium_status, premium_price, premium_card_id, premium_next_billing
-        FROM mail_users WHERE username=?
+        SELECT id, plan_id, price, status, card_id, next_billing
+        FROM mail_subscriptions WHERE username=? ORDER BY price DESC
     """, (username,))
-    row = cur.fetchone()
+    rows = cur.fetchall()
     conn.close()
-    return row
+    return rows
 
 
 def mail_storage_limit_mb(username):
-    """Current storage cap in MB — the plan's limit if Premium is active, else Free."""
-    row = mail_get_premium_row(username)
-    if row and row[0] and row[1] == "active":
-        plan = MAIL_PLANS.get(row[0])
-        if plan:
-            return plan["storage_mb"]
-    return FREE_STORAGE_MB
+    """Free 1GB plus every plan the mailbox currently holds — plans stack."""
+    total = FREE_STORAGE_MB
+    for _id, plan_id, _price, status, _card_id, _next in mail_get_subscriptions(username):
+        if status in ("active", "cancelled"):
+            plan = MAIL_PLANS.get(plan_id)
+            if plan:
+                total += plan["storage_mb"]
+    return total
 
 
 def mail_storage_used_bytes(username):
@@ -1598,15 +1609,28 @@ def mail_storage_used_bytes(username):
     return total
 
 
-def mail_is_premium_active(username):
-    row = mail_get_premium_row(username)
-    return bool(row and row[0] and row[1] == "active")
+def mail_get_premium_summary(username):
+    """(is_premium, badge_label) for wherever this mailbox appears as a sender.
+    is_premium is True if any plan is still in effect (active, or cancelled
+    but not yet past its grace-period end); badge_label names the largest
+    such plan, since that's the one worth bragging about in the badge."""
+    best_label = None
+    best_price = -1
+    for _id, plan_id, price, status, _card_id, _next in mail_get_subscriptions(username):
+        if status in ("active", "cancelled") and price > best_price:
+            plan = MAIL_PLANS.get(plan_id)
+            if plan:
+                best_price = price
+                best_label = plan["label"]
+    return (best_label is not None), best_label
 
 
 def _activate_mail_premium(mail_username, plan_id, card_id):
     """Called right after a successful HKS Bank payment for an HKMail Premium
-    subscription. Records the plan, price, and billing card on the mailbox and
-    schedules the first renewal one month out."""
+    plan. Creates (or reactivates, if this exact plan was previously
+    cancelled and expired) a subscription row and schedules the first
+    renewal one month out. Plans stack — this never touches the mailbox's
+    other subscriptions."""
     plan = MAIL_PLANS.get(plan_id)
     if not plan or not mail_username:
         return False
@@ -1620,11 +1644,21 @@ def _activate_mail_premium(mail_username, plan_id, card_id):
 
     next_billing = add_one_month(date.today())
     cur.execute("""
-        UPDATE mail_users
-        SET premium_plan=?, premium_status='active', premium_price=?,
-            premium_card_id=?, premium_next_billing=?, premium_started_at=CURRENT_TIMESTAMP
-        WHERE username=?
-    """, (plan_id, plan["price"], card_id, next_billing.isoformat(), mail_username))
+        INSERT INTO mail_subscriptions (username, plan_id, price, status, card_id, next_billing)
+        VALUES (?, ?, ?, 'active', ?, ?)
+        ON CONFLICT(username, plan_id) DO UPDATE SET
+            price=excluded.price, status='active', card_id=excluded.card_id,
+            next_billing=excluded.next_billing
+    """, (mail_username, plan_id, plan["price"], card_id, next_billing.isoformat()))
+
+    total_mb = FREE_STORAGE_MB
+    cur.execute("""
+        SELECT plan_id FROM mail_subscriptions WHERE username=? AND status IN ('active','cancelled')
+    """, (mail_username,))
+    for (pid,) in cur.fetchall():
+        p = MAIL_PLANS.get(pid)
+        if p:
+            total_mb += p["storage_mb"]
 
     cur.execute(
         "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
@@ -1632,10 +1666,12 @@ def _activate_mail_premium(mail_username, plan_id, card_id):
             NOREPLY_MAIL_USERNAME, mail_username, "Welcome to HKMail Premium!",
             f"Hi,\n\nYou're now subscribed to HKMail {plan['label']} — "
             f"{plan['storage_mb'] // 1024}GB of storage for ${plan['price']:.2f}/month.\n\n"
+            f"Your total storage is now {total_mb // 1024}GB (Free plan plus every Premium tier you "
+            "hold — plans stack instead of replacing each other).\n\n"
             "Your Premium badge will now appear next to your name whenever you send or "
-            f"receive mail. Your next billing date is {next_billing.isoformat()}.\n\n"
-            "You can cancel anytime from the Storage page — you'll keep Premium until "
-            "the end of the period you've already paid for.\n\n"
+            f"receive mail. Its next billing date is {next_billing.isoformat()}.\n\n"
+            "You can cancel any plan anytime from the Storage page — you'll keep that plan's "
+            "storage until the end of the period you've already paid for.\n\n"
             "— HKMail"
         )
     )
@@ -1645,43 +1681,22 @@ def _activate_mail_premium(mail_username, plan_id, card_id):
     return True
 
 
-def mail_run_billing_cycle(username):
-    """Check whether this mailbox's next billing date has arrived and, if so,
-    either renew (charging the saved HKS Bank card) or let a cancellation take
-    effect. Safe to call on every page load — it's a no-op unless a charge is
-    actually due."""
-    row = mail_get_premium_row(username)
-    if not row or not row[0] or not row[4]:
-        return
-    plan_id, status, price, card_id, next_billing_str = row
-    if status not in ("active", "cancelled"):
-        return
-
-    try:
-        next_billing = date.fromisoformat(next_billing_str)
-    except (TypeError, ValueError):
-        return
-    if date.today() < next_billing:
-        return
-
+def _mail_subscription_due(username, sub_id, plan_id, price, status, card_id, next_billing):
+    """Handle one subscription row whose next_billing date has arrived."""
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     plan = MAIL_PLANS.get(plan_id, {})
     plan_label = plan.get("label", "HKMail Premium")
 
     if status == "cancelled":
-        # Grace period the user already paid for has ended — downgrade to Free.
-        cur.execute("""
-            UPDATE mail_users
-            SET premium_plan=NULL, premium_status=NULL, premium_price=0,
-                premium_card_id=NULL, premium_next_billing=NULL
-            WHERE username=?
-        """, (username,))
+        # Grace period the user already paid for has ended — this plan goes away.
+        cur.execute("DELETE FROM mail_subscriptions WHERE id=?", (sub_id,))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (NOREPLY_MAIL_USERNAME, username, "Your HKMail Premium plan has ended",
-             f"Your {plan_label} subscription was cancelled and its final billing period has "
-             f"now ended. Your account has reverted to the Free plan ({FREE_STORAGE_MB // 1024}GB storage).")
+            (NOREPLY_MAIL_USERNAME, username, f"Your HKMail {plan_label} plan has ended",
+             f"Your {plan_label} subscription was cancelled and its final billing period has now "
+             "ended. That plan's storage and badge have been removed — your remaining storage is "
+             "the Free 1GB plus any other Premium plans you still hold.")
         )
         conn.commit()
         conn.close()
@@ -1689,13 +1704,13 @@ def mail_run_billing_cycle(username):
 
     # status == 'active' and a renewal charge is due
     if not card_id:
-        cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (username,))
+        cur.execute("UPDATE mail_subscriptions SET status='cancelled' WHERE id=?", (sub_id,))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (NOREPLY_MAIL_USERNAME, username, "HKMail Premium renewal needed",
+            (NOREPLY_MAIL_USERNAME, username, f"HKMail {plan_label} renewal needed",
              f"We couldn't automatically renew your {plan_label} subscription because no HKS Bank "
-             "card is saved for billing. Please renew manually from the Storage page before your "
-             "current period ends, or it will move to the Free plan.")
+             "card is saved for it. Resubscribe from the Storage page before your current period "
+             "ends, or it will be removed.")
         )
         conn.commit()
         conn.close()
@@ -1713,33 +1728,50 @@ def mail_run_billing_cycle(username):
     charge_ok = False
     if card and card[9] == "active" and not is_card_expired(card[6], card[7]):
         charge_ok, _msg = _debit_for_card_payment(
-            bank_cur, card, price, f"HKMail Premium — {plan_label} (monthly renewal)"
+            bank_cur, card, price, f"HKMail {plan_label} (monthly renewal)"
         )
 
     if charge_ok:
         bank_conn.commit()
         new_next = add_one_month(next_billing)
-        cur.execute("UPDATE mail_users SET premium_next_billing=? WHERE username=?",
-                    (new_next.isoformat(), username))
+        cur.execute("UPDATE mail_subscriptions SET next_billing=? WHERE id=?",
+                    (new_next.isoformat(), sub_id))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (NOREPLY_MAIL_USERNAME, username, "HKMail Premium renewed",
+            (NOREPLY_MAIL_USERNAME, username, f"HKMail {plan_label} renewed",
              f"Your {plan_label} subscription renewed for ${price:.2f}. "
              f"Next billing date: {new_next.isoformat()}.")
         )
     else:
         bank_conn.rollback()
-        cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (username,))
+        cur.execute("DELETE FROM mail_subscriptions WHERE id=?", (sub_id,))
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (NOREPLY_MAIL_USERNAME, username, "HKMail Premium renewal failed",
+            (NOREPLY_MAIL_USERNAME, username, f"HKMail {plan_label} renewal failed",
              f"We couldn't renew your {plan_label} subscription — the card on file was declined "
-             "or is no longer available. Your plan has been cancelled and will move to Free once "
-             "your current period ends.")
+             "or is no longer available. That plan has been removed — your remaining storage is "
+             "the Free 1GB plus any other Premium plans you still hold.")
         )
     bank_conn.close()
     conn.commit()
     conn.close()
+
+
+def mail_run_billing_cycle(username):
+    """Check every subscription this mailbox holds and, for any whose next
+    billing date has arrived, either renew it (charging its saved HKS Bank
+    card) or let a cancellation take effect. Safe to call on every page
+    load — a no-op unless a charge or expiry is actually due."""
+    for sub_id, plan_id, price, status, card_id, next_billing_str in mail_get_subscriptions(username):
+        if not next_billing_str:
+            continue
+        try:
+            next_billing = date.fromisoformat(next_billing_str)
+        except (TypeError, ValueError):
+            continue
+        if date.today() < next_billing:
+            continue
+        _mail_subscription_due(username, sub_id, plan_id, price, status, card_id, next_billing)
 
 
 # ── HKMail page routes ─────────────────────────────────────────────────────────
@@ -1865,18 +1897,17 @@ def hkmail_current_user():
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
         cur.execute("""
-            SELECT full_name, is_admin, is_verified, premium_plan, premium_status
+            SELECT full_name, is_admin, is_verified
             FROM mail_users WHERE username=?
         """, (u,))
         row = cur.fetchone()
         conn.close()
         if row:
-            is_premium = bool(row[3] and row[4] == 'active')
-            plan = MAIL_PLANS.get(row[3]) if is_premium else None
+            is_premium, badge_label = mail_get_premium_summary(u)
             return jsonify({"loggedIn": True, "username": u, "fullName": row[0],
                             "isAdmin": bool(row[1]), "isVerified": bool(row[2]),
                             "isPremium": is_premium,
-                            "premiumLabel": plan["label"] if plan else None})
+                            "premiumLabel": badge_label})
     return jsonify({"loggedIn": False})
 
 
@@ -1971,28 +2002,41 @@ def hkmail_storage():
 
     mail_run_billing_cycle(u)
 
-    row = mail_get_premium_row(u)
-    plan_id, status, price, card_id, next_billing = row if row else (None, None, 0.0, None, None)
-    is_premium = bool(plan_id and status == 'active')
-    is_cancelled_pending = bool(plan_id and status == 'cancelled')
-    plan = MAIL_PLANS.get(plan_id) if (is_premium or is_cancelled_pending) else None
+    # A mailbox can hold several plans at once (they stack), so report every
+    # plan's individual status rather than assuming a single active plan.
+    subs_by_plan = {plan_id: (status, price, card_id, next_billing)
+                     for _id, plan_id, price, status, card_id, next_billing in mail_get_subscriptions(u)}
 
+    is_premium, badge_label = mail_get_premium_summary(u)
     used_bytes = mail_storage_used_bytes(u)
     limit_mb   = mail_storage_limit_mb(u)
+
+    plans_payload = []
+    for p in MAIL_PLANS.values():
+        sub = subs_by_plan.get(p["id"])
+        if sub:
+            status, price, card_id, next_billing = sub
+            plans_payload.append({
+                "id": p["id"], "label": p["label"], "storage_mb": p["storage_mb"],
+                "storage_gb": p["storage_mb"] // 1024, "price": price,
+                "status": status, "next_billing": next_billing,
+                "auto_renews": bool(status == "active" and card_id),
+            })
+        else:
+            plans_payload.append({
+                "id": p["id"], "label": p["label"], "storage_mb": p["storage_mb"],
+                "storage_gb": p["storage_mb"] // 1024, "price": p["price"],
+                "status": None, "next_billing": None, "auto_renews": False,
+            })
 
     return jsonify({
         "success": True,
         "used_bytes": used_bytes,
         "used_mb": round(used_bytes / (1024 * 1024), 3),
         "limit_mb": limit_mb,
-        "plan": plan_id,
-        "plan_label": plan["label"] if plan else "Free",
-        "status": status,
-        "price": price,
-        "next_billing": next_billing,
         "is_premium": is_premium,
-        "auto_renews": bool(is_premium and card_id),
-        "plans": _mail_plans_payload(),
+        "badge_label": badge_label,
+        "plans": plans_payload,
         "free_storage_mb": FREE_STORAGE_MB,
     })
 
@@ -2011,9 +2055,21 @@ def hkmail_premium_start():
     if not plan:
         return jsonify({"success": False, "message": "Unknown plan."}), 400
 
-    row = mail_get_premium_row(u)
-    if row and row[0] == plan_id and row[1] == 'active':
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT status FROM mail_subscriptions WHERE username=? AND plan_id=?", (u, plan_id))
+    row = cur.fetchone()
+    conn.close()
+
+    if row and row[0] == 'active':
         return jsonify({"success": False, "message": f"You're already subscribed to {plan['label']}."}), 400
+    if row and row[0] == 'cancelled':
+        return jsonify({
+            "success": False,
+            "canResume": True,
+            "message": f"You already have {plan['label']} — it's cancelled but still active. "
+                       "Turn recurring billing back on instead of paying again."
+        }), 400
 
     from urllib.parse import quote
     desc      = f"HKMail {plan['label']} Subscription"
@@ -2032,21 +2088,75 @@ def hkmail_premium_cancel():
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
-    row = mail_get_premium_row(u)
-    if not row or not row[0] or row[1] != 'active':
-        return jsonify({"success": False, "message": "You don't have an active Premium plan."}), 400
+    data    = request.get_json() or {}
+    plan_id = (data.get("plan", "") or "").strip().lower()
+    plan    = MAIL_PLANS.get(plan_id)
+    if not plan:
+        return jsonify({"success": False, "message": "Unknown plan."}), 400
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("UPDATE mail_users SET premium_status='cancelled' WHERE username=?", (u,))
+    cur.execute("SELECT id, status, next_billing FROM mail_subscriptions WHERE username=? AND plan_id=?",
+                (u, plan_id))
+    row = cur.fetchone()
+    if not row or row[1] != 'active':
+        conn.close()
+        return jsonify({"success": False, "message": f"You don't have an active {plan['label']} plan."}), 400
+
+    sub_id, _status, next_billing = row
+    cur.execute("UPDATE mail_subscriptions SET status='cancelled' WHERE id=?", (sub_id,))
     conn.commit()
     conn.close()
 
-    plan = MAIL_PLANS.get(row[0], {})
     return jsonify({
         "success": True,
-        "message": f"Your {plan.get('label','Premium')} subscription has been cancelled. "
-                    f"You'll keep your storage and badge until {row[4]}, and won't be charged again."
+        "message": f"Your {plan['label']} subscription has been cancelled. "
+                    f"You'll keep that plan's storage and badge until {next_billing}, and won't be charged again."
+    })
+
+
+@app.route('/api/hkmail/premium/resume', methods=['POST'])
+def hkmail_premium_resume():
+    """Turn recurring billing back on for a plan that's cancelled but still
+    within its paid-for grace period — no new payment, reuses the card that
+    was on file when the plan was cancelled. Only affects that one plan;
+    any other plans the mailbox holds are untouched."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data    = request.get_json() or {}
+    plan_id = (data.get("plan", "") or "").strip().lower()
+    plan    = MAIL_PLANS.get(plan_id)
+    if not plan:
+        return jsonify({"success": False, "message": "Unknown plan."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id, status, card_id, next_billing FROM mail_subscriptions WHERE username=? AND plan_id=?",
+                (u, plan_id))
+    row = cur.fetchone()
+    if not row or row[1] != 'cancelled':
+        conn.close()
+        return jsonify({"success": False, "message": f"You don't have a cancelled {plan['label']} plan to resume."}), 400
+
+    sub_id, _status, card_id, next_billing = row
+    cur.execute("UPDATE mail_subscriptions SET status='active' WHERE id=?", (sub_id,))
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (NOREPLY_MAIL_USERNAME, u, f"HKMail {plan['label']} billing resumed",
+         f"Recurring billing for your {plan['label']} subscription is back on. "
+         f"You won't be charged again until {next_billing}, and your storage and badge for this "
+         "plan were never interrupted.")
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": f"Recurring billing for {plan['label']} is back on. "
+                    f"Next charge: {next_billing}." + ("" if card_id else
+                    " Note: no card is on file for it, so add one before that date or it will lapse again.")
     })
 
 
@@ -2073,12 +2183,7 @@ def hkmail_delete_account():
 
     # Cancelling immediately (rather than at period end) since the mailbox
     # and its billing record are about to be removed entirely.
-    cur.execute("""
-        UPDATE mail_users
-        SET premium_plan=NULL, premium_status=NULL, premium_price=0,
-            premium_card_id=NULL, premium_next_billing=NULL
-        WHERE username=?
-    """, (u,))
+    cur.execute("DELETE FROM mail_subscriptions WHERE username=?", (u,))
     cur.execute("DELETE FROM mail_users WHERE username=?", (u,))
     conn.commit()
     conn.close()
@@ -2100,22 +2205,21 @@ def hkmail_inbox_api():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
-               mu.premium_plan, mu.premium_status
+        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.recipient=? AND e.deleted_by_recipient=0
         ORDER BY e.sent_at DESC
     """, (u,))
+    rows = cur.fetchall()
+    conn.close()
     emails = []
-    for r in cur.fetchall():
-        is_premium = bool(r[7] and r[8] == 'active')
-        plan = MAIL_PLANS.get(r[7]) if is_premium else None
+    for r in rows:
+        is_premium, badge_label = mail_get_premium_summary(r[1])
         emails.append({"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4]),
                         "from_is_admin": bool(r[5]), "from_is_verified": bool(r[6]),
                         "from_is_premium": is_premium,
-                        "from_premium_label": plan["label"] if plan else None})
-    conn.close()
+                        "from_premium_label": badge_label})
     return jsonify({"success": True, "emails": emails})
 
 
@@ -2151,26 +2255,25 @@ def hkmail_trash_api():
     # Show emails deleted by this user (either as sender or recipient)
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
-               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
-               mu.premium_plan, mu.premium_status
+               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE (e.sender=? AND e.deleted_by_sender=1)
            OR (e.recipient=? AND e.deleted_by_recipient=1)
         ORDER BY e.sent_at DESC
     """, (u, u))
+    rows = cur.fetchall()
+    conn.close()
     emails = []
-    for r in cur.fetchall():
-        is_premium = bool(r[9] and r[10] == 'active')
-        plan = MAIL_PLANS.get(r[9]) if is_premium else None
+    for r in rows:
+        is_premium, badge_label = mail_get_premium_summary(r[1])
         emails.append({
             "id": r[0], "from": r[1], "to": r[2],
             "subject": r[3], "date": r[4],
             "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8]),
             "from_is_premium": is_premium,
-            "from_premium_label": plan["label"] if plan else None
+            "from_premium_label": badge_label
         })
-    conn.close()
     return jsonify({"success": True, "emails": emails})
 
 
@@ -2186,7 +2289,7 @@ def hkmail_read_email(email_id):
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.body, e.sent_at, e.read,
-               mu.is_admin, mu.is_verified, mu.premium_plan, mu.premium_status
+               mu.is_admin, mu.is_verified
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.id=?
@@ -2207,8 +2310,7 @@ def hkmail_read_email(email_id):
         conn.commit()
 
     conn.close()
-    is_premium = bool(row[9] and row[10] == 'active')
-    plan = MAIL_PLANS.get(row[9]) if is_premium else None
+    is_premium, badge_label = mail_get_premium_summary(row[1])
     return jsonify({
         "success": True,
         "email": {
@@ -2216,7 +2318,7 @@ def hkmail_read_email(email_id):
             "subject": row[3], "body": row[4], "date": row[5], "read": True,
             "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8]),
             "from_is_premium": is_premium,
-            "from_premium_label": plan["label"] if plan else None
+            "from_premium_label": badge_label
         }
     })
 

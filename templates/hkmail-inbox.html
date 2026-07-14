@@ -710,10 +710,15 @@
         .plan-card-btn:hover { background: var(--navy-lt); }
         .plan-card-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
 
-        .storage-cancel-box { border: 1px solid #FCC8CC; background: #FEF3F4; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .storage-cancel-box { border: 1px solid #FCC8CC; background: #FEF3F4; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
         .storage-cancel-box p { font-size: 0.82rem; color: var(--navy); }
         .btn-cancel-plan { background: transparent; border: 1.5px solid var(--red); color: var(--red); border-radius: 7px; padding: 8px 14px; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
         .btn-cancel-plan:hover { background: #FEE8EB; }
+
+        #storage-plans-status { margin-bottom: 6px; }
+        .storage-cancel-box.pending { border-color: #F5D68A; background: #FFF9EC; }
+        .btn-resume-plan { background: var(--navy); color: #fff; border: none; border-radius: 7px; padding: 8px 14px; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        .btn-resume-plan:hover { background: var(--navy-lt); }
 
         .danger-zone { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 16px; }
         .danger-zone summary { cursor: pointer; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
@@ -940,10 +945,7 @@
             <div class="storage-plan-label" id="storage-plan-label"></div>
         </div>
 
-        <div class="storage-cancel-box" id="storage-cancel-box" style="display:none;">
-            <p id="storage-cancel-text"></p>
-            <button class="btn-cancel-plan" onclick="cancelPremium()">Cancel plan</button>
-        </div>
+        <div id="storage-plans-status"></div>
 
         <div class="plan-grid" id="plan-grid">
             <div class="empty-state"><p>Loading plans…</p></div>
@@ -1463,42 +1465,50 @@
             fill.style.width = pct + '%';
             fill.className = 'storage-bar-fill' + (pct < 85 ? ' ok' : '');
             document.getElementById('storage-plan-label').textContent =
-                data.is_premium ? `Current plan: ${data.plan_label}` : 'Current plan: Free';
+                data.is_premium ? `Premium: ${data.badge_label}` : 'Current plan: Free';
 
-            const cancelBox = document.getElementById('storage-cancel-box');
-            if (data.is_premium && data.status === 'active') {
-                cancelBox.style.display = 'flex';
-                document.getElementById('storage-cancel-text').textContent =
-                    `Renews at $${data.price.toFixed(2)}/mo on ${data.next_billing}` +
-                    (data.auto_renews ? '' : ' — no card on file, renew manually before then.');
-            } else if (data.status === 'cancelled') {
-                cancelBox.style.display = 'flex';
-                document.getElementById('storage-cancel-box').querySelector('.btn-cancel-plan').style.display = 'none';
-                document.getElementById('storage-cancel-text').textContent =
-                    `Cancelled — Premium and your extra storage stay active until ${data.next_billing}.`;
-            } else {
-                cancelBox.style.display = 'none';
-            }
+            // Plans stack, so a mailbox can hold several at once — show a
+            // status row (with its own Cancel / Resume action) for every
+            // plan that's currently active or cancelled-but-still-in-effect.
+            const held = data.plans.filter(p => p.status === 'active' || p.status === 'cancelled');
+            const statusBox = document.getElementById('storage-plans-status');
+            statusBox.innerHTML = held.map(p => {
+                if (p.status === 'active') {
+                    return `
+                        <div class="storage-cancel-box">
+                            <p>${escHtml(p.label)} renews at $${p.price.toFixed(2)}/mo on ${p.next_billing}${p.auto_renews ? '' : ' — no card on file, renew manually before then.'}</p>
+                            <button class="btn-cancel-plan" onclick="cancelPlan('${p.id}')">Cancel plan</button>
+                        </div>`;
+                }
+                return `
+                    <div class="storage-cancel-box pending">
+                        <p>${escHtml(p.label)} cancelled — storage and badge stay active until ${p.next_billing}.</p>
+                        <button class="btn-resume-plan" onclick="resumePlan('${p.id}')">Resume billing</button>
+                    </div>`;
+            }).join('');
 
-            renderStoragePlans(data.plans, data.plan, data.is_premium);
+            renderStoragePlans(data.plans);
         } catch {
             msg.textContent = 'Could not load storage info.';
             msg.className = 'admin-status-msg err';
         }
     }
 
-    function renderStoragePlans(plans, currentPlanId, isPremium) {
+    function renderStoragePlans(plans) {
         const grid = document.getElementById('plan-grid');
         grid.innerHTML = plans.map(p => {
-            const isCurrent = isPremium && p.id === currentPlanId;
+            const isActive = p.status === 'active';
+            const isCancelled = p.status === 'cancelled';
+            let btnLabel = 'Subscribe';
+            let btnAttr  = `onclick="subscribeToPlan('${p.id}')"`;
+            if (isActive) { btnLabel = 'Current plan'; btnAttr = 'disabled'; }
+            else if (isCancelled) { btnLabel = 'Resume billing'; btnAttr = `onclick="resumePlan('${p.id}')"`; }
             return `
-                <div class="plan-card ${isCurrent ? 'current' : ''}">
+                <div class="plan-card ${isActive ? 'current' : ''}">
                     <div class="plan-card-size">${p.storage_gb}GB</div>
                     <div class="plan-card-price">$${p.price.toFixed(2)}<span> /mo</span></div>
-                    <div class="plan-card-badge-note">Premium badge on your mail</div>
-                    <button class="plan-card-btn" ${isCurrent ? 'disabled' : ''} onclick="subscribeToPlan('${p.id}')">
-                        ${isCurrent ? 'Current plan' : 'Subscribe'}
-                    </button>
+                    <div class="plan-card-badge-note">Premium badge on your mail${isCancelled ? ' — plans stack, this one just needs billing turned back on' : ''}</div>
+                    <button class="plan-card-btn" ${btnAttr}>${btnLabel}</button>
                 </div>`;
         }).join('');
     }
@@ -1515,6 +1525,9 @@
             const data = await res.json();
             if (data.success) {
                 window.location.href = data.checkout_url;
+            } else if (data.canResume) {
+                // Already owns this plan, just cancelled — resume instead of paying again.
+                await resumePlan(planId);
             } else {
                 msg.textContent = data.message || 'Could not start checkout.';
                 msg.className = 'admin-status-msg err';
@@ -1525,11 +1538,33 @@
         }
     }
 
-    async function cancelPremium() {
-        if (!confirm("Cancel your Premium plan? You'll keep it until the end of the current billing period.")) return;
+    async function cancelPlan(planId) {
+        if (!confirm("Cancel this plan? You'll keep its storage until the end of the current billing period.")) return;
         const msg = document.getElementById('storage-msg');
         try {
-            const res  = await fetch('/api/hkmail/premium/cancel', { method: 'POST' });
+            const res  = await fetch('/api/hkmail/premium/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: planId })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) await loadStorageInfo();
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function resumePlan(planId) {
+        const msg = document.getElementById('storage-msg');
+        try {
+            const res  = await fetch('/api/hkmail/premium/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan: planId })
+            });
             const data = await res.json();
             msg.textContent = data.message || '';
             msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
