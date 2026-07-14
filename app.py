@@ -2105,6 +2105,17 @@ def hkmail_premium_cancel():
 
     sub_id, _status, next_billing = row
     cur.execute("UPDATE mail_subscriptions SET status='cancelled' WHERE id=?", (sub_id,))
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (NOREPLY_MAIL_USERNAME, u, f"Your HKMail {plan['label']} subscription was cancelled",
+         f"Hi,\n\nYour {plan['label']} subscription has been cancelled and won't renew or be "
+         f"charged again. You'll keep that plan's storage and Premium badge until {next_billing}, "
+         "after which that plan's storage will be removed (any other Premium plans you hold are "
+         "unaffected).\n\n"
+         "Changed your mind? You can turn recurring billing back on for this exact plan any time "
+         "before then from the Storage page, at no extra charge.\n\n"
+         "— HKMail")
+    )
     conn.commit()
     conn.close()
 
