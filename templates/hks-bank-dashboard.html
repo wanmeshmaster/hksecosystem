@@ -123,6 +123,18 @@
         .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
         .bank-card { position: relative; border-radius: 16px; padding: 22px 24px; color: #fff; min-height: 170px; display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(135deg, #0052cc 0%, #002244 100%); box-shadow: 0 8px 20px rgba(0,34,68,0.25); overflow: hidden; }
         .bank-card.account-secondary { background: linear-gradient(135deg, #7c3aed 0%, #2e1065 100%); box-shadow: 0 8px 20px rgba(46,16,101,0.25); }
+        .bank-card.hkmail-type { background: linear-gradient(135deg, #0B1A33 0%, #050b16 100%); box-shadow: 0 8px 20px rgba(11,26,51,0.4); }
+        .bank-card.hkmail-type::after {
+            content: "";
+            position: absolute;
+            right: -18px; bottom: -22px;
+            width: 150px; height: 150px;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'><rect x='2' y='5' width='20' height='14' rx='2' stroke='%23D72638' stroke-width='1.8'/><polyline points='2,6 12,13 22,6' stroke='%23D72638' stroke-width='1.8' stroke-linejoin='round' fill='none'/></svg>");
+            background-size: contain;
+            background-repeat: no-repeat;
+            opacity: 0.35;
+            pointer-events: none;
+        }
         .bank-card.frozen { filter: grayscale(0.6); }
         .bank-card.cancelled { filter: grayscale(1); opacity: 0.55; }
         .bank-card.expired { filter: grayscale(0.85); opacity: 0.7; }
@@ -148,6 +160,7 @@
         .em-card-status-tag.frozen { background: #fef3c7; color: #b45309; }
         .em-card-status-tag.cancelled { background: #fee2e2; color: #b91c1c; }
         .em-card-status-tag.expired { background: #e2e8f0; color: #475569; }
+        .em-card-type-tag { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; background: #0B1A33; color: #fff; width: fit-content; letter-spacing: 0.3px; }
         .em-card-actions { display: flex; gap: 6px; }
         .em-freeze-btn { background: transparent; color: #f59e0b; border: 1px solid #fcd34d; padding: 4px 10px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .em-freeze-btn:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
@@ -423,7 +436,10 @@
                     <div class="em-sub-label">Issue New Card</div>
                     <div class="em-new-account-grid">
                         <select class="em-select" id="em-card-account"></select>
-                        <span></span>
+                        <select class="em-select" id="em-card-type">
+                            <option value="regular">Regular card</option>
+                            <option value="hkmail">HKMail card (merchant)</option>
+                        </select>
                         <button class="em-create-btn" onclick="emIssueCard()">Issue Card</button>
                     </div>
                     <div class="em-status" id="em-card-msg"></div>
@@ -539,7 +555,8 @@
             data.cards.forEach(c => {
                 const el = document.createElement('div');
                 const isSecondary = c.account_label !== 'Current Account';
-                el.className = `bank-card ${isSecondary ? 'account-secondary' : ''} ${c.status}`.trim();
+                const typeClass = c.card_type === 'hkmail' ? 'hkmail-type' : (isSecondary ? 'account-secondary' : '');
+                el.className = `bank-card ${typeClass} ${c.status}`.trim();
                 const statusPill = c.status !== 'active' ? `<span class="bank-card-status-pill ${c.status}">${c.status}</span>` : '';
                 const displayNumber = c.card_number ? c.card_number.replace(/(.{4})/g, '$1 ').trim() : c.masked_number;
                 el.innerHTML = `
@@ -674,6 +691,7 @@
         setMsg('em-delete-msg', '', null);
         setMsg('em-card-msg', '', null);
         document.getElementById('em-new-card-reveal').style.display = 'none';
+        document.getElementById('em-card-type').value = 'regular';
 
         // Cannot delete yourself
         const delBtn = document.getElementById('em-delete-user-btn');
@@ -887,6 +905,7 @@
                     row.className = 'em-card-row';
                     row.id = `em-card-row-${c.id}`;
                     const statusTag = `<span class="em-card-status-tag ${c.status}">${c.status}</span>`;
+                    const typeTag = c.card_type === 'hkmail' ? `<span class="em-card-type-tag">HKMail</span>` : '';
                     const freezeBtn = c.raw_status === 'cancelled' ? '' :
                         `<button class="em-freeze-btn" onclick="emToggleCardFreeze(${c.id})">${c.raw_status === 'frozen' ? 'Unfreeze' : 'Freeze'}</button>`;
                     const cancelBtn = c.raw_status === 'cancelled' ? '' :
@@ -897,7 +916,7 @@
                         <div class="em-card-row-left">
                             <span class="em-card-number-mono">${c.masked_number}</span>
                             <span class="em-card-meta">${c.account_label} · Exp ${c.expiry} · ${c.cardholder_name}</span>
-                            ${statusTag}
+                            <div style="display:flex;gap:6px;">${statusTag}${typeTag}</div>
                         </div>
                         <div class="em-card-actions">${freezeBtn}${cancelBtn}${deleteBtn}</div>`;
                     list.appendChild(row);
@@ -913,13 +932,14 @@
     async function emIssueCard() {
         const accountIdRaw = document.getElementById('em-card-account').value;
         const account_id = accountIdRaw ? parseInt(accountIdRaw) : null;
+        const card_type = document.getElementById('em-card-type').value;
         document.getElementById('em-new-card-reveal').style.display = 'none';
 
         try {
             const data = await apiFetch('/api/admin/create_card', {
                 method: 'POST',
                 headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ username: _editUser, account_id })
+                body: JSON.stringify({ username: _editUser, account_id, card_type })
             });
             if (data.success) {
                 setMsg('em-card-msg', `✓ ${data.message}`, true);
@@ -927,6 +947,7 @@
                 reveal.innerHTML = `New card details (shown once — also emailed to the customer via HKMail):<br>
                     Number: <code>${data.card.card_number}</code> &nbsp; CVV: <code>${data.card.cvv}</code> &nbsp; Exp: <code>${data.card.expiry}</code>`;
                 reveal.style.display = 'block';
+                document.getElementById('em-card-type').value = 'regular';
                 await loadAdminCardsForUser(_editUser);
                 if (_editUser === _me) renderCardsGrid();
             } else {

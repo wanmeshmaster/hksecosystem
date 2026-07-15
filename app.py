@@ -78,6 +78,7 @@ def init_db():
             expiry_year     INTEGER NOT NULL,
             cardholder_name TEXT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'active',   -- active | frozen | cancelled
+            card_type       TEXT NOT NULL DEFAULT 'regular',  -- regular | hkmail
             issued_by       TEXT NOT NULL DEFAULT '',
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES accounts(id)
@@ -91,6 +92,7 @@ def init_db():
         "ALTER TABLE transactions ADD COLUMN account_label TEXT NOT NULL DEFAULT 'Current Account'",
         "ALTER TABLE users ADD COLUMN is_employee INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE cards ADD COLUMN card_type TEXT NOT NULL DEFAULT 'regular'",
     ]:
         try:
             cur.execute(stmt)
@@ -236,12 +238,13 @@ def is_card_expired(expiry_month, expiry_year):
 
 def card_to_dict(row, reveal_number=False, reveal_cvv=False):
     """row columns: id, username, account_id, account_label, card_number, cvv,
-    expiry_month, expiry_year, cardholder_name, status, issued_by, created_at"""
+    expiry_month, expiry_year, cardholder_name, status, issued_by, created_at, card_type"""
     expired = is_card_expired(row[6], row[7])
     raw_status = row[9]
     # cancelled stays cancelled even past expiry; otherwise expired takes
     # display priority over active/frozen since it can no longer be used.
     display_status = raw_status if raw_status == 'cancelled' else ('expired' if expired else raw_status)
+    card_type = row[12] if len(row) > 12 else 'regular'
 
     d = {
         "id": row[0],
@@ -257,12 +260,58 @@ def card_to_dict(row, reveal_number=False, reveal_cvv=False):
         "expired": expired,
         "issued_by": row[10],
         "created_at": row[11],
+        "card_type": card_type,
     }
     if reveal_number:
         d["card_number"] = row[4]
     if reveal_cvv:
         d["cvv"] = row[5]
     return d
+
+
+def get_hkmail_card(cur):
+    """Return the raw row for the ecosystem's current usable HKMail merchant
+    card (card_type='hkmail', not cancelled, not expired), or None. There can
+    only ever be one such card system-wide. Uses the caller's cursor so this
+    can be included in an existing transaction."""
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at, card_type
+        FROM cards WHERE card_type = 'hkmail'
+        ORDER BY created_at DESC
+    """)
+    for row in cur.fetchall():
+        status, expiry_month, expiry_year = row[9], row[6], row[7]
+        if status != 'cancelled' and not is_card_expired(expiry_month, expiry_year):
+            return row
+    return None
+
+
+def credit_hkmail_revenue(cur, amount, description):
+    """Route HKMail subscription revenue into the account backing the
+    ecosystem's HKMail merchant card, if one currently exists and is usable.
+    Returns True if credited, False if there's currently no valid HKMail
+    card — the payer's card is still charged either way; the revenue just
+    has nowhere to land until an admin opens one."""
+    card = get_hkmail_card(cur)
+    if not card:
+        return False
+
+    username, account_id, account_label = card[1], card[2], card[3]
+    if account_id:
+        cur.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, account_id))
+        cur.execute(
+            "INSERT INTO account_transactions (account_id, username, title, amount) VALUES (?, ?, ?, ?)",
+            (account_id, username, description, amount)
+        )
+    else:
+        cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, username))
+
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (username, description, amount, account_label)
+    )
+    return True
 
 
 # ── Page routes ────────────────────────────────────────────────────────────────
@@ -902,7 +951,7 @@ def admin_get_cards(username):
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
-               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at, card_type
         FROM cards WHERE username = ? ORDER BY created_at DESC
     """, (username,))
     cards = [card_to_dict(r) for r in cur.fetchall()]
@@ -918,9 +967,12 @@ def admin_create_card():
     data       = request.get_json()
     username   = data.get("username", "").strip()
     account_id = data.get("account_id")  # None/omitted = primary Current Account
+    card_type  = (data.get("card_type") or "regular").strip().lower()
 
     if not username:
         return jsonify({"success": False, "message": "Username is required."}), 400
+    if card_type not in ("regular", "hkmail"):
+        return jsonify({"success": False, "message": "Invalid card type."}), 400
 
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
@@ -932,6 +984,16 @@ def admin_create_card():
         return jsonify({"success": False, "message": "User not found."}), 404
     full_name, email = user_row
     cardholder_name = (full_name or username).strip().upper()
+
+    if card_type == "hkmail":
+        existing = get_hkmail_card(cur)
+        if existing:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": f"An HKMail card already exists (held by {existing[1]}). "
+                           f"Cancel it or wait for it to expire before opening another."
+            }), 400
 
     if account_id:
         cur.execute("SELECT account_type FROM accounts WHERE id = ? AND username = ?", (account_id, username))
@@ -951,15 +1013,15 @@ def admin_create_card():
 
     cur.execute("""
         INSERT INTO cards (username, account_id, account_label, card_number, cvv,
-                            expiry_month, expiry_year, cardholder_name, status, issued_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
-    """, (username, account_id, account_label, card_number, cvv, expiry_month, expiry_year, cardholder_name, issued_by))
+                            expiry_month, expiry_year, cardholder_name, status, card_type, issued_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    """, (username, account_id, account_label, card_number, cvv, expiry_month, expiry_year, cardholder_name, card_type, issued_by))
     new_card_id = cur.lastrowid
     conn.commit()
 
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
-               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at, card_type
         FROM cards WHERE id = ?
     """, (new_card_id,))
     card = card_to_dict(cur.fetchone(), reveal_number=True, reveal_cvv=True)
@@ -967,11 +1029,17 @@ def admin_create_card():
 
     # Let the customer know via HKMail, if they have an address on file.
     if email:
+        type_note = (
+            "This is the ecosystem's HKMail merchant card — HKMail Premium subscription "
+            "revenue will be deposited onto it automatically.\n\n"
+            if card_type == "hkmail" else ""
+        )
         send_system_mail(
             email,
-            "Your New HKS Bank Card",
+            "Your New HKMail Merchant Card" if card_type == "hkmail" else "Your New HKS Bank Card",
             f"Hi {full_name or username},\n\n"
             f"A new HKS Bank card has been opened for your {account_label} (username: {username}).\n\n"
+            f"{type_note}"
             f"    Card number: {card_number}\n"
             f"    CVV:         {cvv}\n"
             f"    Expires:     {expiry_month:02d}/{str(expiry_year)[-2:]}\n"
@@ -1079,7 +1147,7 @@ def my_cards():
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
-               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at, card_type
         FROM cards WHERE username = ? ORDER BY created_at DESC
     """, (session["username"],))
     cards = [card_to_dict(r, reveal_number=reveal, reveal_cvv=reveal) for r in cur.fetchall()]
@@ -1357,7 +1425,7 @@ def checkout_pay_with_card():
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
-               expiry_month, expiry_year, cardholder_name, status
+               expiry_month, expiry_year, cardholder_name, status, card_type
         FROM cards WHERE card_number = ?
     """, (card_number,))
     card = cur.fetchone()
@@ -1385,6 +1453,9 @@ def checkout_pay_with_card():
     if not ok:
         conn.close()
         return jsonify({"success": False, "message": message}), 400
+
+    if meta.startswith("hkmail_premium:"):
+        credit_hkmail_revenue(cur, amount, description)
 
     conn.commit()
     conn.close()
@@ -1420,7 +1491,7 @@ def checkout_pay_with_session_card():
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
-               expiry_month, expiry_year, cardholder_name, status
+               expiry_month, expiry_year, cardholder_name, status, card_type
         FROM cards WHERE id = ?
     """, (card_id,))
     card = cur.fetchone()
@@ -1442,6 +1513,9 @@ def checkout_pay_with_session_card():
     if not ok:
         conn.close()
         return jsonify({"success": False, "message": message}), 400
+
+    if meta.startswith("hkmail_premium:"):
+        credit_hkmail_revenue(cur, amount, description)
 
     conn.commit()
     conn.close()
@@ -1779,7 +1853,7 @@ def _mail_subscription_due(username, sub_id, plan_id, price, status, card_id, ne
     bank_cur  = bank_conn.cursor()
     bank_cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
-               expiry_month, expiry_year, cardholder_name, status
+               expiry_month, expiry_year, cardholder_name, status, card_type
         FROM cards WHERE id=?
     """, (card_id,))
     card = bank_cur.fetchone()
@@ -1789,6 +1863,8 @@ def _mail_subscription_due(username, sub_id, plan_id, price, status, card_id, ne
         charge_ok, _msg = _debit_for_card_payment(
             bank_cur, card, price, f"HKMail {plan_label} (monthly renewal)"
         )
+        if charge_ok:
+            credit_hkmail_revenue(bank_cur, price, f"HKMail {plan_label} (monthly renewal)")
 
     if charge_ok:
         bank_conn.commit()
@@ -2660,7 +2736,25 @@ def hkmail_admin_create_account():
     except sqlite3.IntegrityError:
         return jsonify({"success": False, "message": "That email address is already taken."}), 400
 
+def check_hkmail_card_on_startup():
+    """Warn on the console if there's no usable HKMail merchant card — until
+    one exists, HKMail Premium subscription revenue has nowhere to land."""
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    card = get_hkmail_card(cur)
+    conn.close()
+    if not card:
+        print("=" * 78)
+        print("⚠️  WARNING: No active HKMail merchant card exists.")
+        print("    HKMail Premium subscription payments will be charged to the customer")
+        print("    but the revenue will NOT be deposited anywhere until an admin opens")
+        print("    an HKMail-type card for some account (HKS Bank dashboard → edit user →")
+        print("    Issue New Card → Card Type: HKMail).")
+        print("=" * 78)
+
+
 if __name__ == '__main__':
     init_db()
     init_mail_db()
+    check_hkmail_card_on_startup()
     app.run(host='0.0.0.0', port=5001, debug=True)
