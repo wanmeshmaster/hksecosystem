@@ -939,6 +939,12 @@
         .danger-zone-body { margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .btn-delete-account { background: var(--red); color: #fff; border: none; border-radius: 7px; padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
         .btn-delete-account:hover { background: var(--red-dk); }
+        .terms-link-row { text-align: center; margin-top: 14px; }
+        .btn-terms-link {
+            background: none; border: none; color: var(--muted); font-size: 0.76rem;
+            text-decoration: underline; cursor: pointer; padding: 4px;
+        }
+        .btn-terms-link:hover { color: var(--navy); }
     </style>
 </head>
 <body>
@@ -1223,6 +1229,10 @@
                 <span style="font-size:0.78rem;color:var(--muted);">This cancels any Premium plan immediately and can't be undone.</span>
             </div>
         </details>
+
+        <div class="terms-link-row">
+            <button class="btn-terms-link" onclick="openPremiumTerms()">View Premium subscription terms &amp; conditions</button>
+        </div>
     </div>
 </div>
 
@@ -1973,6 +1983,10 @@
 
     function closeStorageModal() {
         document.getElementById('storage-modal').classList.remove('open');
+    }
+
+    function openPremiumTerms() {
+        window.open('hkmail-terms.html', '_blank', 'noopener');
     }
 
     function fmtGB(mb) {
