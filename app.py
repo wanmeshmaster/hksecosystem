@@ -2745,7 +2745,7 @@ def check_hkmail_card_on_startup():
     conn.close()
     if not card:
         print("=" * 78)
-        print("⚠️  WARNING: No active HKMail merchant card exists.")
+        print("    WARNING: No active HKMail merchant card exists.")
         print("    HKMail Premium subscription payments will be charged to the customer")
         print("    but the revenue will NOT be deposited anywhere until an admin opens")
         print("    an HKMail-type card for some account (HKS Bank dashboard → edit user →")
