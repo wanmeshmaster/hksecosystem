@@ -412,9 +412,9 @@ def bank_account_snapshot_text(cur, username):
 @app.route('/')
 def home():
     apps = [
-        {'id': 'hks-bank',    'title': 'HKS Bank',       'url': '/hks-bank.html'},
-        {'id': 'hkmail',      'title': 'HKMail',          'url': '/hkmail.html'},
-        {'id': 'coming-soon', 'title': 'Coming soon...', 'url': '/coming-soon.html'},
+        {'id': 'hks-bank',    'title': '',       'url': '/hks-bank.html'},
+        {'id': 'hkmail',      'title': '',          'url': '/hkmail.html'},
+        {'id': 'coming-soon', 'title': '', 'url': '/coming-soon.html'},
     ]
     for a in apps:
         img = f"{a['id']}.jpg"
