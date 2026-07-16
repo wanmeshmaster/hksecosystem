@@ -2237,6 +2237,10 @@ def hkmail_login():
 def hkmail_inbox():
     return render_template('hkmail-inbox.html')
 
+@app.route('/hkmail-terms.html')
+def hkmail_terms():
+    return render_template('hkmail-terms.html')
+
 
 # ── HKMail Auth API ────────────────────────────────────────────────────────────
 
