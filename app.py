@@ -1,14 +1,20 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, Response
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
 import random
 import string
+import base64
 from datetime import datetime, date
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
 app.secret_key = os.urandom(32)
 DATABASE = "users.db"
+
+# Safety net around HKMail's per-attachment 15MB limit: up to 15 attachments
+# per email, base64-encoded (~33% larger than raw), plus headroom for the
+# rest of the JSON payload.
+app.config['MAX_CONTENT_LENGTH'] = 320 * 1024 * 1024
 
 
 def init_db():
@@ -1783,6 +1789,33 @@ MAIL_PLANS = {
     "100gb": {"id": "100gb", "label": "Premium 100GB", "storage_mb": 100 * 1024, "price": 19.99, "badge": True, "tier": "diamond", "tier_label": "Diamond"},
 }
 
+# ── HKMail attachments ──────────────────────────────────────────────────────────
+# Per-file cap, enforced both when decoding the upload and again defensively at
+# the DB layer. Attachment bytes count toward the sender's AND recipient's
+# storage quota, same as the subject/body bytes already did.
+MAX_ATTACHMENT_SIZE_MB    = 15
+MAX_ATTACHMENT_SIZE_BYTES = MAX_ATTACHMENT_SIZE_MB * 1024 * 1024
+
+# Sanity cap on how many files one email can carry — not a spec requirement,
+# just guards against someone scripting a single request with thousands of
+# tiny attachments.
+MAX_ATTACHMENTS_PER_EMAIL = 15
+
+
+def format_bytes(n):
+    """Human-readable size, e.g. 15728640 -> '15.0 MB'."""
+    n = float(n)
+    if n < 1024:
+        return f"{int(n)} bytes"
+    n /= 1024
+    if n < 1024:
+        return f"{n:.1f} KB"
+    n /= 1024
+    if n < 1024:
+        return f"{n:.1f} MB"
+    n /= 1024
+    return f"{n:.1f} GB"
+
 
 def add_one_month(d):
     """Return the date one calendar month after d (clamped to a valid day)."""
@@ -1862,6 +1895,24 @@ def init_mail_db():
     # volume grows.
     cur.execute("CREATE INDEX IF NOT EXISTS idx_emails_sender ON emails(sender)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_emails_recipient ON emails(recipient)")
+
+    # File attachments. One row per file, linked to the email it was sent
+    # with. `data` holds the raw file bytes (BLOB) — stored inline rather than
+    # on disk so a permanent-delete of the email cleanly frees the space, and
+    # so mail_storage_used_bytes() can account for it with a plain SQL SUM
+    # alongside the subject/body bytes it already counts.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS email_attachments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            email_id    INTEGER NOT NULL,
+            filename    TEXT NOT NULL,
+            mime_type   TEXT NOT NULL DEFAULT 'application/octet-stream',
+            size_bytes  INTEGER NOT NULL,
+            data        BLOB NOT NULL,
+            FOREIGN KEY (email_id) REFERENCES emails(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_attachments_email ON email_attachments(email_id)")
 
     # Ensure the HKMail administrator account exists. It's inserted first so
     # it is literally the first user of the HKMail service, and it is both
@@ -1973,22 +2024,33 @@ def mail_storage_used_bytes(username, cur=None):
     still counted here; only a permanent delete reduces used_bytes. Emptying
     Trash is therefore how a user actually frees up space, not just
     dragging mail there.
+
+    Attachments: their raw byte size (size_bytes, computed once at send time
+    from the decoded file) is added on top of the subject/body total, joined
+    through the parent email so the same sender/recipient/trash rules apply
+    to them automatically.
     """
     query = """
-        SELECT COALESCE(SUM(LENGTH(CAST(subject AS BLOB)) + LENGTH(CAST(body AS BLOB))), 0)
-        FROM emails
-        WHERE sender=? OR recipient=?
+        SELECT
+            COALESCE((SELECT SUM(LENGTH(CAST(subject AS BLOB)) + LENGTH(CAST(body AS BLOB)))
+                       FROM emails WHERE sender=? OR recipient=?), 0)
+            +
+            COALESCE((SELECT SUM(a.size_bytes)
+                       FROM email_attachments a
+                       JOIN emails e ON e.id = a.email_id
+                       WHERE e.sender=? OR e.recipient=?), 0)
     """
+    params = (username, username, username, username)
     if cur is not None:
         # Reuse the caller's cursor/connection so this read happens inside
         # whatever transaction the caller already holds (see hkmail_send,
         # where this must be read atomically with the INSERT that follows).
-        cur.execute(query, (username, username))
+        cur.execute(query, params)
         return cur.fetchone()[0] or 0
 
     conn = sqlite3.connect(MAIL_DATABASE)
     c = conn.cursor()
-    c.execute(query, (username, username))
+    c.execute(query, params)
     total = c.fetchone()[0] or 0
     conn.close()
     return total
@@ -2315,9 +2377,48 @@ def hkmail_send():
     recipient = data.get("recipient", "").strip().lower()
     subject   = data.get("subject",   "").strip() or "(No subject)"
     body      = data.get("body",       "").strip()
+    attachments_in = data.get("attachments") or []
 
     if not recipient:
         return jsonify({"success": False, "message": "Recipient is required."}), 400
+
+    if not isinstance(attachments_in, list):
+        return jsonify({"success": False, "message": "Invalid attachments."}), 400
+    if len(attachments_in) > MAX_ATTACHMENTS_PER_EMAIL:
+        return jsonify({"success": False, "message": f"You can attach at most {MAX_ATTACHMENTS_PER_EMAIL} files."}), 400
+
+    # Decode and validate every attachment up front — each file must be
+    # 15MB or smaller. Decoding here (rather than trusting the base64
+    # string's length) means the check is against the actual file size,
+    # not the ~33% larger base64 encoding of it.
+    parsed_attachments = []  # list of (filename, mime_type, size_bytes, raw_bytes)
+    total_attachment_bytes = 0
+    for att in attachments_in:
+        if not isinstance(att, dict):
+            return jsonify({"success": False, "message": "Invalid attachment."}), 400
+        filename  = (att.get("filename") or "").strip()
+        mime_type = (att.get("mime_type") or "").strip() or "application/octet-stream"
+        b64data   = att.get("data") or ""
+
+        if not filename:
+            return jsonify({"success": False, "message": "Each attachment needs a filename."}), 400
+
+        try:
+            raw = base64.b64decode(b64data, validate=True)
+        except Exception:
+            return jsonify({"success": False, "message": f'"{filename}" could not be read — please re-attach it.'}), 400
+
+        size = len(raw)
+        if size == 0:
+            return jsonify({"success": False, "message": f'"{filename}" is empty.'}), 400
+        if size > MAX_ATTACHMENT_SIZE_BYTES:
+            return jsonify({
+                "success": False,
+                "message": f'"{filename}" is {format_bytes(size)} — attachments must be {MAX_ATTACHMENT_SIZE_MB}MB or smaller.'
+            }), 400
+
+        total_attachment_bytes += size
+        parsed_attachments.append((filename, mime_type, size, raw))
 
     # Auto-append @hkmail.cn if no domain given
     if "@" not in recipient:
@@ -2327,7 +2428,7 @@ def hkmail_send():
     mail_run_billing_cycle(u)
     mail_run_billing_cycle(recipient)
 
-    message_size = len(subject.encode("utf-8")) + len(body.encode("utf-8"))
+    message_size = len(subject.encode("utf-8")) + len(body.encode("utf-8")) + total_attachment_bytes
 
     # The quota check-then-insert below has to be atomic: read used_bytes,
     # compare to the limit, then INSERT. Done as three separate statements
@@ -2380,6 +2481,13 @@ def hkmail_send():
             cur.execute(
                 "INSERT INTO emails (sender, recipient, subject, body) VALUES (?,?,?,?)",
                 (u, recipient, subject, body)
+            )
+
+        email_id = cur.lastrowid
+        for filename, mime_type, size, raw in parsed_attachments:
+            cur.execute(
+                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data) VALUES (?,?,?,?,?)",
+                (email_id, filename, mime_type, size, raw)
             )
 
         conn.commit()
@@ -2695,7 +2803,8 @@ def hkmail_inbox_api():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified
+        SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id)
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.recipient=? AND e.deleted_by_recipient=0
@@ -2710,7 +2819,8 @@ def hkmail_inbox_api():
                         "from_is_admin": bool(r[5]), "from_is_verified": bool(r[6]),
                         "from_is_premium": is_premium,
                         "from_premium_label": badge_label,
-                        "from_premium_tier": badge_tier})
+                        "from_premium_tier": badge_tier,
+                        "attachment_count": r[7]})
     return jsonify({"success": True, "emails": emails})
 
 
@@ -2722,12 +2832,13 @@ def hkmail_sent_api():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT id, recipient, subject, sent_at
+        SELECT id, recipient, subject, sent_at,
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id)
         FROM emails
         WHERE sender=? AND deleted_by_sender=0 AND recipient != sender
         ORDER BY sent_at DESC
     """, (u,))
-    emails = [{"id": r[0], "to": r[1], "subject": r[2], "date": r[3]}
+    emails = [{"id": r[0], "to": r[1], "subject": r[2], "date": r[3], "attachment_count": r[4]}
               for r in cur.fetchall()]
     conn.close()
     return jsonify({"success": True, "emails": emails})
@@ -2746,7 +2857,8 @@ def hkmail_trash_api():
     # Show emails deleted by this user (either as sender or recipient)
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
-               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified
+               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id)
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE (e.sender=? AND e.deleted_by_sender=1)
@@ -2764,7 +2876,8 @@ def hkmail_trash_api():
             "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8]),
             "from_is_premium": is_premium,
             "from_premium_label": badge_label,
-            "from_premium_tier": badge_tier
+            "from_premium_tier": badge_tier,
+            "attachment_count": r[9]
         })
     return jsonify({"success": True, "emails": emails})
 
@@ -2801,6 +2914,15 @@ def hkmail_read_email(email_id):
         cur.execute("UPDATE emails SET read=1 WHERE id=?", (email_id,))
         conn.commit()
 
+    cur.execute(
+        "SELECT id, filename, mime_type, size_bytes FROM email_attachments WHERE email_id=? ORDER BY id",
+        (email_id,)
+    )
+    attachments = [
+        {"id": a[0], "filename": a[1], "mime_type": a[2], "size_bytes": a[3]}
+        for a in cur.fetchall()
+    ]
+
     conn.close()
     is_premium, badge_label, badge_tier = mail_get_premium_summary(row[1])
     return jsonify({
@@ -2811,9 +2933,49 @@ def hkmail_read_email(email_id):
             "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8]),
             "from_is_premium": is_premium,
             "from_premium_label": badge_label,
-            "from_premium_tier": badge_tier
+            "from_premium_tier": badge_tier,
+            "attachments": attachments
         }
     })
+
+
+# ── HKMail: download an attachment ─────────────────────────────────────────────
+
+@app.route('/api/hkmail/attachment/<int:attachment_id>/download')
+def hkmail_download_attachment(attachment_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT a.filename, a.mime_type, a.data, e.sender, e.recipient
+        FROM email_attachments a
+        JOIN emails e ON e.id = a.email_id
+        WHERE a.id=?
+    """, (attachment_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"success": False, "message": "Attachment not found."}), 404
+
+    filename, mime_type, data, sender, recipient = row
+    # Only the sender or recipient of the parent email may download it —
+    # same access rule as reading the email itself.
+    if u not in (sender, recipient):
+        return jsonify({"success": False, "message": "Access denied."}), 403
+
+    # Strip anything that could break out of the Content-Disposition header
+    # value (quotes, newlines) rather than trusting the stored filename.
+    safe_filename = filename.replace('"', "'").replace("\r", " ").replace("\n", " ")
+
+    return Response(
+        data,
+        mimetype=mime_type or 'application/octet-stream',
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+    )
 
 
 # ── HKMail: mark as read/unread ────────────────────────────────────────────────
@@ -2921,6 +3083,7 @@ def hkmail_delete_permanent(email_id):
     )
 
     if both_deleted or sender == recipient:
+        cur.execute("DELETE FROM email_attachments WHERE email_id=?", (email_id,))
         cur.execute("DELETE FROM emails WHERE id=?", (email_id,))
     else:
         # Just mark this side as deleted

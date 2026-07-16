@@ -585,6 +585,170 @@
             display: block;
         }
 
+        /* ── Attachments (compose) ── */
+        .c-attach-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .btn-attach {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: none;
+            border: 1.5px solid var(--border);
+            border-radius: 7px;
+            padding: 7px 12px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--navy);
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+
+        .btn-attach:hover { border-color: var(--red); color: var(--red); }
+
+        .attach-hint {
+            font-size: 0.74rem;
+            color: var(--muted);
+        }
+
+        .attachment-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .attachment-chip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #F6F7F9;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
+        .attachment-chip-icon {
+            flex-shrink: 0;
+            width: 30px; height: 30px;
+            border-radius: 6px;
+            background: var(--white);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+        }
+
+        .attachment-chip-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .attachment-chip-name {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--navy);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .attachment-chip-meta {
+            font-size: 0.72rem;
+            color: var(--muted);
+            margin-top: 1px;
+        }
+
+        .attachment-chip-remove {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+            padding: 2px 4px;
+            transition: color 0.15s;
+        }
+
+        .attachment-chip-remove:hover { color: var(--red); }
+
+        /* ── Attachments (reading pane) ── */
+        .email-view-attachments {
+            margin-top: 16px;
+        }
+
+        .email-view-attachments-label {
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: var(--muted);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .attachment-download {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 9px 12px;
+            text-decoration: none;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .attachment-download:hover { border-color: var(--red); background: #FFF8F8; }
+
+        .attachment-download + .attachment-download { margin-top: 6px; }
+
+        .attachment-download-icon {
+            flex-shrink: 0;
+            width: 30px; height: 30px;
+            border-radius: 6px;
+            background: #F6F7F9;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--navy);
+        }
+
+        .attachment-download-info { flex: 1; min-width: 0; }
+
+        .attachment-download-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--navy);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .attachment-download-meta {
+            font-size: 0.74rem;
+            color: var(--muted);
+            margin-top: 1px;
+        }
+
+        .attachment-download-action {
+            flex-shrink: 0;
+            color: var(--muted);
+        }
+
+        .email-subject-clip {
+            display: inline-flex;
+            vertical-align: -2px;
+            color: var(--muted);
+            margin-left: 4px;
+        }
+
         /* ── Spinner ── */
         .spinner {
             display: inline-block;
@@ -879,6 +1043,7 @@
         <div class="email-view" id="email-view">
             <div class="email-view-header" id="email-view-header"></div>
             <div class="email-view-body" id="email-view-body"></div>
+            <div class="email-view-attachments" id="email-view-attachments"></div>
         </div>
     </div>
 
@@ -904,6 +1069,20 @@
         <div class="c-field">
             <label class="c-label" for="c-body">Message</label>
             <textarea class="c-input c-textarea" id="c-body" placeholder="Write your message…"></textarea>
+        </div>
+        <div class="c-field">
+            <div class="c-attach-row">
+                <button type="button" class="btn-attach" onclick="document.getElementById('c-attach-input').click()">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                    Attach files
+                </button>
+                <span class="attach-hint">Up to 15MB per file</span>
+            </div>
+            <input type="file" id="c-attach-input" multiple style="display:none;" onchange="handleAttachmentPick(this.files)">
+            <div class="attachment-list" id="compose-attachment-list"></div>
         </div>
         <div class="compose-footer">
             <button class="btn-send" id="send-btn" onclick="doSend()">Send</button>
@@ -1143,11 +1322,19 @@
             const label = currentFolder === 'sent' ? `To: ${displayName}` : displayName;
             const dateStr = formatDate(e.date);
             const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier);
+            const clip = e.attachment_count > 0
+                ? `<span class="email-subject-clip" title="${e.attachment_count} attachment${e.attachment_count !== 1 ? 's' : ''}">
+                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round">
+                         <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                     </svg>
+                   </span>`
+                : '';
             return `
                 <div class="email-item ${isUnread ? 'unread' : ''}" id="ei-${e.id}"
                      onclick="openEmail(${e.id})">
                     <div class="email-from">${escHtml(label)} ${badges}</div>
-                    <div class="email-subject">${escHtml(e.subject)}</div>
+                    <div class="email-subject">${escHtml(e.subject)}${clip}</div>
                     <div class="email-date">${dateStr}</div>
                     <div class="unread-dot"></div>
                 </div>`;
@@ -1216,6 +1403,39 @@
             <div class="email-view-actions">${actions}</div>
         `;
         document.getElementById('email-view-body').textContent = e.body;
+
+        const attachments = e.attachments || [];
+        const attachEl = document.getElementById('email-view-attachments');
+        if (attachments.length) {
+            attachEl.innerHTML = `
+                <div class="email-view-attachments-label">${attachments.length} Attachment${attachments.length !== 1 ? 's' : ''}</div>
+                ${attachments.map(a => `
+                    <a class="attachment-download" href="/api/hkmail/attachment/${a.id}/download" download="${escHtml(a.filename)}">
+                        <div class="attachment-download-icon">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                        </div>
+                        <div class="attachment-download-info">
+                            <div class="attachment-download-name">${escHtml(a.filename)}</div>
+                            <div class="attachment-download-meta">${escHtml(friendlyFileType(a.filename, a.mime_type))} · ${formatBytes(a.size_bytes)}</div>
+                        </div>
+                        <div class="attachment-download-action">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                        </div>
+                    </a>
+                `).join('')}
+            `;
+        } else {
+            attachEl.innerHTML = '';
+        }
     }
 
     function hideEmailView() {
@@ -1281,6 +1501,101 @@
     }
 
     // ── Compose ────────────────────────────────────────────────────────────────
+    const MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024;
+    const MAX_ATTACHMENTS_PER_EMAIL = 15;
+    let composeAttachments = []; // { filename, mime_type, size, data (base64) }
+
+    function formatBytes(n) {
+        if (n < 1024) return `${n} bytes`;
+        n /= 1024;
+        if (n < 1024) return `${n.toFixed(1)} KB`;
+        n /= 1024;
+        if (n < 1024) return `${n.toFixed(1)} MB`;
+        n /= 1024;
+        return `${n.toFixed(1)} GB`;
+    }
+
+    function friendlyFileType(filename, mimeType) {
+        const dot = filename.lastIndexOf('.');
+        if (dot > -1 && dot < filename.length - 1) {
+            return filename.slice(dot + 1).toUpperCase() + ' file';
+        }
+        return mimeType || 'File';
+    }
+
+    function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result || '';
+                const commaIdx = result.indexOf(',');
+                resolve(commaIdx > -1 ? result.slice(commaIdx + 1) : '');
+            };
+            reader.onerror = () => reject(new Error('Could not read file'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleAttachmentPick(fileList) {
+        const files = Array.from(fileList || []);
+        document.getElementById('c-attach-input').value = ''; // allow re-picking the same file later
+        if (!files.length) return;
+
+        clearComposeMsg();
+
+        for (const file of files) {
+            if (composeAttachments.length >= MAX_ATTACHMENTS_PER_EMAIL) {
+                showComposeMsg(`You can attach at most ${MAX_ATTACHMENTS_PER_EMAIL} files.`, 'error');
+                break;
+            }
+            if (file.size === 0) {
+                showComposeMsg(`"${file.name}" is empty and can't be attached.`, 'error');
+                continue;
+            }
+            if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+                showComposeMsg(`"${file.name}" is ${formatBytes(file.size)} — attachments must be 15MB or smaller.`, 'error');
+                continue;
+            }
+            try {
+                const base64 = await readFileAsBase64(file);
+                composeAttachments.push({
+                    filename: file.name,
+                    mime_type: file.type || 'application/octet-stream',
+                    size: file.size,
+                    data: base64
+                });
+            } catch {
+                showComposeMsg(`Could not read "${file.name}". Please try attaching it again.`, 'error');
+            }
+        }
+        renderComposeAttachments();
+    }
+
+    function renderComposeAttachments() {
+        const list = document.getElementById('compose-attachment-list');
+        list.innerHTML = composeAttachments.map((a, i) => `
+            <div class="attachment-chip">
+                <div class="attachment-chip-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                </div>
+                <div class="attachment-chip-info">
+                    <div class="attachment-chip-name">${escHtml(a.filename)}</div>
+                    <div class="attachment-chip-meta">${escHtml(friendlyFileType(a.filename, a.mime_type))} · ${formatBytes(a.size)}</div>
+                </div>
+                <button type="button" class="attachment-chip-remove" onclick="removeComposeAttachment(${i})" title="Remove attachment">&times;</button>
+            </div>
+        `).join('');
+    }
+
+    function removeComposeAttachment(index) {
+        composeAttachments.splice(index, 1);
+        renderComposeAttachments();
+    }
+
     function openCompose() {
         clearComposeMsg();
         document.getElementById('compose-modal').classList.add('open');
@@ -1320,7 +1635,12 @@
             const res  = await fetch('/api/hkmail/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ recipient: to, subject, body })
+                body: JSON.stringify({
+                    recipient: to, subject, body,
+                    attachments: composeAttachments.map(a => ({
+                        filename: a.filename, mime_type: a.mime_type, data: a.data
+                    }))
+                })
             });
             const data = await res.json();
 
@@ -1329,6 +1649,8 @@
                 document.getElementById('c-to').value = '';
                 document.getElementById('c-subject').value = '';
                 document.getElementById('c-body').value = '';
+                composeAttachments = [];
+                renderComposeAttachments();
                 setTimeout(() => {
                     closeCompose();
                     if (currentFolder === 'sent') loadFolder('sent');
