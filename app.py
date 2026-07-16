@@ -1632,6 +1632,13 @@ def init_mail_db():
         )
     """)
 
+    # mail_storage_used_bytes() and every folder listing filter/scan by
+    # sender and by recipient on every request, so index both columns
+    # rather than falling back to a full table scan of `emails` as mail
+    # volume grows.
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_emails_sender ON emails(sender)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_emails_recipient ON emails(recipient)")
+
     # Ensure the HKMail administrator account exists. It's inserted first so
     # it is literally the first user of the HKMail service, and it is both
     # an admin and a verified/official account from the start.
