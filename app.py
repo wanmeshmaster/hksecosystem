@@ -3123,11 +3123,100 @@ def hkmail_admin_users():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("SELECT id, username, full_name, is_admin, is_verified, created_at FROM mail_users ORDER BY created_at")
-    users = [{"id": r[0], "username": r[1], "full_name": r[2],
-              "is_admin": bool(r[3]), "is_verified": bool(r[4]), "created_at": r[5]}
-             for r in cur.fetchall()]
+    rows = cur.fetchall()
     conn.close()
+
+    users = []
+    for r in rows:
+        username = r[1]
+        subs = []
+        for sub_id, plan_id, price, status, _card_id, next_billing in mail_get_subscriptions(username):
+            if status not in ("active", "cancelled"):
+                continue
+            plan = MAIL_PLANS.get(plan_id)
+            subs.append({
+                "id": sub_id, "plan_id": plan_id,
+                "label": plan["label"] if plan else plan_id,
+                "tier": plan["tier"] if plan else None,
+                "tier_label": plan["tier_label"] if plan else None,
+                "price": price, "status": status, "next_billing": next_billing,
+            })
+        users.append({"id": r[0], "username": username, "full_name": r[2],
+                       "is_admin": bool(r[3]), "is_verified": bool(r[4]), "created_at": r[5],
+                       "subscriptions": subs})
     return jsonify({"success": True, "users": users})
+
+
+# ── HKMail: admin — immediately revoke a subscription ─────────────────────────
+
+@app.route('/api/hkmail/admin/subscriptions/<int:sub_id>/revoke', methods=['POST'])
+def hkmail_admin_revoke_subscription(sub_id):
+    """Immediately end a subscription — unlike a user-initiated cancel (which
+    keeps the plan's storage/badge until the paid-for period runs out), this
+    removes the row outright so mail_storage_limit_mb() drops that plan's
+    storage right away. The affected user is emailed, and a record — with a
+    timestamp, the reason given, and which admin did it — is logged as an
+    email to admin@hkmail.cn for an audit trail."""
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data   = request.get_json() or {}
+    reason = (data.get("reason", "") or "").strip()
+    if not reason:
+        return jsonify({"success": False, "message": "Please provide a reason for revoking this subscription."}), 400
+
+    admin_username  = mail_current_user()
+    admin_full_name = session.get("mail_full_name") or admin_username
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT username, plan_id, status FROM mail_subscriptions WHERE id=?", (sub_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Subscription not found."}), 404
+
+    username, plan_id, status = row
+    if status not in ("active", "cancelled"):
+        conn.close()
+        return jsonify({"success": False, "message": "That subscription is no longer in effect."}), 400
+
+    plan = MAIL_PLANS.get(plan_id)
+    plan_label = plan["label"] if plan else plan_id
+
+    cur.execute("DELETE FROM mail_subscriptions WHERE id=?", (sub_id,))
+
+    revoked_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Notify the affected user.
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (NOREPLY_MAIL_USERNAME, username, f"Your HKMail {plan_label} subscription has been revoked",
+         f"Hi,\n\nAn HKMail administrator has revoked your {plan_label} subscription, effective "
+         "immediately. That plan's storage and Premium badge have already been removed — your "
+         "storage limit is now the Free 1GB plus any other Premium plans you still hold.\n\n"
+         f"Reason given: {reason}\n\n"
+         "If you believe this was a mistake, please contact HKMail Support.\n\n"
+         "— HKMail")
+    )
+
+    # Audit log: a record of who revoked what, when, and why, kept as an
+    # email to admin@hkmail.cn alongside HKMail's other administrative mail.
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (NOREPLY_MAIL_USERNAME, ADMIN_MAIL_USERNAME, f"[Subscription revoked] {username} — {plan_label}",
+         "A Premium subscription was revoked by an administrator.\n\n"
+         f"Timestamp: {revoked_at}\n"
+         f"User: {username}\n"
+         f"Plan: {plan_label}\n"
+         f"Reason: {reason}\n"
+         f"Revoked by: {admin_full_name} ({admin_username})")
+    )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"success": True, "message": f"{plan_label} subscription revoked for {username}."})
 
 
 # ── HKMail: admin — promote / demote admin role ───────────────────────────────

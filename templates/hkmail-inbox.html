@@ -858,6 +858,23 @@
         .admin-role-btn.role-verify { background: #0B66C2; }
         .admin-role-btn.role-verify:hover { background: #0954a0; }
         .admin-role-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .admin-sub-list { margin-top: 4px; }
+        .admin-sub-list h5 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); margin-bottom: 8px; }
+        .admin-sub-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; margin-bottom: 8px; background: #fff;
+        }
+        .admin-sub-row-info { display: flex; flex-direction: column; gap: 2px; }
+        .admin-sub-row-plan { font-size: 0.85rem; font-weight: 700; color: var(--navy); }
+        .admin-sub-row-meta { font-size: 0.75rem; color: var(--muted); }
+        .admin-sub-row-meta .status-cancelled { color: var(--red); }
+        .admin-revoke-btn {
+            background: var(--red); color: #fff; border: none; border-radius: 7px;
+            padding: 7px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+        }
+        .admin-revoke-btn:hover { background: var(--red-dk); }
+        .admin-revoke-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .admin-sub-empty { font-size: 0.8rem; color: var(--muted); }
         .admin-status-msg { font-size: 0.8rem; margin-top: 6px; min-height: 1em; }
         .admin-status-msg.ok { color: #1A7A3C; }
         .admin-status-msg.err { color: var(--red); }
@@ -1142,6 +1159,11 @@
                     <button class="admin-role-btn role-verify" id="admin-verify-btn" onclick="adminToggleVerify()">Mark Verified</button>
                 </div>
                 <div class="admin-status-msg" id="admin-edit-msg"></div>
+
+                <div class="admin-sub-list">
+                    <h5>Premium subscriptions</h5>
+                    <div id="admin-sub-rows"></div>
+                </div>
             </div>
         </div>
 
@@ -1795,6 +1817,60 @@
 
         verifyBtn.textContent = isVerified ? 'Remove Verified Status' : 'Mark Verified';
         verifyBtn.dataset.isVerified = isVerified ? '1' : '0';
+
+        const user = adminUsersCache.find(u => u.username === username);
+        renderAdminSubRows(user ? (user.subscriptions || []) : []);
+    }
+
+    function renderAdminSubRows(subs) {
+        const box = document.getElementById('admin-sub-rows');
+        if (!subs.length) {
+            box.innerHTML = '<div class="admin-sub-empty">No Premium subscriptions.</div>';
+            return;
+        }
+        box.innerHTML = subs.map(s => `
+            <div class="admin-sub-row">
+                <div class="admin-sub-row-info">
+                    <span class="admin-sub-row-plan">${escHtml(s.label)}</span>
+                    <span class="admin-sub-row-meta">${s.status === 'cancelled' ? '<span class="status-cancelled">Cancelled — active until period end</span>' : 'Active'} · $${Number(s.price).toFixed(2)}/mo${s.next_billing ? ' · renews ' + escHtml(s.next_billing) : ''}</span>
+                </div>
+                <button class="admin-revoke-btn" onclick="adminRevokeSubscription(${s.id}, '${escJs(s.label)}', this)">Revoke now</button>
+            </div>
+        `).join('');
+    }
+
+    async function adminRevokeSubscription(subId, planLabel, btnEl) {
+        if (!adminEditingUsername) return;
+        const reason = window.prompt(`Revoke "${planLabel}" for ${adminEditingUsername} immediately?\n\nThis ends the subscription right away, emails the user, and is logged to admin@hkmail.cn.\n\nPlease enter a reason:`);
+        if (reason === null) return;
+        if (!reason.trim()) { showToast('A reason is required to revoke a subscription.'); return; }
+
+        const msg = document.getElementById('admin-edit-msg');
+        if (btnEl) btnEl.disabled = true;
+        try {
+            const res  = await fetch(`/api/hkmail/admin/subscriptions/${subId}/revoke`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: reason.trim() })
+            });
+            const data = await res.json();
+            if (data.success) {
+                msg.textContent = '✓ ' + data.message;
+                msg.className = 'admin-status-msg ok';
+                showToast(data.message);
+                await loadAdminUsers();
+                const user = adminUsersCache.find(u => u.username === adminEditingUsername);
+                renderAdminSubRows(user ? (user.subscriptions || []) : []);
+            } else {
+                msg.textContent = data.message || 'Failed to revoke subscription.';
+                msg.className = 'admin-status-msg err';
+                if (btnEl) btnEl.disabled = false;
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+            if (btnEl) btnEl.disabled = false;
+        }
     }
 
     async function adminToggleRole() {
