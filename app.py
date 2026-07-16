@@ -85,6 +85,21 @@ def init_db():
         )
     """)
 
+    # HKS Bank support tickets. Deliberately its OWN table, separate from
+    # HKMail's `emails` table (which lives in a different database file
+    # entirely) — the case number here is a random 12-character code, not
+    # derived from any email row id, per spec.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS bank_support_cases (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_number  TEXT UNIQUE NOT NULL,
+            username     TEXT NOT NULL,
+            message      TEXT NOT NULL,
+            status       TEXT NOT NULL DEFAULT 'open',   -- open | closed
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Safe migrations for existing databases
     for stmt in [
         "ALTER TABLE users ADD COLUMN balance REAL NOT NULL DEFAULT 0.0",
@@ -134,8 +149,24 @@ HKSBANK_MAIL_DEFAULT_PASSWORD = "HksBankSys456!"
 SUPPORT_MAIL_USERNAME = "support@hkmail.cn"
 SUPPORT_MAIL_DEFAULT_PASSWORD = "SupportQueue321!"
 
+# Mailbox that receives support requests from the "Support" button on the
+# HKS Bank dashboard. Separate from HKMail's own support@hkmail.cn — this one
+# is specifically for banking issues. A real HKMail account, same pattern as
+# the accounts above, with its own fixed demo credential.
+BANK_SUPPORT_MAIL_USERNAME = "hksbank.support@hkmail.cn"
+BANK_SUPPORT_MAIL_DEFAULT_PASSWORD = "HksBankSupport852!"
+
 
 def generate_signup_code(length=8):
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(random.choices(alphabet, k=length))
+
+
+def generate_case_number(length=12):
+    """Random alphanumeric case number for bank support tickets — 12
+    characters, uppercase letters and digits. Deliberately unrelated to any
+    other row id in the system (unlike HKMail's own support case numbers,
+    which are derived from the email row)."""
     alphabet = string.ascii_uppercase + string.digits
     return ''.join(random.choices(alphabet, k=length))
 
@@ -319,6 +350,62 @@ def credit_hkmail_revenue(cur, amount, description):
         (username, description, amount, account_label)
     )
     return True
+
+
+def bank_account_snapshot_text(cur, username):
+    """Plain-text snapshot of a customer's HKS Bank account for support
+    tickets: profile info, every account, every card (masked). Deliberately
+    excludes transaction history — that needs a separate HKMail attachment/
+    embed update to include safely, which hasn't been built yet."""
+    cur.execute(
+        "SELECT full_name, email, balance, is_admin, is_employee FROM users WHERE username = ?",
+        (username,)
+    )
+    row = cur.fetchone()
+    if not row:
+        return "Account record not found."
+    full_name, email, balance, is_admin, is_employee = row
+    role = "Admin" if is_admin else ("Employee" if is_employee else "Customer")
+
+    lines = [
+        f"Username: {username}",
+        f"Full name: {full_name or '(none)'}",
+        f"Linked HKMail address: {email or '(none)'}",
+        f"Role: {role}",
+        f"Current Account balance: ${balance:.2f}",
+        "",
+    ]
+
+    cur.execute(
+        "SELECT account_type, balance, created_at FROM accounts WHERE username = ? ORDER BY created_at",
+        (username,)
+    )
+    accounts = cur.fetchall()
+    lines.append("Additional accounts:" if accounts else "Additional accounts: none")
+    for acc_type, acc_balance, created_at in accounts:
+        lines.append(f"  - {acc_type}: ${acc_balance:.2f} (opened {created_at})")
+    lines.append("")
+
+    cur.execute("""
+        SELECT card_number, card_type, status, expiry_month, expiry_year, account_label
+        FROM cards WHERE username = ? ORDER BY created_at
+    """, (username,))
+    cards = cur.fetchall()
+    lines.append("Cards:" if cards else "Cards: none")
+    for card_number, card_type, status, exp_m, exp_y, acct_label in cards:
+        disp_status = 'expired' if (status != 'cancelled' and is_card_expired(exp_m, exp_y)) else status
+        type_note = " [HKMail merchant card]" if card_type == 'hkmail' else ""
+        lines.append(
+            f"  - {mask_card_number(card_number)} ({acct_label}) — {disp_status}{type_note}, "
+            f"exp {exp_m:02d}/{str(exp_y)[-2:]}"
+        )
+    lines.append("")
+
+    lines.append(
+        "Note: transaction history is not included in support tickets yet — this needs a "
+        "separate HKMail update to embed/attach it safely, planned for later."
+    )
+    return "\n".join(lines)
 
 
 # ── Page routes ────────────────────────────────────────────────────────────────
@@ -1170,6 +1257,105 @@ def my_cards():
     return jsonify({"success": True, "cards": cards})
 
 
+# ── HKS Bank: support requests ───────────────────────────────────────────────
+
+@app.route('/api/bank/support', methods=['POST'])
+def bank_support():
+    """File a support request from the "Support" button on the HKS Bank
+    dashboard.
+
+    Unlike HKMail's own support system (whose case numbers are derived from
+    the email row id), this case number is a random 12-character code kept
+    in its own `bank_support_cases` table in the bank's database — entirely
+    independent of the `emails` table, which lives in a different database
+    file. The ticket itself is still delivered as a normal HKMail message to
+    hksbank.support@hkmail.cn, and a confirmation with the case number is
+    sent to whatever HKMail address is linked to the customer's bank account.
+    """
+    if "username" not in session:
+        return jsonify({"success": False, "message": "You must be logged in to contact support."}), 401
+
+    data    = request.get_json() or {}
+    message = (data.get("message", "") or "").strip()
+    if not message:
+        return jsonify({"success": False, "message": "Please describe your issue before sending."}), 400
+
+    username = session["username"]
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT email FROM users WHERE username = ?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Account not found."}), 404
+    email = row[0]
+
+    account_snapshot = bank_account_snapshot_text(cur, username)
+
+    case_number = generate_case_number()
+    cur.execute("SELECT 1 FROM bank_support_cases WHERE case_number = ?", (case_number,))
+    while cur.fetchone():
+        case_number = generate_case_number()
+        cur.execute("SELECT 1 FROM bank_support_cases WHERE case_number = ?", (case_number,))
+
+    cur.execute(
+        "INSERT INTO bank_support_cases (case_number, username, message, status) VALUES (?, ?, ?, 'open')",
+        (case_number, username, message)
+    )
+    conn.commit()
+    conn.close()
+
+    # File the ticket with HKS Bank support, then confirm to the customer.
+    # Both are ordinary HKMail messages — only the case number itself is
+    # tracked outside the emails table.
+    mail_conn = sqlite3.connect(MAIL_DATABASE)
+    mail_cur  = mail_conn.cursor()
+
+    ticket_sender = email if email else SYSTEM_MAIL_SENDER
+    mail_cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (
+            ticket_sender, BANK_SUPPORT_MAIL_USERNAME,
+            f"[{case_number}] Support request from {username}",
+            f"{account_snapshot}\n\n――――――――――――――――――\nCustomer's message:\n{message}"
+        )
+    )
+
+    confirmed = False
+    if email:
+        mail_cur.execute("SELECT id FROM mail_users WHERE username = ?", (email,))
+        if mail_cur.fetchone():
+            mail_cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (
+                    SYSTEM_MAIL_SENDER, email,
+                    f"We've received your support request ({case_number})",
+                    "Thanks for reaching out to HKS Bank Support.\n\n"
+                    f"Your case number is {case_number}. Please reference it in any "
+                    "follow-up correspondence about this issue.\n\n"
+                    "Our support team will get back to you as soon as possible.\n\n"
+                    "— HKS Bank Support\n\n"
+                    "――――――――――――――――――\n"
+                    "Your original message:\n" + message
+                )
+            )
+            confirmed = True
+
+    mail_conn.commit()
+    mail_conn.close()
+
+    if confirmed:
+        return jsonify({
+            "success": True,
+            "message": "Your support request has been sent. Check your HKMail inbox for a confirmation with your case number."
+        })
+    return jsonify({
+        "success": True,
+        "message": "Your support request has been filed, but we couldn't email a confirmation since no HKMail address is on file."
+    })
+
+
 # ── User-to-user transfer ──────────────────────────────────────────────────────
 
 @app.route('/api/transfer', methods=['POST'])
@@ -1704,6 +1890,17 @@ def init_mail_db():
         cur.execute(
             "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
             (SUPPORT_MAIL_USERNAME, support_password_hash, "HKMail Support")
+        )
+
+    # Ensure the hksbank.support@hkmail.cn mailbox exists so it can receive
+    # support requests submitted from the "Support" button on the HKS Bank
+    # dashboard. This is separate from HKMail's own support@hkmail.cn.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (BANK_SUPPORT_MAIL_USERNAME,))
+    if not cur.fetchone():
+        bank_support_password_hash = generate_password_hash(BANK_SUPPORT_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
+            (BANK_SUPPORT_MAIL_USERNAME, bank_support_password_hash, "HKS Bank Support")
         )
 
     conn.commit()
@@ -2436,7 +2633,7 @@ def hkmail_delete_account():
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
-    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME, SUPPORT_MAIL_USERNAME):
+    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME, SUPPORT_MAIL_USERNAME, BANK_SUPPORT_MAIL_USERNAME):
         return jsonify({"success": False, "message": "This account can't be deleted."}), 400
 
     data     = request.get_json() or {}

@@ -46,6 +46,10 @@
         .close-btn:hover { color: #ef4444; }
         .modal-title { font-size: 1.4rem; color: #1a1a1a; margin-bottom: 20px; font-weight: 600; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
 
+        /* ── Support button ── */
+        .support-fab { position: fixed; bottom: 24px; right: 24px; background: #0052cc; color: #fff; border: none; padding: 13px 22px; border-radius: 50px; font-weight: 600; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 14px rgba(0,82,204,0.35); z-index: 900; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+        .support-fab:hover { background: #003d99; box-shadow: 0 6px 18px rgba(0,82,204,0.45); transform: translateY(-2px); }
+
         /* ── Transactions ── */
         .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; text-align: center; padding: 20px 0; }
         .tx-list { display: flex; flex-direction: column; gap: 10px; }
@@ -461,6 +465,26 @@
     </div>
 </div>
 
+<!-- Support -->
+<button class="support-fab" id="support-fab-btn" onclick="openSupportModal()">💬 Support</button>
+
+<div id="supportModal" class="modal-overlay">
+    <div class="modal-content" style="max-width:460px;">
+        <button class="close-btn" onclick="closeSupportModal()">&times;</button>
+        <div class="modal-title">Contact HKS Bank Support</div>
+        <p style="color:#64748b;font-size:0.9rem;margin-top:-10px;margin-bottom:15px;line-height:1.5;">
+            Describe your issue below. We'll email a confirmation with your case number to the HKMail address linked to your account.
+        </p>
+        <textarea id="support-message" rows="6" placeholder="Describe your issue..."
+            style="width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.95rem;font-family:inherit;resize:vertical;outline:none;"></textarea>
+        <div id="support-status" style="font-size:0.85rem;margin-top:10px;min-height:1.2em;"></div>
+        <div style="display:flex;gap:10px;margin-top:10px;">
+            <button class="tx-btn" onclick="closeSupportModal()" style="flex:1;">Cancel</button>
+            <button class="tx-btn send-btn" onclick="submitSupportRequest()" id="support-send-btn" style="flex:1;">Send</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // ── State ──────────────────────────────────────────────
     let _me = null;
@@ -500,6 +524,50 @@
     async function apiFetch(url, opts) {
         const r = await fetch(url, opts);
         return r.json();
+    }
+
+    // ── Support ──────────────────────────────────────────────
+    function openSupportModal() {
+        document.getElementById('support-message').value = '';
+        document.getElementById('support-status').innerHTML = '';
+        document.getElementById('supportModal').style.display = 'flex';
+    }
+
+    function closeSupportModal() {
+        document.getElementById('supportModal').style.display = 'none';
+    }
+
+    async function submitSupportRequest() {
+        const msg = document.getElementById('support-message').value.trim();
+        const statusEl = document.getElementById('support-status');
+        const btn = document.getElementById('support-send-btn');
+
+        if (!msg) {
+            statusEl.innerHTML = '<span style="color:#ef4444;">Please describe your issue.</span>';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'Sending…';
+        try {
+            const data = await apiFetch('/api/bank/support', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ message: msg })
+            });
+            if (data.success) {
+                statusEl.innerHTML = `<span style="color:#10b981;">${data.message}</span>`;
+                document.getElementById('support-message').value = '';
+                setTimeout(closeSupportModal, 2500);
+            } else {
+                statusEl.innerHTML = `<span style="color:#ef4444;">${data.message}</span>`;
+            }
+        } catch {
+            statusEl.innerHTML = '<span style="color:#ef4444;">Request failed. Please try again.</span>';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Send';
+        }
     }
 
     // ── Accounts grid on main screen ───────────────────────
@@ -716,6 +784,7 @@
 
     document.getElementById('txModal').addEventListener('click', e => { if (e.target.id==='txModal') closeTxModal(); });
     document.getElementById('editUserModal').addEventListener('click', e => { if (e.target.id==='editUserModal') closeEditModal(); });
+    document.getElementById('supportModal').addEventListener('click', e => { if (e.target.id==='supportModal') closeSupportModal(); });
 
     // ── Edit modal: helpers ────────────────────────────────
     function setMsg(id, text, ok) {
