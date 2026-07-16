@@ -170,6 +170,40 @@
         .em-freeze-btn:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
         .em-new-card-reveal { margin-top: 10px; padding: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.85rem; }
         .em-new-card-reveal code { font-family: 'Courier New', monospace; font-weight: 700; }
+
+        /* ── Support Case Management (Admin/Employee) ── */
+        .support-admin-panel { background: #fff; border-radius: 10px; border: 1px solid #e2e8f0; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); margin-top: 20px; }
+        .support-admin-panel h3 { color: #1a1a1a; margin-bottom: 15px; font-size: 1.2rem; }
+        .support-filter-bar { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .support-filter-chip { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; padding: 6px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .support-filter-chip:hover { background: #e2e8f0; }
+        .support-filter-chip.active { background: #0052cc; color: #fff; border-color: #0052cc; }
+        .status-pill { display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 10px; border-radius: 12px; white-space: nowrap; }
+        .status-pill.open { background: #fee2e2; color: #b91c1c; }
+        .status-pill.in_progress { background: #fef3c7; color: #b45309; }
+        .status-pill.resolved { background: #dcfce7; color: #15803d; }
+        .status-pill.closed { background: #e2e8f0; color: #475569; }
+        .case-msg-preview { color: #64748b; font-size: 0.85rem; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .manage-case-btn { background: #0052cc; color: #fff; border: none; padding: 6px 16px; border-radius: 5px; font-weight: 600; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
+        .manage-case-btn:hover { background: #003d99; }
+
+        /* ── Case Detail Modal ── */
+        .case-modal-wrap { background: #fff; border-radius: 14px; width: 92%; max-width: 600px; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 24px 48px rgba(0,0,0,0.14); }
+        .case-modal-header { padding: 24px 28px 0; }
+        .case-modal-header h3 { font-size: 1.2rem; color: #1a1a1a; margin-bottom: 4px; }
+        .case-modal-meta { color: #64748b; font-size: 0.85rem; margin-top: 4px; }
+        .case-modal-body { padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 20px; }
+        .case-message-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; font-size: 0.92rem; color: #334155; white-space: pre-wrap; line-height: 1.5; }
+        .case-status-row { display: flex; gap: 8px; align-items: center; }
+        .case-status-row select { flex: 1; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; background: #fff; }
+        .case-note-input { width: 100%; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; resize: vertical; min-height: 60px; font-family: inherit; }
+        .case-update-btn { background: #10b981; color: #fff; border: none; padding: 9px 18px; border-radius: 6px; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: background 0.2s; align-self: flex-start; }
+        .case-update-btn:hover { background: #059669; }
+        .case-update-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        .case-audit-title { font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+        .case-audit-log { display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; }
+        .case-audit-entry { font-size: 0.82rem; color: #475569; padding: 8px 10px; background: #f8fafc; border-radius: 6px; border-left: 3px solid #cbd5e1; }
+        .case-audit-entry b { color: #1e293b; }
     </style>
 </head>
 <body>
@@ -230,7 +264,74 @@
             <tbody id="user-table-body"></tbody>
         </table>
     </div>
+
+    <div id="support-admin-section" class="support-admin-panel" style="display:none;">
+        <h3>Support Requests</h3>
+        <div class="support-filter-bar" id="support-filter-bar">
+            <button class="support-filter-chip active" data-status="" onclick="filterSupportCases('')">All</button>
+            <button class="support-filter-chip" data-status="open" onclick="filterSupportCases('open')">Open</button>
+            <button class="support-filter-chip" data-status="in_progress" onclick="filterSupportCases('in_progress')">In Progress</button>
+            <button class="support-filter-chip" data-status="resolved" onclick="filterSupportCases('resolved')">Resolved</button>
+            <button class="support-filter-chip" data-status="closed" onclick="filterSupportCases('closed')">Closed</button>
+        </div>
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>Case #</th>
+                    <th>Requester</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="support-case-table-body"></tbody>
+        </table>
+        <p class="empty-text" id="support-case-empty" style="display:none;">No support requests found.</p>
+    </div>
 </main>
+
+<!-- ── Support Case Detail Modal ── -->
+<div id="caseModal" class="modal-overlay">
+    <div class="case-modal-wrap">
+        <button class="close-btn" onclick="closeCaseModal()">&times;</button>
+        <div class="case-modal-header">
+            <h3>Support Case <span id="case-modal-number"></span></h3>
+            <div class="case-modal-meta">
+                From <strong id="case-modal-requester"></strong> · Submitted <span id="case-modal-date"></span>
+                · <span id="case-modal-status-pill" class="status-pill"></span>
+            </div>
+        </div>
+        <div class="case-modal-body">
+            <div>
+                <div class="case-audit-title">Message</div>
+                <div class="case-message-box" id="case-modal-message"></div>
+            </div>
+
+            <div>
+                <div class="case-audit-title">Update Status</div>
+                <div class="case-status-row">
+                    <select id="case-status-select">
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </div>
+                <textarea id="case-note-input" class="case-note-input" placeholder="Optional note about this update (kept in the audit log)…" style="margin-top:8px;"></textarea>
+                <div id="case-update-status" style="font-size:0.85rem;margin:8px 0;min-height:1.2em;"></div>
+                <button class="case-update-btn" id="case-update-btn" onclick="submitCaseStatusUpdate()">Update Status</button>
+            </div>
+
+            <div>
+                <div class="case-audit-title">Audit Log</div>
+                <div class="case-audit-log" id="case-audit-log">
+                    <p class="empty-text" style="padding:8px 0;">No actions recorded yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ── Send Money Modal ── -->
 <div id="sendModal" class="modal-overlay">
@@ -515,6 +616,11 @@
                 document.getElementById('employee-indicator').style.display = 'inline-block';
                 document.getElementById('admin-section').style.display = 'block';
                 loadAdminUsers();
+            }
+
+            if (data.isAdmin || data.isEmployee) {
+                document.getElementById('support-admin-section').style.display = 'block';
+                loadSupportCases();
             }
         } catch (e) { redirect(); }
     }
@@ -1336,6 +1442,146 @@
     async function executeLogout() {
         try { await fetch('/api/logout', {method:'POST'}); } catch {}
         redirect();
+    }
+
+    // ── Support Case Management (Admin/Employee) ──────────────
+    let _supportStatusFilter = '';
+    let _supportCases = [];
+    let _activeCaseId = null;
+
+    const STATUS_LABELS = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved', closed: 'Closed' };
+
+    function filterSupportCases(status) {
+        _supportStatusFilter = status;
+        document.querySelectorAll('#support-filter-bar .support-filter-chip').forEach(chip => {
+            chip.classList.toggle('active', chip.dataset.status === status);
+        });
+        loadSupportCases();
+    }
+
+    async function loadSupportCases() {
+        try {
+            const url = _supportStatusFilter
+                ? `/api/bank/admin/support-cases?status=${encodeURIComponent(_supportStatusFilter)}`
+                : '/api/bank/admin/support-cases';
+            const data = await apiFetch(url);
+            if (!data.success) return;
+            _supportCases = data.cases;
+            renderSupportCasesTable();
+        } catch (e) { /* silent — panel just stays empty */ }
+    }
+
+    function renderSupportCasesTable() {
+        const tbody = document.getElementById('support-case-table-body');
+        const empty = document.getElementById('support-case-empty');
+        tbody.innerHTML = '';
+
+        if (!_supportCases.length) {
+            empty.style.display = 'block';
+            return;
+        }
+        empty.style.display = 'none';
+
+        _supportCases.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><code>${c.case_number}</code></td>
+                <td>${escapeHtml(c.full_name)}<br><span style="color:#94a3b8;font-size:0.78rem;">${escapeHtml(c.username)}</span></td>
+                <td>${formatCaseDate(c.created_at)}</td>
+                <td><span class="status-pill ${c.status}">${c.status_label}</span></td>
+                <td><div class="case-msg-preview">${escapeHtml(c.message)}</div></td>
+                <td><button class="manage-case-btn" onclick="openCaseModal(${c.id})">Manage</button></td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.innerText = s == null ? '' : s;
+        return d.innerHTML;
+    }
+
+    function formatCaseDate(ts) {
+        if (!ts) return '';
+        try { return new Date(ts.replace(' ', 'T') + 'Z').toLocaleString(); } catch { return ts; }
+    }
+
+    async function openCaseModal(caseId) {
+        _activeCaseId = caseId;
+        document.getElementById('case-update-status').innerText = '';
+        document.getElementById('case-note-input').value = '';
+        document.getElementById('caseModal').style.display = 'flex';
+
+        try {
+            const data = await apiFetch(`/api/bank/admin/support-cases/${caseId}`);
+            if (!data.success) { closeCaseModal(); return; }
+            const c = data.case;
+
+            document.getElementById('case-modal-number').innerText = c.case_number;
+            document.getElementById('case-modal-requester').innerText = `${c.full_name} (${c.username})`;
+            document.getElementById('case-modal-date').innerText = formatCaseDate(c.created_at);
+            const pill = document.getElementById('case-modal-status-pill');
+            pill.innerText = c.status_label;
+            pill.className = `status-pill ${c.status}`;
+            document.getElementById('case-modal-message').innerText = c.message;
+            document.getElementById('case-status-select').value = c.status;
+
+            const logEl = document.getElementById('case-audit-log');
+            if (!c.events.length) {
+                logEl.innerHTML = '<p class="empty-text" style="padding:8px 0;">No actions recorded yet.</p>';
+            } else {
+                logEl.innerHTML = c.events.slice().reverse().map(ev => `
+                    <div class="case-audit-entry">
+                        <b>${STATUS_LABELS[ev.old_status] || ev.old_status} → ${STATUS_LABELS[ev.new_status] || ev.new_status}</b>
+                        by ${escapeHtml(ev.actor_username)} (${ev.actor_role}) · ${formatCaseDate(ev.created_at)}
+                        ${ev.note ? `<br><em>${escapeHtml(ev.note)}</em>` : ''}
+                    </div>`).join('');
+            }
+        } catch (e) {
+            closeCaseModal();
+        }
+    }
+
+    function closeCaseModal() {
+        document.getElementById('caseModal').style.display = 'none';
+        _activeCaseId = null;
+    }
+
+    document.getElementById('caseModal').addEventListener('click', e => {
+        if (e.target === document.getElementById('caseModal')) closeCaseModal();
+    });
+
+    async function submitCaseStatusUpdate() {
+        if (!_activeCaseId) return;
+        const status  = document.getElementById('case-status-select').value;
+        const note    = document.getElementById('case-note-input').value.trim();
+        const statusEl = document.getElementById('case-update-status');
+        const btn      = document.getElementById('case-update-btn');
+
+        btn.disabled = true;
+        btn.innerText = 'Updating…';
+        statusEl.style.color = '#64748b';
+        statusEl.innerText = '';
+
+        try {
+            const data = await apiFetch(`/api/bank/admin/support-cases/${_activeCaseId}/status`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status, note })
+            });
+            statusEl.innerText = data.message;
+            statusEl.style.color = data.success ? '#15803d' : '#b91c1c';
+            if (data.success) {
+                await openCaseModal(_activeCaseId); // refresh detail + audit log
+                await loadSupportCases();            // refresh table row
+            }
+        } catch (e) {
+            statusEl.innerText = 'A network error occurred. Please try again.';
+            statusEl.style.color = '#b91c1c';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Update Status';
+        }
     }
 </script>
 </body>

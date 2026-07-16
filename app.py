@@ -101,8 +101,28 @@ def init_db():
             case_number  TEXT UNIQUE NOT NULL,
             username     TEXT NOT NULL,
             message      TEXT NOT NULL,
-            status       TEXT NOT NULL DEFAULT 'open',   -- open | closed
+            status       TEXT NOT NULL DEFAULT 'open',   -- open | in_progress | resolved | closed
             created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Audit trail for HKS Bank support case management — every status change
+    # (and, in future, assignment/note/etc. actions) made by an Administrator
+    # or Employee is recorded here so the lifecycle of a case is fully
+    # traceable. Kept as its own table (rather than emails, like HKMail's
+    # admin audit trail) since this is bank-side staff activity, not mail.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS bank_support_case_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            case_id         INTEGER NOT NULL,
+            action          TEXT NOT NULL,               -- e.g. status_change
+            old_status      TEXT,
+            new_status      TEXT,
+            note            TEXT NOT NULL DEFAULT '',
+            actor_username  TEXT NOT NULL,
+            actor_role      TEXT NOT NULL,                -- admin | employee
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (case_id) REFERENCES bank_support_cases(id)
         )
     """)
 
@@ -1374,6 +1394,174 @@ def bank_support():
     return jsonify({
         "success": True,
         "message": "Your support request has been filed, but we couldn't email a confirmation since no HKMail address is on file."
+    })
+
+
+# ── HKS Bank: support case management (Administrators & Employees) ─────────────
+# Dedicated interface for authorised staff to review, triage, and resolve the
+# support requests customers file via /api/bank/support. Deliberately kept
+# separate from the customer-facing submission route above: staff work off
+# case id (internal, sequential) while customers only ever see/reference the
+# opaque case_number.
+
+BANK_SUPPORT_STATUSES = ("open", "in_progress", "resolved", "closed")
+BANK_SUPPORT_STATUS_LABELS = {
+    "open": "Open",
+    "in_progress": "In Progress",
+    "resolved": "Resolved",
+    "closed": "Closed",
+}
+
+
+def bank_support_case_to_dict(row, full_name=None):
+    (case_id, case_number, username, message, status, created_at) = row
+    return {
+        "id": case_id,
+        "case_number": case_number,
+        "username": username,
+        "full_name": full_name or username,
+        "message": message,
+        "status": status,
+        "status_label": BANK_SUPPORT_STATUS_LABELS.get(status, status),
+        "created_at": created_at,
+    }
+
+
+@app.route('/api/bank/admin/support-cases', methods=['GET'])
+def bank_admin_list_support_cases():
+    """List every support request for the staff management interface.
+    Administrators and Employees only — standard users have no route to
+    other customers' support requests."""
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    status_filter = (request.args.get("status", "") or "").strip().lower()
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    if status_filter and status_filter in BANK_SUPPORT_STATUSES:
+        cur.execute("""
+            SELECT c.id, c.case_number, c.username, c.message, c.status, c.created_at
+            FROM bank_support_cases c
+            WHERE c.status = ?
+            ORDER BY c.created_at DESC
+        """, (status_filter,))
+    else:
+        cur.execute("""
+            SELECT c.id, c.case_number, c.username, c.message, c.status, c.created_at
+            FROM bank_support_cases c
+            ORDER BY c.created_at DESC
+        """)
+    rows = cur.fetchall()
+
+    # Attach requester full names in one extra pass (small dataset; keeps the
+    # main query simple and avoids assumptions about NULL full_name values).
+    full_names = {}
+    if rows:
+        cur.execute("SELECT username, full_name FROM users")
+        full_names = {u: (fn if fn else u) for u, fn in cur.fetchall()}
+    conn.close()
+
+    cases = [bank_support_case_to_dict(r, full_names.get(r[2])) for r in rows]
+    return jsonify({"success": True, "cases": cases})
+
+
+@app.route('/api/bank/admin/support-cases/<int:case_id>', methods=['GET'])
+def bank_admin_get_support_case(case_id):
+    """Full detail for one case, including its audit trail — the basis for a
+    future response-history / internal-notes view."""
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, case_number, username, message, status, created_at
+        FROM bank_support_cases WHERE id = ?
+    """, (case_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Support case not found."}), 404
+
+    cur.execute("SELECT full_name FROM users WHERE username = ?", (row[2],))
+    fn_row = cur.fetchone()
+    full_name = (fn_row[0] if fn_row and fn_row[0] else row[2])
+
+    cur.execute("""
+        SELECT action, old_status, new_status, note, actor_username, actor_role, created_at
+        FROM bank_support_case_events
+        WHERE case_id = ?
+        ORDER BY created_at ASC, id ASC
+    """, (case_id,))
+    events = [
+        {
+            "action": r[0], "old_status": r[1], "new_status": r[2], "note": r[3],
+            "actor_username": r[4], "actor_role": r[5], "created_at": r[6],
+        }
+        for r in cur.fetchall()
+    ]
+    conn.close()
+
+    case = bank_support_case_to_dict(row, full_name)
+    case["events"] = events
+    return jsonify({"success": True, "case": case})
+
+
+@app.route('/api/bank/admin/support-cases/<int:case_id>/status', methods=['POST'])
+def bank_admin_update_support_case_status(case_id):
+    """Update a support case's status (Open / In Progress / Resolved /
+    Closed). Every change — old status, new status, optional note, and which
+    staff member made it — is written to bank_support_case_events for the
+    audit log."""
+    if not is_employee_or_admin():
+        return jsonify({"success": False, "message": "Administrator access required."}), 403
+
+    data       = request.get_json() or {}
+    new_status = (data.get("status", "") or "").strip().lower()
+    note       = (data.get("note", "") or "").strip()
+
+    if new_status not in BANK_SUPPORT_STATUSES:
+        return jsonify({
+            "success": False,
+            "message": f"Invalid status. Must be one of: {', '.join(BANK_SUPPORT_STATUS_LABELS.values())}."
+        }), 400
+
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT status FROM bank_support_cases WHERE id = ?", (case_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Support case not found."}), 404
+
+    old_status = row[0]
+    actor_username = session["username"]
+    actor_role = "admin" if is_admin() else "employee"
+
+    if old_status == new_status:
+        conn.close()
+        return jsonify({
+            "success": True,
+            "message": f"Case is already {BANK_SUPPORT_STATUS_LABELS[new_status]}.",
+            "status": new_status,
+            "status_label": BANK_SUPPORT_STATUS_LABELS[new_status],
+        })
+
+    cur.execute("UPDATE bank_support_cases SET status = ? WHERE id = ?", (new_status, case_id))
+    cur.execute("""
+        INSERT INTO bank_support_case_events
+            (case_id, action, old_status, new_status, note, actor_username, actor_role)
+        VALUES (?, 'status_change', ?, ?, ?, ?, ?)
+    """, (case_id, old_status, new_status, note, actor_username, actor_role))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": f"Case status updated to {BANK_SUPPORT_STATUS_LABELS[new_status]}.",
+        "status": new_status,
+        "status_label": BANK_SUPPORT_STATUS_LABELS[new_status],
     })
 
 
