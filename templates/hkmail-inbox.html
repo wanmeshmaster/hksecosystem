@@ -2202,10 +2202,37 @@
         if (e.target === document.getElementById('support-modal')) closeSupportModal();
     });
 
+    // ── Silent auto-refresh (doesn't close whatever email is open) ──────────────
+    async function silentRefreshInbox() {
+        if (currentFolder !== 'inbox') { refreshUnread(); return; }
+        try {
+            const res  = await fetch('/api/hkmail/inbox');
+            const data = await res.json();
+            if (!data.success) return;
+
+            emailCache = data.emails || [];
+            renderList(emailCache);
+
+            // Re-apply the "open" state to whichever email the user is reading,
+            // since renderList() just rebuilt the list DOM from scratch.
+            if (currentEmailId !== null) {
+                const item = document.getElementById('ei-' + currentEmailId);
+                if (item) {
+                    item.classList.add('active');
+                    item.classList.remove('unread');
+                    const dot = item.querySelector('.unread-dot');
+                    if (dot) dot.style.display = 'none';
+                }
+            }
+        } catch {
+            // Silently ignore — this is a background refresh, not a user action.
+        }
+        refreshUnread();
+    }
+
     // Auto-refresh inbox every 30s
     setInterval(() => {
-        if (currentFolder === 'inbox') loadFolder('inbox');
-        refreshUnread();
+        silentRefreshInbox();
     }, 30000);
 </script>
 
