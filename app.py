@@ -127,6 +127,13 @@ NOREPLY_MAIL_USERNAME = "noreply@hkmail.cn"
 # same pattern as ADMIN_MAIL_DEFAULT_PASSWORD — change in a real deployment.
 HKSBANK_MAIL_DEFAULT_PASSWORD = "HksBankSys456!"
 
+# Mailbox that receives support requests submitted from the "Support" button
+# in the HKMail sidebar. A real account (rather than a plain constant string)
+# so support staff can actually log in and read the queue like any other
+# HKMail inbox. Fixed demo credential, same pattern as the accounts above.
+SUPPORT_MAIL_USERNAME = "support@hkmail.cn"
+SUPPORT_MAIL_DEFAULT_PASSWORD = "SupportQueue321!"
+
 
 def generate_signup_code(length=8):
     alphabet = string.ascii_uppercase + string.digits
@@ -1689,6 +1696,16 @@ def init_mail_db():
             (SYSTEM_MAIL_SENDER, system_password_hash, "HKS Bank")
         )
 
+    # Ensure the support@hkmail.cn mailbox exists so it can receive support
+    # requests submitted from the "Support" button in the sidebar.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (SUPPORT_MAIL_USERNAME,))
+    if not cur.fetchone():
+        support_password_hash = generate_password_hash(SUPPORT_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
+            (SUPPORT_MAIL_USERNAME, support_password_hash, "HKMail Support")
+        )
+
     conn.commit()
     conn.close()
 
@@ -2155,6 +2172,71 @@ def hkmail_send():
     return jsonify({"success": True, "message": f"Message sent to {recipient}."})
 
 
+# ── HKMail: support requests ─────────────────────────────────────────────────
+
+@app.route('/api/hkmail/support', methods=['POST'])
+def hkmail_support():
+    """File a support request from the sidebar "Support" button.
+
+    The request itself is delivered as a normal email to support@hkmail.cn so
+    the support team can work their queue like any other inbox. The case
+    number is derived from that email's row id at the moment it's created —
+    there's no separate case table, the email row *is* the case record. The
+    case number isn't returned to the caller here (per spec, it should only
+    reach the user via the confirmation email); a confirmation email quoting
+    it is dropped into the user's own inbox from the no-reply account
+    immediately afterward.
+    """
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data    = request.get_json() or {}
+    message = (data.get("message", "") or "").strip()
+    if not message:
+        return jsonify({"success": False, "message": "Please describe your issue before sending."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        # 1) File the request with the support team. Subject is patched in
+        #    right after the insert so it can carry the case number, which
+        #    only exists once the row (and therefore its id) does.
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (u, SUPPORT_MAIL_USERNAME, "Support request", message)
+        )
+        case_id     = cur.lastrowid
+        case_number = f"CASE-{case_id:06d}"
+        cur.execute(
+            "UPDATE emails SET subject=? WHERE id=?",
+            (f"[{case_number}] Support request from {u}", case_id)
+        )
+
+        # 2) Confirm to the user, with the case number — this is the only
+        #    place the case number is ever shown to them.
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (
+                NOREPLY_MAIL_USERNAME, u,
+                f"We've received your support request ({case_number})",
+                "Thanks for reaching out to HKMail Support.\n\n"
+                f"Your case number is {case_number}. Please reference it in any "
+                "follow-up correspondence about this issue.\n\n"
+                "Our support team will get back to you as soon as possible.\n\n"
+                "— HKMail Support\n\n"
+                "――――――――――――――――――\n"
+                "Your original message:\n" + message
+            )
+        )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Your support request has been sent. Check your inbox for a confirmation."})
+
+
 # ── HKMail: storage & premium subscription ─────────────────────────────────────
 
 def _mail_plans_payload():
@@ -2354,7 +2436,7 @@ def hkmail_delete_account():
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
-    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME):
+    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME, SUPPORT_MAIL_USERNAME):
         return jsonify({"success": False, "message": "This account can't be deleted."}), 400
 
     data     = request.get_json() or {}

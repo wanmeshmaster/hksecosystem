@@ -187,8 +187,14 @@
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
             flex-shrink: 0;
             overflow-y: auto;
+        }
+
+        .sidebar-footer {
+            padding: 12px 8px;
+            border-top: 1px solid var(--border);
         }
 
         .sidebar-nav {
@@ -807,6 +813,17 @@
                 Admin
             </div>
         </nav>
+        <div class="sidebar-footer">
+            <div class="nav-item" id="nav-support" onclick="openSupportModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Support
+            </div>
+        </div>
     </div>
 
     <!-- Email list pane -->
@@ -863,6 +880,24 @@
         </div>
         <div class="compose-footer">
             <button class="btn-send" id="send-btn" onclick="doSend()">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Support modal ── -->
+<div class="modal-overlay" id="support-modal">
+    <div class="compose-card">
+        <span class="compose-close" onclick="closeSupportModal()">&times;</span>
+        <h3>Contact Support</h3>
+
+        <div id="support-msg" class="compose-msg"></div>
+
+        <div class="c-field">
+            <label class="c-label" for="s-body">What can we help with?</label>
+            <textarea class="c-input c-textarea" id="s-body" placeholder="Describe the issue you're having…"></textarea>
+        </div>
+        <div class="compose-footer">
+            <button class="btn-send" id="support-send-btn" onclick="doSendSupport()">Send</button>
         </div>
     </div>
 </div>
@@ -974,6 +1009,7 @@
     let iAmAdmin = false;
     let adminUsersCache = [];
     let adminEditingUsername = null;
+    let myUsername = null;
 
     // ── Init ───────────────────────────────────────────────────────────────────
     (async function init() {
@@ -983,7 +1019,9 @@
             window.location.href = '/hkmail.html';
             return;
         }
-        document.getElementById('topbar-email').textContent = data.username;
+        myUsername = data.username;
+        const firstName = (data.fullName || data.username).trim().split(/\s+/)[0];
+        document.getElementById('topbar-email').textContent = `Hello, ${firstName}`;
         iAmAdmin = !!data.isAdmin;
         if (iAmAdmin) {
             document.getElementById('topbar-admin-badge').style.display = 'inline-block';
@@ -1273,6 +1311,68 @@
         }
     }
 
+    // ── Support modal ──────────────────────────────────────────────────────────
+    function openSupportModal() {
+        clearSupportMsg();
+        document.getElementById('s-body').value = '';
+        document.getElementById('support-modal').classList.add('open');
+        document.getElementById('s-body').focus();
+    }
+
+    function closeSupportModal() {
+        document.getElementById('support-modal').classList.remove('open');
+    }
+
+    function clearSupportMsg() {
+        const el = document.getElementById('support-msg');
+        el.className = 'compose-msg';
+        el.textContent = '';
+    }
+
+    function showSupportMsg(text, type) {
+        const el = document.getElementById('support-msg');
+        el.textContent = text;
+        el.className = 'compose-msg ' + type;
+    }
+
+    async function doSendSupport() {
+        const message = document.getElementById('s-body').value.trim();
+        const btn     = document.getElementById('support-send-btn');
+
+        if (!message) { showSupportMsg('Please describe your issue.', 'error'); return; }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>Sending…';
+        clearSupportMsg();
+
+        try {
+            const res  = await fetch('/api/hkmail/support', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showSupportMsg(data.message, 'success');
+                document.getElementById('s-body').value = '';
+                setTimeout(() => {
+                    closeSupportModal();
+                    if (currentFolder === 'inbox') loadFolder('inbox');
+                    refreshUnread();
+                    showToast('Support request sent!');
+                }, 1200);
+            } else {
+                showSupportMsg(data.message || 'Failed to send.', 'error');
+            }
+        } catch {
+            showSupportMsg('Connection error. Please try again.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Send';
+        }
+    }
+
     // ── Admin panel ────────────────────────────────────────────────────────────
     function openAdminPanel() {
         if (!iAmAdmin) return;
@@ -1332,7 +1432,7 @@
         const roleBtn = document.getElementById('admin-role-btn');
         const verifyBtn = document.getElementById('admin-verify-btn');
 
-        const isSelf = username === document.getElementById('topbar-email').textContent;
+        const isSelf = username === myUsername;
         roleBtn.disabled = isSelf || username === 'hksbank@hkmail.cn';
         roleBtn.textContent = isSelf ? "Can't change your own role" : (isAdmin ? 'Demote to User' : 'Promote to Admin');
         roleBtn.dataset.isAdmin = isAdmin ? '1' : '0';
@@ -1643,6 +1743,11 @@
     // Close storage panel on overlay click
     document.getElementById('storage-modal').addEventListener('click', e => {
         if (e.target === document.getElementById('storage-modal')) closeStorageModal();
+    });
+
+    // Close support panel on overlay click
+    document.getElementById('support-modal').addEventListener('click', e => {
+        if (e.target === document.getElementById('support-modal')) closeSupportModal();
     });
 
     // Auto-refresh inbox every 30s
