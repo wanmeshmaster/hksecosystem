@@ -207,8 +207,8 @@ def send_system_mail(recipient, subject, body):
 
 
 # ── HKS Bank cards ───────────────────────────────────────────────────────────────
-# Fictitious 6-digit issuer prefix (IIN) for HKS Bank cards. It's fine for this
-# to be public/hardcoded — real banks' BINs are public too — so the checkout
+# 6-digit issuer prefix (IIN) for HKS Bank cards. It's fine for this
+# to be public/hardcoded so the checkout
 # page can instantly recognize an HKS Bank card as the customer types.
 CARD_BIN = "457124"
 
@@ -402,8 +402,7 @@ def bank_account_snapshot_text(cur, username):
     lines.append("")
 
     lines.append(
-        "Note: transaction history is not included in support tickets yet — this needs a "
-        "separate HKMail update to embed/attach it safely, planned for later."
+        "Note: transaction history is not included in support tickets yet."
     )
     return "\n".join(lines)
 
@@ -467,16 +466,32 @@ def register():
             "email": email
         }), 400
 
-    # Check the username isn't already taken before we bother sending a code.
+    # Check both username and email
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
+    
+    # 1. Check if username exists
     cur.execute("SELECT id FROM users WHERE username=?", (username,))
-    already_taken = cur.fetchone() is not None
+    username_taken = cur.fetchone() is not None
+    
+    # 2. Check if email exists
+    cur.execute("SELECT id FROM users WHERE email=?", (email,))
+    email_taken = cur.fetchone() is not None
+    
     conn.close()
-    if already_taken:
+    
+    # 3. Return respective errors to the frontend
+    if username_taken:
         return jsonify({"success": False, "message": "Username already exists."}), 400
+        
+    if email_taken:
+        return jsonify({
+            "success": False, 
+            "message": "An HKS Bank account is already registered with this email address."
+        }), 400
+    # =====================================================================
 
-    # Registration isn't finalized yet — stash the pending details in the
+    # Registration isn't finalized yet - stash the pending details in the
     # session and email a confirmation code. The account is only created
     # once that code is verified via /api/register/confirm.
     signup_code = generate_signup_code()
