@@ -127,6 +127,28 @@
             vertical-align: middle;
         }
 
+        /* Tier colors: 5GB=Silver, 25GB=Gold, 50GB=Emerald, 100GB=Diamond.
+           Gold matches the original badge-premium look (kept as the default
+           fallback above for anywhere a tier isn't known); the others are
+           overrides layered on top via an extra tier-* class. */
+        .badge-premium.tier-silver {
+            background: linear-gradient(135deg, #E8EBEF, #ADB5BF);
+            color: #33404D;
+            border: 1px solid #97A2AD;
+        }
+        .badge-premium.tier-gold {
+            background: linear-gradient(135deg, #F5B301, #D68A00);
+            color: #fff;
+        }
+        .badge-premium.tier-emerald {
+            background: linear-gradient(135deg, #34D399, #047857);
+            color: #fff;
+        }
+        .badge-premium.tier-diamond {
+            background: linear-gradient(135deg, #7DD3FC, #0369A1);
+            color: #fff;
+        }
+
         .badge-verified svg, .badge-admin svg, .badge-premium svg { width: 9px; height: 9px; }
 
         .topbar-badge-admin {
@@ -705,6 +727,11 @@
         .plan-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
         .plan-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 16px 14px; text-align: center; display: flex; flex-direction: column; gap: 8px; }
         .plan-card.current { border-color: #F5B301; background: #FFF9EC; }
+        .plan-card.current.tier-silver  { border-color: #ADB5BF; background: #F4F5F7; }
+        .plan-card.current.tier-gold    { border-color: #F5B301; background: #FFF9EC; }
+        .plan-card.current.tier-emerald { border-color: #059669; background: #ECFDF5; }
+        .plan-card.current.tier-diamond { border-color: #0369A1; background: #EFF9FF; }
+        .plan-card-tier-chip { align-self: center; margin-bottom: -2px; }
         .plan-card-size { font-size: 1.3rem; font-weight: 800; color: var(--navy); }
         .plan-card-price { font-size: 0.95rem; font-weight: 700; color: var(--red); }
         .plan-card-price span { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
@@ -1028,7 +1055,12 @@
             document.getElementById('nav-admin').style.display = 'flex';
         }
         if (data.isPremium) {
-            document.getElementById('topbar-premium-badge').style.display = 'inline-flex';
+            const topbarBadge = document.getElementById('topbar-premium-badge');
+            const tierName = data.premiumTier ? data.premiumTier.charAt(0).toUpperCase() + data.premiumTier.slice(1) : 'Premium';
+            topbarBadge.classList.toggle('tier-' + data.premiumTier, !!data.premiumTier);
+            topbarBadge.textContent = `★ ${tierName}`;
+            topbarBadge.title = `${data.premiumLabel || 'HKMail Premium'} — manage your Premium subscription`;
+            topbarBadge.style.display = 'inline-flex';
         }
         await loadFolder('inbox');
         refreshUnread();
@@ -1043,7 +1075,7 @@
     })();
 
     // ── Sender badges ──────────────────────────────────────────────────────────
-    function senderBadges(isAdmin, isVerified, isPremium, premiumLabel) {
+    function senderBadges(isAdmin, isVerified, isPremium, premiumLabel, premiumTier) {
         let html = '';
         if (isAdmin) {
             html += `<span class="badge-admin" title="HKMail administrative account">
@@ -1056,7 +1088,9 @@
                 Verified</span>`;
         }
         if (isPremium) {
-            html += `<span class="badge-premium" title="${escHtml(premiumLabel || 'HKMail Premium')} subscriber">★ Premium</span>`;
+            const tierClass = premiumTier ? `tier-${premiumTier}` : '';
+            const tierName  = premiumTier ? premiumTier.charAt(0).toUpperCase() + premiumTier.slice(1) : 'Premium';
+            html += `<span class="badge-premium ${tierClass}" title="${escHtml(premiumLabel || 'HKMail Premium')} subscriber">★ ${tierName}</span>`;
         }
         return html;
     }
@@ -1108,7 +1142,7 @@
             const displayName = currentFolder === 'sent' ? (e.to || '') : (e.from || '');
             const label = currentFolder === 'sent' ? `To: ${displayName}` : displayName;
             const dateStr = formatDate(e.date);
-            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label);
+            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier);
             return `
                 <div class="email-item ${isUnread ? 'unread' : ''}" id="ei-${e.id}"
                      onclick="openEmail(${e.id})">
@@ -1175,7 +1209,7 @@
         document.getElementById('email-view-header').innerHTML = `
             <div class="email-view-subject">${escHtml(e.subject)}</div>
             <div class="email-view-meta">
-                <span><strong>From:</strong> ${escHtml(e.from)} ${senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label)}</span>
+                <span><strong>From:</strong> ${escHtml(e.from)} ${senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier)}</span>
                 <span><strong>To:</strong> ${escHtml(e.to)}</span>
                 <span><strong>Date:</strong> ${formatDate(e.date, true)}</span>
             </div>
@@ -1564,8 +1598,13 @@
             const fill = document.getElementById('storage-bar-fill');
             fill.style.width = pct + '%';
             fill.className = 'storage-bar-fill' + (pct < 85 ? ' ok' : '');
-            document.getElementById('storage-plan-label').textContent =
-                data.is_premium ? `Premium: ${data.badge_label}` : 'Current plan: Free';
+            const planLabelEl = document.getElementById('storage-plan-label');
+            if (data.is_premium) {
+                const tierName = data.badge_tier ? data.badge_tier.charAt(0).toUpperCase() + data.badge_tier.slice(1) : 'Premium';
+                planLabelEl.innerHTML = `<span class="badge-premium ${data.badge_tier ? 'tier-' + data.badge_tier : ''}">★ ${tierName}</span> ${escHtml(data.badge_label)}`;
+            } else {
+                planLabelEl.textContent = 'Current plan: Free';
+            }
 
             // Plans stack, so a mailbox can hold several at once — show a
             // status row (with its own Cancel / Resume action) for every
@@ -1604,10 +1643,11 @@
             if (isActive) { btnLabel = 'Current plan'; btnAttr = 'disabled'; }
             else if (isCancelled) { btnLabel = 'Resume billing'; btnAttr = `onclick="resumePlan('${p.id}')"`; }
             return `
-                <div class="plan-card ${isActive ? 'current' : ''}">
+                <div class="plan-card ${isActive ? 'current tier-' + p.tier : ''}">
+                    <span class="badge-premium tier-${p.tier} plan-card-tier-chip">★ ${escHtml(p.tier_label)}</span>
                     <div class="plan-card-size">${p.storage_gb}GB</div>
                     <div class="plan-card-price">$${p.price.toFixed(2)}<span> /mo</span></div>
-                    <div class="plan-card-badge-note">Premium badge on your mail${isCancelled ? ' — plans stack, this one just needs billing turned back on' : ''}</div>
+                    <div class="plan-card-badge-note">${escHtml(p.tier_label)} badge on your mail${isCancelled ? ' — plans stack, this one just needs billing turned back on' : ''}</div>
                     <button class="plan-card-btn" ${btnAttr}>${btnLabel}</button>
                 </div>`;
         }).join('');

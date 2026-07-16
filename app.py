@@ -1762,10 +1762,10 @@ MAIL_DATABASE = "mail.db"
 FREE_STORAGE_MB = 1024  # 1GB for free users
 
 MAIL_PLANS = {
-    "5gb":   {"id": "5gb",   "label": "Premium 5GB",   "storage_mb": 5   * 1024, "price": 1.99,  "badge": True},
-    "25gb":  {"id": "25gb",  "label": "Premium 25GB",  "storage_mb": 25  * 1024, "price": 4.99,  "badge": True},
-    "50gb":  {"id": "50gb",  "label": "Premium 50GB",  "storage_mb": 50  * 1024, "price": 9.99,  "badge": True},
-    "100gb": {"id": "100gb", "label": "Premium 100GB", "storage_mb": 100 * 1024, "price": 19.99, "badge": True},
+    "5gb":   {"id": "5gb",   "label": "Premium 5GB",   "storage_mb": 5   * 1024, "price": 1.99,  "badge": True, "tier": "silver",  "tier_label": "Silver"},
+    "25gb":  {"id": "25gb",  "label": "Premium 25GB",  "storage_mb": 25  * 1024, "price": 4.99,  "badge": True, "tier": "gold",    "tier_label": "Gold"},
+    "50gb":  {"id": "50gb",  "label": "Premium 50GB",  "storage_mb": 50  * 1024, "price": 9.99,  "badge": True, "tier": "emerald", "tier_label": "Emerald"},
+    "100gb": {"id": "100gb", "label": "Premium 100GB", "storage_mb": 100 * 1024, "price": 19.99, "badge": True, "tier": "diamond", "tier_label": "Diamond"},
 }
 
 
@@ -1980,11 +1980,14 @@ def mail_storage_used_bytes(username, cur=None):
 
 
 def mail_get_premium_summary(username):
-    """(is_premium, badge_label) for wherever this mailbox appears as a sender.
-    is_premium is True if any plan is still in effect (active, or cancelled
-    but not yet past its grace-period end); badge_label names the largest
-    such plan, since that's the one worth bragging about in the badge."""
+    """(is_premium, badge_label, tier) for wherever this mailbox appears as a
+    sender. is_premium is True if any plan is still in effect (active, or
+    cancelled but not yet past its grace-period end); badge_label/tier name
+    the largest such plan, since that's the one worth bragging about in the
+    badge — tier is one of 'silver'/'gold'/'emerald'/'diamond', matching the
+    plan's storage size (5/25/50/100GB), for coloring the badge."""
     best_label = None
+    best_tier  = None
     best_price = -1
     for _id, plan_id, price, status, _card_id, _next in mail_get_subscriptions(username):
         if status in ("active", "cancelled") and price > best_price:
@@ -1992,7 +1995,8 @@ def mail_get_premium_summary(username):
             if plan:
                 best_price = price
                 best_label = plan["label"]
-    return (best_label is not None), best_label
+                best_tier  = plan["tier"]
+    return (best_label is not None), best_label, best_tier
 
 
 def _activate_mail_premium(mail_username, plan_id, card_id):
@@ -2275,11 +2279,12 @@ def hkmail_current_user():
         row = cur.fetchone()
         conn.close()
         if row:
-            is_premium, badge_label = mail_get_premium_summary(u)
+            is_premium, badge_label, badge_tier = mail_get_premium_summary(u)
             return jsonify({"loggedIn": True, "username": u, "fullName": row[0],
                             "isAdmin": bool(row[1]), "isVerified": bool(row[2]),
                             "isPremium": is_premium,
-                            "premiumLabel": badge_label})
+                            "premiumLabel": badge_label,
+                            "premiumTier": badge_tier})
     return jsonify({"loggedIn": False})
 
 
@@ -2439,7 +2444,8 @@ def hkmail_support():
 def _mail_plans_payload():
     return [
         {"id": p["id"], "label": p["label"], "storage_mb": p["storage_mb"],
-         "storage_gb": p["storage_mb"] // 1024, "price": p["price"], "badge": p["badge"]}
+         "storage_gb": p["storage_mb"] // 1024, "price": p["price"], "badge": p["badge"],
+         "tier": p["tier"], "tier_label": p["tier_label"]}
         for p in MAIL_PLANS.values()
     ]
 
@@ -2462,7 +2468,7 @@ def hkmail_storage():
     subs_by_plan = {plan_id: (status, price, card_id, next_billing)
                      for _id, plan_id, price, status, card_id, next_billing in mail_get_subscriptions(u)}
 
-    is_premium, badge_label = mail_get_premium_summary(u)
+    is_premium, badge_label, badge_tier = mail_get_premium_summary(u)
     used_bytes = mail_storage_used_bytes(u)
     limit_mb   = mail_storage_limit_mb(u)
 
@@ -2476,12 +2482,14 @@ def hkmail_storage():
                 "storage_gb": p["storage_mb"] // 1024, "price": price,
                 "status": status, "next_billing": next_billing,
                 "auto_renews": bool(status == "active" and card_id),
+                "tier": p["tier"], "tier_label": p["tier_label"],
             })
         else:
             plans_payload.append({
                 "id": p["id"], "label": p["label"], "storage_mb": p["storage_mb"],
                 "storage_gb": p["storage_mb"] // 1024, "price": p["price"],
                 "status": None, "next_billing": None, "auto_renews": False,
+                "tier": p["tier"], "tier_label": p["tier_label"],
             })
 
     return jsonify({
@@ -2491,6 +2499,7 @@ def hkmail_storage():
         "limit_mb": limit_mb,
         "is_premium": is_premium,
         "badge_label": badge_label,
+        "badge_tier": badge_tier,
         "plans": plans_payload,
         "free_storage_mb": FREE_STORAGE_MB,
     })
@@ -2681,11 +2690,12 @@ def hkmail_inbox_api():
     conn.close()
     emails = []
     for r in rows:
-        is_premium, badge_label = mail_get_premium_summary(r[1])
+        is_premium, badge_label, badge_tier = mail_get_premium_summary(r[1])
         emails.append({"id": r[0], "from": r[1], "subject": r[2], "date": r[3], "read": bool(r[4]),
                         "from_is_admin": bool(r[5]), "from_is_verified": bool(r[6]),
                         "from_is_premium": is_premium,
-                        "from_premium_label": badge_label})
+                        "from_premium_label": badge_label,
+                        "from_premium_tier": badge_tier})
     return jsonify({"success": True, "emails": emails})
 
 
@@ -2732,13 +2742,14 @@ def hkmail_trash_api():
     conn.close()
     emails = []
     for r in rows:
-        is_premium, badge_label = mail_get_premium_summary(r[1])
+        is_premium, badge_label, badge_tier = mail_get_premium_summary(r[1])
         emails.append({
             "id": r[0], "from": r[1], "to": r[2],
             "subject": r[3], "date": r[4],
             "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8]),
             "from_is_premium": is_premium,
-            "from_premium_label": badge_label
+            "from_premium_label": badge_label,
+            "from_premium_tier": badge_tier
         })
     return jsonify({"success": True, "emails": emails})
 
@@ -2776,7 +2787,7 @@ def hkmail_read_email(email_id):
         conn.commit()
 
     conn.close()
-    is_premium, badge_label = mail_get_premium_summary(row[1])
+    is_premium, badge_label, badge_tier = mail_get_premium_summary(row[1])
     return jsonify({
         "success": True,
         "email": {
@@ -2784,7 +2795,8 @@ def hkmail_read_email(email_id):
             "subject": row[3], "body": row[4], "date": row[5], "read": True,
             "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8]),
             "from_is_premium": is_premium,
-            "from_premium_label": badge_label
+            "from_premium_label": badge_label,
+            "from_premium_tier": badge_tier
         }
     })
 
