@@ -509,7 +509,15 @@ def login():
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    session.clear()
+    # The bank and HKMail share one session cookie. session.clear() would
+    # wipe HKMail's mail_username/mail_full_name/mail_is_admin too, logging
+    # the user out of mail whenever they log out of the bank (bug). Pop only
+    # the bank-owned keys so an HKMail session, if any, is left untouched —
+    # matching how /api/hkmail/logout already scopes itself to mail-only keys.
+    session.pop("username", None)
+    session.pop("is_admin", None)
+    session.pop("is_employee", None)
+    session.pop("pending_bank_signup", None)
     return jsonify({"success": True})
 
 
@@ -1344,7 +1352,12 @@ def process_checkout():
     )
     conn.commit()
     conn.close()
-    session.clear()
+    # Same shared-cookie hazard as /api/logout: clear only the bank-owned
+    # session keys so an HKMail login in the same browser session survives.
+    session.pop("username", None)
+    session.pop("is_admin", None)
+    session.pop("is_employee", None)
+    session.pop("pending_bank_signup", None)
     return jsonify({"success": True, "message": "Payment approved securely and session closed."})
 
 
@@ -1520,12 +1533,15 @@ def checkout_pay_with_session_card():
     conn.commit()
     conn.close()
 
-    # Finalize before clearing the session — session.clear() below wipes the
-    # shared cookie, including the HKMail login state read here.
     if meta.startswith("hkmail_premium:"):
         _activate_mail_premium(session.get("mail_username"), meta.split(":", 1)[1], card[0])
 
-    session.clear()
+    # Same shared-cookie hazard as /api/logout: clear only the bank-owned
+    # session keys so an HKMail login in the same browser session survives.
+    session.pop("username", None)
+    session.pop("is_admin", None)
+    session.pop("is_employee", None)
+    session.pop("pending_bank_signup", None)
     return jsonify({"success": True, "message": message})
 
 
