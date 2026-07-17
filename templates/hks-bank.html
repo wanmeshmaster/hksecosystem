@@ -1,47 +1,290 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HKS Bank - Sign In</title>
-    <style>
-        /* Base Styling */
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f4f6f8; color: #333; text-align: center; padding: 20px; }
-        
-        /* Container & Typography */
-        .container { background: #ffffff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); max-width: 400px; width: 100%; }
-        h1, h2 { color: #1a1a1a; margin-bottom: 25px; }
-        h1 { font-size: 1.8rem; }
-        
-        /* Form Inputs */
-        .input-group { margin-bottom: 15px; text-align: left; }
-        .input-group label { display: block; font-size: 0.85rem; color: #64748b; margin-bottom: 5px; font-weight: 500; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
-        input[type="text"]:focus, input[type="password"]:focus { border-color: #0052cc; }
-        
-        /* Buttons & Links */
-        .primary-btn, .secondary-btn { width: 100%; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 10px; }
-        .primary-btn { background-color: #0052cc; color: white; border: none; }
-        .primary-btn:hover { background-color: #003d99; }
-        .secondary-btn { background-color: transparent; color: #0052cc; border: 1px solid #0052cc; margin-top: 15px; }
-        .secondary-btn:hover { background-color: #f0f7ff; }
-        .back-link { display: inline-block; margin-top: 25px; color: #64748b; text-decoration: none; font-size: 0.9rem; transition: color 0.2s; }
-        .back-link:hover { color: #0052cc; }
-        
-        /* Modal & Status Alerts */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-        .modal-content { background-color: #ffffff; padding: 40px; border-radius: 12px; width: 90%; max-width: 400px; position: relative; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; }
-        .close-btn:hover { color: #ef4444; }
-        .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HKS Bank | Online Banking</title>
+<style>
+    :root {
+        --blue: #0052cc;
+        --blue-dark: #003d99;
+        --navy: #0b1a33;
+        --bg: #f4f6f8;
+        --panel: #eef2f6;
+        --border: #e2e8f0;
+        --border-strong: #cbd5e1;
+        --muted: #64748b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    html { scroll-behavior: smooth; }
+    body { background: #fff; color: var(--navy); }
+    a { color: inherit; }
+    button { font-family: inherit; }
+    :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+    /* ── Utility bar ── */
+    .utility-bar { background: var(--panel); border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+    .utility-bar-inner { max-width: 1400px; margin: 0 auto; padding: 0 30px; display: flex; align-items: center; justify-content: space-between; }
+    .utility-tabs { display: flex; }
+    .utility-tab { padding: 14px 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--muted); text-decoration: none; border-top: 3px solid transparent; cursor: pointer; }
+    .utility-tab.active { color: var(--navy); border-top-color: var(--blue); background: #fff; }
+    .utility-tab:not(.active):hover { color: var(--navy); }
+    .utility-actions { display: flex; align-items: center; gap: 22px; }
+    .utility-link { display: flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-weight: 600; cursor: pointer; white-space: nowrap; background: none; border: none; }
+    .utility-link:hover { color: var(--navy); }
+    .utility-link svg { flex-shrink: 0; }
+    .login-pill { display: flex; align-items: center; gap: 8px; background: #fff; color: var(--blue); border: 1.5px solid var(--blue); padding: 9px 18px; border-radius: 30px; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+    .login-pill:hover { background: var(--blue); color: #fff; }
+
+    /* ── Main nav ── */
+    .main-nav { border-bottom: 1px solid var(--border); }
+    .main-nav-inner { max-width: 1400px; margin: 0 auto; padding: 16px 30px; display: flex; align-items: center; gap: 46px; }
+    .brand-mark { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+    .brand-badge { width: 38px; height: 38px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.05rem; }
+    .brand-wordmark { font-size: 1.25rem; font-weight: 800; color: var(--navy); }
+    .nav-items { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .nav-item { position: relative; }
+    .nav-item-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 10px 12px; font-size: 0.98rem; font-weight: 600; color: var(--navy); cursor: pointer; border-radius: 6px; }
+    .nav-item-btn:hover { background: var(--panel); }
+    .nav-item-btn svg { transition: transform 0.15s; }
+    .nav-item:hover .nav-item-btn svg { transform: rotate(180deg); }
+    .nav-tooltip { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(-4px); background: var(--navy); color: #fff; font-size: 0.78rem; font-weight: 600; padding: 8px 12px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.15s; z-index: 20; }
+    .nav-tooltip::after { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-bottom-color: var(--navy); }
+    .nav-item:hover .nav-tooltip { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Hero ── */
+    main { max-width: 1400px; margin: 0 auto; padding: 40px 30px 0; }
+    .hero { display: grid; grid-template-columns: 1fr 1fr; border-radius: 4px; overflow: hidden; min-height: 460px; }
+    .hero-text { background: var(--panel); display: flex; flex-direction: column; justify-content: center; padding: 60px; gap: 22px; }
+    .hero-eyebrow { font-size: 0.8rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--blue); }
+    .hero-heading { font-size: 2.5rem; font-weight: 700; color: var(--navy); line-height: 1.15; transition: opacity 0.25s ease; }
+    .hero-body { font-size: 1.05rem; color: #3a4a5e; line-height: 1.6; max-width: 480px; transition: opacity 0.25s ease; }
+    .hero-actions { display: flex; gap: 14px; align-items: center; margin-top: 6px; }
+    .hero-btn-primary { background: var(--blue); color: #fff; border: none; padding: 14px 30px; border-radius: 30px; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: background 0.15s; }
+    .hero-btn-primary:hover { background: var(--blue-dark); }
+    .hero-btn-secondary { background: none; border: none; color: var(--blue); font-weight: 700; font-size: 0.95rem; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+    .hero-visual { position: relative; overflow: hidden; background: linear-gradient(135deg, #0052cc 0%, #002244 100%); display: flex; align-items: center; justify-content: center; }
+    .hero-visual::before, .hero-visual::after { content: ''; position: absolute; border-radius: 50%; filter: blur(40px); opacity: 0.35; }
+    .hero-visual::before { width: 280px; height: 280px; background: #7fb3ff; top: -60px; right: -40px; }
+    .hero-visual::after { width: 220px; height: 220px; background: #ffffff; bottom: -70px; left: -30px; opacity: 0.15; }
+    .hero-icon-set { position: relative; z-index: 1; width: 180px; height: 180px; }
+    .hero-icon-set svg { display: none; width: 100%; height: 100%; }
+    .hero-icon-set svg.show { display: block; }
+
+    /* ── Carousel controls ── */
+    .carousel-controls { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 24px 0 44px; }
+    .carousel-arrow, .carousel-play { width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid var(--border-strong); background: #fff; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
+    .carousel-arrow:hover, .carousel-play:hover { border-color: var(--blue); color: var(--blue); }
+    .carousel-play.playing { border-color: var(--blue); color: var(--blue); }
+    .carousel-dots { display: flex; align-items: center; gap: 9px; margin: 0 6px; }
+    .carousel-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); border: none; padding: 0; cursor: pointer; transition: all 0.15s; }
+    .carousel-dot.active { background: var(--blue); width: 22px; border-radius: 5px; }
+
+    /* ── Latest updates ── */
+    .latest { padding: 10px 0 70px; }
+    .latest h2 { font-size: 1.6rem; font-weight: 700; color: var(--navy); margin-bottom: 22px; padding-top: 26px; border-top: 1px solid var(--border); }
+    .latest-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
+    .latest-card { border: 1px solid var(--border); border-radius: 10px; padding: 24px; display: flex; flex-direction: column; gap: 10px; transition: box-shadow 0.15s, border-color 0.15s; }
+    .latest-card:hover { border-color: var(--border-strong); box-shadow: 0 4px 14px rgba(0,0,0,0.05); }
+    .latest-tag { display: inline-block; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--blue); }
+    .latest-card h3 { font-size: 1.08rem; color: var(--navy); font-weight: 700; line-height: 1.35; }
+    .latest-card p { font-size: 0.92rem; color: var(--muted); line-height: 1.5; }
+    .latest-card .latest-link { font-size: 0.88rem; font-weight: 700; color: var(--blue); text-decoration: none; margin-top: 4px; }
+    .latest-card .latest-link:hover { text-decoration: underline; }
+
+    /* ── Footer ── */
+    footer { border-top: 1px solid var(--border); padding: 26px 30px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+    footer a { color: var(--blue); font-weight: 600; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Modals (login / register / confirm) ── */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(11,26,51,0.55); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); padding: 20px; }
+    .modal-content { background-color: #ffffff; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); }
+    .modal-content h1, .modal-content h2 { color: var(--navy); margin-bottom: 25px; }
+    .modal-content h1 { font-size: 1.7rem; }
+    .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; background: none; border: none; line-height: 1; }
+    .close-btn:hover { color: #ef4444; }
+    .input-group { margin-bottom: 15px; text-align: left; }
+    .input-group label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+    input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    input[type="text"]:focus, input[type="password"]:focus { border-color: var(--blue); }
+    .primary-btn, .secondary-btn { width: 100%; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 10px; }
+    .primary-btn { background-color: var(--blue); color: white; border: none; }
+    .primary-btn:hover { background-color: var(--blue-dark); }
+    .secondary-btn { background-color: transparent; color: var(--blue); border: 1px solid var(--blue); margin-top: 15px; }
+    .secondary-btn:hover { background-color: #f0f7ff; }
+    .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 860px) {
+        .hero { grid-template-columns: 1fr; }
+        .hero-visual { min-height: 260px; order: -1; }
+        .hero-text { padding: 40px 28px; }
+        .hero-heading { font-size: 1.9rem; }
+        .main-nav-inner { flex-wrap: wrap; gap: 18px; }
+    }
+    @media (max-width: 640px) {
+        .utility-bar-inner { flex-wrap: wrap; padding: 10px 16px; row-gap: 8px; }
+        .utility-tabs { order: 2; width: 100%; overflow-x: auto; }
+        .utility-actions { order: 1; width: 100%; justify-content: flex-end; gap: 14px; }
+        .utility-link span { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        * { transition-duration: 0.01ms !important; }
+    }
+</style>
 </head>
 <body>
 
-    <!-- Login Container -->
-    <div id="login-view" class="container">
-        <img src="source/hks-bank.jpg" alt="HKS Bank Logo" style="max-width: 150px; margin-bottom: 20px;">
+<!-- ── Utility bar ── -->
+<div class="utility-bar">
+    <div class="utility-bar-inner">
+        <div class="utility-tabs">
+            <span class="utility-tab active">Personal Customers</span>
+            <span class="utility-tab">Business Customers</span>
+            <span class="utility-tab">About HKS Bank</span>
+        </div>
+        <div class="utility-actions">
+            <button class="utility-link">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>Search</span>
+            </button>
+            <button class="utility-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                <span>Customer Service</span>
+            </button>
+            <button class="login-pill" onclick="openLoginModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Log In
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Main nav ── -->
+<nav class="main-nav">
+    <div class="main-nav-inner">
+        <a href="#" class="brand-mark" onclick="return false;">
+            <span class="brand-badge">H</span>
+            <span class="brand-wordmark">HKS Bank</span>
+        </a>
+        <div class="nav-items">
+            <div class="nav-item">
+                <button class="nav-item-btn">Accounts <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-tooltip">Log in to manage your accounts</div>
+            </div>
+            <div class="nav-item">
+                <button class="nav-item-btn">Cards <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-tooltip">Log in to view and manage your cards</div>
+            </div>
+            <div class="nav-item">
+                <button class="nav-item-btn">Transfers <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-tooltip">Log in to send or move money</div>
+            </div>
+            <div class="nav-item">
+                <button class="nav-item-btn">Support <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-tooltip">Log in to contact support</div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main>
+    <!-- ── Hero / slideshow ── -->
+    <section class="hero">
+        <div class="hero-text">
+            <span class="hero-eyebrow" id="hero-eyebrow">Accounts</span>
+            <h1 class="hero-heading" id="hero-heading">Banking that keeps up with you</h1>
+            <p class="hero-body" id="hero-body">Check balances, move money between accounts, and keep an eye on every transaction — anytime, from anywhere.</p>
+            <div class="hero-actions">
+                <button class="hero-btn-primary" onclick="openLoginModal()">Log In</button>
+                <button class="hero-btn-secondary" onclick="openRegisterModal()">Create an account</button>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <div class="hero-icon-set" id="hero-icon-set">
+                <!-- Accounts -->
+                <svg class="show" data-variant="accounts" viewBox="0 0 120 120" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="18" y="34" width="84" height="58" rx="6" stroke-opacity="0.9"/>
+                    <line x1="18" y1="50" x2="102" y2="50" stroke-opacity="0.9"/>
+                    <circle cx="34" cy="70" r="6" fill="#fff" stroke="none" fill-opacity="0.85"/>
+                    <line x1="50" y1="70" x2="86" y2="70" stroke-opacity="0.6"/>
+                    <line x1="50" y1="80" x2="74" y2="80" stroke-opacity="0.4"/>
+                </svg>
+                <!-- Cards -->
+                <svg data-variant="cards" viewBox="0 0 120 120" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="14" y="26" width="76" height="50" rx="7" stroke-opacity="0.45"/>
+                    <rect x="30" y="44" width="76" height="50" rx="7" fill="#0052cc" fill-opacity="0.25" stroke-opacity="0.95"/>
+                    <line x1="30" y1="58" x2="106" y2="58" stroke-opacity="0.95"/>
+                    <circle cx="46" cy="76" r="6" fill="#fff" stroke="none" fill-opacity="0.85"/>
+                </svg>
+                <!-- Transfers -->
+                <svg data-variant="transfer" viewBox="0 0 120 120" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M24 46h56" stroke-opacity="0.9"/>
+                    <polyline points="66 32 80 46 66 60" stroke-opacity="0.9"/>
+                    <path d="M96 74H40" stroke-opacity="0.6"/>
+                    <polyline points="54 60 40 74 54 88" stroke-opacity="0.6"/>
+                </svg>
+                <!-- Support -->
+                <svg data-variant="support" viewBox="0 0 120 120" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M30 66V54a30 30 0 0 1 60 0v12" stroke-opacity="0.9"/>
+                    <path d="M90 68a7 7 0 0 1-7 7h-3a7 7 0 0 1-7-7v-9a7 7 0 0 1 7-7h10zM30 68a7 7 0 0 0 7 7h3a7 7 0 0 0 7-7v-9a7 7 0 0 0-7-7H30z" stroke-opacity="0.9"/>
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Carousel controls ── -->
+    <div class="carousel-controls">
+        <button class="carousel-arrow" id="prevSlide" aria-label="Previous slide">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="carousel-dots" id="carouselDots"></div>
+        <button class="carousel-arrow" id="nextSlide" aria-label="Next slide">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button class="carousel-play" id="playPause" aria-label="Pause slideshow">
+            <svg id="playPauseIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
+    </div>
+
+    <!-- ── Latest updates ── -->
+    <section class="latest">
+        <h2>Latest Updates</h2>
+        <div class="latest-grid">
+            <article class="latest-card">
+                <span class="latest-tag">Product</span>
+                <h3>Placeholder headline about a new feature</h3>
+                <p>Placeholder summary text — replace with a sentence or two about what's new.</p>
+                <a href="#" class="latest-link">Read more →</a>
+            </article>
+            <article class="latest-card">
+                <span class="latest-tag">Security</span>
+                <h3>Placeholder headline about staying secure</h3>
+                <p>Placeholder summary text — replace with a sentence or two about what's new.</p>
+                <a href="#" class="latest-link">Read more →</a>
+            </article>
+            <article class="latest-card">
+                <span class="latest-tag">Company</span>
+                <h3>Placeholder headline about HKS Bank news</h3>
+                <p>Placeholder summary text — replace with a sentence or two about what's new.</p>
+                <a href="#" class="latest-link">Read more →</a>
+            </article>
+        </div>
+    </section>
+</main>
+
+<footer>
+    <a href="/">&larr; Back to Portal</a> &nbsp;·&nbsp; © 2026 HKS Bank
+</footer>
+
+<!-- ── Sign In Modal ── -->
+<div id="loginModal" class="modal-overlay">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeLoginModal()">&times;</button>
+        <h1>Sign In</h1>
         <div class="input-group">
             <label for="login-username">Username</label>
             <input type="text" id="login-username" placeholder="Enter your username">
@@ -52,286 +295,407 @@
         </div>
         <p id="login-error" class="error-msg">Invalid username or password.</p>
         <button onclick="attemptLogin()" class="primary-btn">Sign In</button>
-        <button onclick="openRegisterModal()" class="secondary-btn">Register New Account</button>
-        <a href="/" class="back-link">&larr; Back to Portal</a>
+        <button onclick="switchToRegister()" class="secondary-btn">Register New Account</button>
     </div>
+</div>
 
-    <!-- Registration Modal -->
-    <div id="registerModal" class="modal-overlay">
-        <div class="modal-content">
-            <span class="close-btn" onclick="closeRegisterModal()">&times;</span>
-            <h2>Register</h2>
-            <div class="input-group">
-                <label for="reg-firstname">First Name</label>
-                <input type="text" id="reg-firstname" placeholder="First name">
-            </div>
-            <div class="input-group">
-                <label for="reg-lastname">Last Name</label>
-                <input type="text" id="reg-lastname" placeholder="Last name">
-            </div>
-            <div class="input-group">
-                <label for="reg-username">Choose a Username</label>
-                <input type="text" id="reg-username" placeholder="New username">
-            </div>
-            <div class="input-group">
-                <label for="reg-password">Choose a Password</label>
-                <input type="password" id="reg-password" placeholder="New password">
-            </div>
-            <div class="input-group">
-                <label for="reg-email">HKMail Address</label>
-                <input type="text" id="reg-email" placeholder="you@hkmail.cn" onblur="checkHkmailAddress()">
-                <p id="reg-email-hint" style="font-size:0.8rem;color:#64748b;margin-top:5px;">A sign-up code will be emailed to this address.</p>
-            </div>
-            <p id="reg-error" class="error-msg">Please fill out both fields.</p>
-            <p id="reg-needs-hkmail" style="display:none;font-size:0.85rem;margin-top:-10px;margin-bottom:15px;">
-                No HKMail account found for this address.
-                <a href="/hkmail.html" target="_blank" style="color:#0052cc;font-weight:600;">Create one on HKMail &rarr;</a>
-            </p>
-            <button onclick="registerAccount()" class="primary-btn">Create Account</button>
+<!-- ── Registration Modal ── -->
+<div id="registerModal" class="modal-overlay">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeRegisterModal()">&times;</span>
+        <h2>Register</h2>
+        <div class="input-group">
+            <label for="reg-firstname">First Name</label>
+            <input type="text" id="reg-firstname" placeholder="First name">
         </div>
-    </div>
-
-    <!-- Confirmation Code Modal -->
-    <div id="confirmModal" class="modal-overlay">
-        <div class="modal-content">
-            <span class="close-btn" onclick="cancelConfirm()">&times;</span>
-            <h2>Check Your HKMail</h2>
-            <p style="color:#64748b; font-size:0.9rem; margin-top:-15px; margin-bottom:20px;">
-                We sent a confirmation code to <strong id="confirm-email-display">your HKMail address</strong>.
-                Enter it below to finish creating your account.
-            </p>
-            <div class="input-group">
-                <label for="confirm-code">Confirmation Code</label>
-                <input type="text" id="confirm-code" placeholder="e.g. A1B2C3D4" style="text-transform:uppercase; letter-spacing:2px; text-align:center;">
-            </div>
-            <p id="confirm-error" class="error-msg">Incorrect code.</p>
-            <button onclick="submitConfirmCode()" class="primary-btn">Confirm &amp; Create Account</button>
-            <button onclick="resendConfirmCode()" class="secondary-btn" style="margin-top:10px;">Resend Code</button>
-            <p id="confirm-status" style="font-size:0.8rem; color:#10b981; margin-top:12px; display:none;"></p>
+        <div class="input-group">
+            <label for="reg-lastname">Last Name</label>
+            <input type="text" id="reg-lastname" placeholder="Last name">
         </div>
+        <div class="input-group">
+            <label for="reg-username">Choose a Username</label>
+            <input type="text" id="reg-username" placeholder="New username">
+        </div>
+        <div class="input-group">
+            <label for="reg-password">Choose a Password</label>
+            <input type="password" id="reg-password" placeholder="New password">
+        </div>
+        <div class="input-group">
+            <label for="reg-email">HKMail Address</label>
+            <input type="text" id="reg-email" placeholder="you@hkmail.cn" onblur="checkHkmailAddress()">
+            <p id="reg-email-hint" style="font-size:0.8rem;color:#64748b;margin-top:5px;">A sign-up code will be emailed to this address.</p>
+        </div>
+        <p id="reg-error" class="error-msg">Please fill out both fields.</p>
+        <p id="reg-needs-hkmail" style="display:none;font-size:0.85rem;margin-top:-10px;margin-bottom:15px;">
+            No HKMail account found for this address.
+            <a href="/hkmail.html" target="_blank" style="color:#0052cc;font-weight:600;">Create one on HKMail &rarr;</a>
+        </p>
+        <button onclick="registerAccount()" class="primary-btn">Create Account</button>
     </div>
+</div>
 
-    <script>
-        const registerModal = document.getElementById('registerModal');
-        const confirmModal = document.getElementById('confirmModal');
-        const loginError = document.getElementById('login-error');
-        const regError = document.getElementById('reg-error');
-        const confirmError = document.getElementById('confirm-error');
+<!-- ── Confirmation Code Modal ── -->
+<div id="confirmModal" class="modal-overlay">
+    <div class="modal-content">
+        <span class="close-btn" onclick="cancelConfirm()">&times;</span>
+        <h2>Check Your HKMail</h2>
+        <p style="color:#64748b; font-size:0.9rem; margin-top:-15px; margin-bottom:20px;">
+            We sent a confirmation code to <strong id="confirm-email-display">your HKMail address</strong>.
+            Enter it below to finish creating your account.
+        </p>
+        <div class="input-group">
+            <label for="confirm-code">Confirmation Code</label>
+            <input type="text" id="confirm-code" placeholder="e.g. A1B2C3D4" style="text-transform:uppercase; letter-spacing:2px; text-align:center;">
+        </div>
+        <p id="confirm-error" class="error-msg">Incorrect code.</p>
+        <button onclick="submitConfirmCode()" class="primary-btn">Confirm &amp; Create Account</button>
+        <button onclick="resendConfirmCode()" class="secondary-btn" style="margin-top:10px;">Resend Code</button>
+        <p id="confirm-status" style="font-size:0.8rem; color:#10b981; margin-top:12px; display:none;"></p>
+    </div>
+</div>
 
-        function openRegisterModal() {
-            registerModal.style.display = 'flex';
-            regError.style.display = 'none';
-            document.getElementById('reg-needs-hkmail').style.display = 'none';
-            document.getElementById('reg-email-hint').innerText = 'A sign-up code will be emailed to this address.';
-            document.getElementById('reg-email-hint').style.color = '#64748b';
+<script>
+    const loginModal = document.getElementById('loginModal');
+    const registerModal = document.getElementById('registerModal');
+    const confirmModal = document.getElementById('confirmModal');
+    const loginError = document.getElementById('login-error');
+    const regError = document.getElementById('reg-error');
+    const confirmError = document.getElementById('confirm-error');
+
+    // ── Modal open/close ──────────────────────────────────
+    function openLoginModal() {
+        loginModal.style.display = 'flex';
+        loginError.style.display = 'none';
+        document.getElementById('login-username').focus();
+    }
+    function closeLoginModal() { loginModal.style.display = 'none'; }
+
+    function switchToRegister() { closeLoginModal(); openRegisterModal(); }
+
+    function openRegisterModal() {
+        registerModal.style.display = 'flex';
+        regError.style.display = 'none';
+        document.getElementById('reg-needs-hkmail').style.display = 'none';
+        document.getElementById('reg-email-hint').innerText = 'A sign-up code will be emailed to this address.';
+        document.getElementById('reg-email-hint').style.color = '#64748b';
+        hkmailAddressConfirmed = false;
+    }
+
+    function closeRegisterModal() {
+        registerModal.style.display = 'none';
+    }
+
+    window.onclick = (e) => {
+        if (e.target === loginModal) closeLoginModal();
+        if (e.target === registerModal) closeRegisterModal();
+        if (e.target === confirmModal) cancelConfirm();
+    }
+
+    let hkmailAddressConfirmed = false;
+
+    async function checkHkmailAddress() {
+        const hint = document.getElementById('reg-email-hint');
+        const needsHkmail = document.getElementById('reg-needs-hkmail');
+        let email = document.getElementById('reg-email').value.trim().toLowerCase();
+        needsHkmail.style.display = 'none';
+
+        if (!email) return;
+        if (!email.includes('@')) email = email + '@hkmail.cn';
+
+        try {
+            const response = await fetch(`/api/hkmail/account-exists?email=${encodeURIComponent(email)}`);
+            const data = await response.json();
+
+            if (data.success && data.exists) {
+                hkmailAddressConfirmed = true;
+                hint.innerText = `Sign-up code will be sent to ${data.email}.`;
+                hint.style.color = '#10b981';
+            } else {
+                hkmailAddressConfirmed = false;
+                hint.innerText = "A sign-up code will be emailed to this address.";
+                hint.style.color = '#64748b';
+                needsHkmail.style.display = 'block';
+            }
+        } catch (err) {
+            // If the check itself fails, let the actual registration call surface the error.
             hkmailAddressConfirmed = false;
         }
+    }
 
-        function closeRegisterModal() { 
-            registerModal.style.display = 'none'; 
+    let pendingRegisteredUsername = '';
+
+    async function registerAccount() {
+        const firstName = document.getElementById('reg-firstname').value.trim();
+        const lastName = document.getElementById('reg-lastname').value.trim();
+        const user = document.getElementById('reg-username').value.trim();
+        const pass = document.getElementById('reg-password').value.trim();
+        const email = document.getElementById('reg-email').value.trim();
+        const needsHkmail = document.getElementById('reg-needs-hkmail');
+
+        needsHkmail.style.display = 'none';
+
+        if (!firstName || !lastName || !user || !pass || !email) {
+            regError.innerText = "Please fill out all fields.";
+            regError.style.display = 'block';
+            return;
         }
 
-        window.onclick = (e) => { 
-            if (e.target === registerModal) closeRegisterModal(); 
-            if (e.target === confirmModal) cancelConfirm();
-        }
+        try {
+            const response = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ first_name: firstName, last_name: lastName, username: user, password: pass, email: email })
+            });
 
-        let hkmailAddressConfirmed = false;
+            const data = await response.json();
 
-        async function checkHkmailAddress() {
-            const hint = document.getElementById('reg-email-hint');
-            const needsHkmail = document.getElementById('reg-needs-hkmail');
-            let email = document.getElementById('reg-email').value.trim().toLowerCase();
-            needsHkmail.style.display = 'none';
-
-            if (!email) return;
-            if (!email.includes('@')) email = email + '@hkmail.cn';
-
-            try {
-                const response = await fetch(`/api/hkmail/account-exists?email=${encodeURIComponent(email)}`);
-                const data = await response.json();
-
-                if (data.success && data.exists) {
-                    hkmailAddressConfirmed = true;
-                    hint.innerText = `Sign-up code will be sent to ${data.email}.`;
-                    hint.style.color = '#10b981';
-                } else {
-                    hkmailAddressConfirmed = false;
-                    hint.innerText = "A sign-up code will be emailed to this address.";
-                    hint.style.color = '#64748b';
+            if (data.success && data.pendingVerification) {
+                // Account isn't created yet — a code was emailed, so switch to the confirmation popup.
+                pendingRegisteredUsername = user;
+                closeRegisterModal();
+                openConfirmModal(data.email);
+            } else if (!data.success) {
+                regError.innerText = data.message;
+                regError.style.display = 'block';
+                if (data.needsHkmail) {
                     needsHkmail.style.display = 'block';
                 }
-            } catch (err) {
-                // If the check itself fails, let the actual registration call surface the error.
-                hkmailAddressConfirmed = false;
             }
+        } catch (err) {
+            regError.innerText = "Server error occurred.";
+            regError.style.display = 'block';
+        }
+    }
+
+    function openConfirmModal(email) {
+        document.getElementById('confirm-email-display').innerText = email || 'your HKMail address';
+        document.getElementById('confirm-code').value = '';
+        confirmError.style.display = 'none';
+        document.getElementById('confirm-status').style.display = 'none';
+        confirmModal.style.display = 'flex';
+    }
+
+    function closeConfirmModal() {
+        confirmModal.style.display = 'none';
+    }
+
+    async function submitConfirmCode() {
+        const code = document.getElementById('confirm-code').value.trim();
+        confirmError.style.display = 'none';
+
+        if (!code) {
+            confirmError.innerText = "Please enter the code from your email.";
+            confirmError.style.display = 'block';
+            return;
         }
 
-        let pendingRegisteredUsername = '';
+        try {
+            const response = await fetch('/api/register/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            });
+            const data = await response.json();
 
-        async function registerAccount() {
-            const firstName = document.getElementById('reg-firstname').value.trim();
-            const lastName = document.getElementById('reg-lastname').value.trim();
-            const user = document.getElementById('reg-username').value.trim();
-            const pass = document.getElementById('reg-password').value.trim();
-            const email = document.getElementById('reg-email').value.trim();
-            const needsHkmail = document.getElementById('reg-needs-hkmail');
-
-            needsHkmail.style.display = 'none';
-
-            if (!firstName || !lastName || !user || !pass || !email) {
-                regError.innerText = "Please fill out all fields.";
-                regError.style.display = 'block';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ first_name: firstName, last_name: lastName, username: user, password: pass, email: email })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success && data.pendingVerification) {
-                    // Account isn't created yet — a code was emailed, so switch to the confirmation popup.
-                    pendingRegisteredUsername = user;
-                    closeRegisterModal();
-                    openConfirmModal(data.email);
-                } else if (!data.success) {
-                    regError.innerText = data.message;
-                    regError.style.display = 'block';
-                    if (data.needsHkmail) {
-                        needsHkmail.style.display = 'block';
-                    }
-                }
-            } catch (err) {
-                regError.innerText = "Server error occurred.";
-                regError.style.display = 'block';
-            }
-        }
-
-        function openConfirmModal(email) {
-            document.getElementById('confirm-email-display').innerText = email || 'your HKMail address';
-            document.getElementById('confirm-code').value = '';
-            confirmError.style.display = 'none';
-            document.getElementById('confirm-status').style.display = 'none';
-            confirmModal.style.display = 'flex';
-        }
-
-        function closeConfirmModal() {
-            confirmModal.style.display = 'none';
-        }
-
-        async function submitConfirmCode() {
-            const code = document.getElementById('confirm-code').value.trim();
-            confirmError.style.display = 'none';
-
-            if (!code) {
-                confirmError.innerText = "Please enter the code from your email.";
+            if (data.success) {
+                alert("Account created successfully!");
+                closeConfirmModal();
+                document.getElementById('reg-firstname').value = '';
+                document.getElementById('reg-lastname').value = '';
+                document.getElementById('reg-email').value = '';
+                openLoginModal();
+                document.getElementById('login-username').value = data.username || pendingRegisteredUsername;
+                document.getElementById('login-password').value = '';
+            } else {
+                confirmError.innerText = data.message;
                 confirmError.style.display = 'block';
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/register/confirm', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code: code })
-                });
-                const data = await response.json();
-
-                if (data.success) {
-                    alert("Account created successfully!");
-                    closeConfirmModal();
-                    document.getElementById('reg-firstname').value = '';
-                    document.getElementById('reg-lastname').value = '';
-                    document.getElementById('reg-email').value = '';
-                    document.getElementById('login-username').value = data.username || pendingRegisteredUsername;
-                    document.getElementById('login-password').value = '';
-                } else {
-                    confirmError.innerText = data.message;
-                    confirmError.style.display = 'block';
-                    if (data.message && data.message.includes("start registration again")) {
-                        // Too many attempts — pending signup was cleared server-side.
-                        setTimeout(() => { closeConfirmModal(); openRegisterModal(); }, 1500);
-                    }
+                if (data.message && data.message.includes("start registration again")) {
+                    // Too many attempts — pending signup was cleared server-side.
+                    setTimeout(() => { closeConfirmModal(); openRegisterModal(); }, 1500);
                 }
-            } catch (err) {
-                confirmError.innerText = "Server error occurred.";
+            }
+        } catch (err) {
+            confirmError.innerText = "Server error occurred.";
+            confirmError.style.display = 'block';
+        }
+    }
+
+    async function resendConfirmCode() {
+        const status = document.getElementById('confirm-status');
+        confirmError.style.display = 'none';
+        try {
+            const response = await fetch('/api/register/resend', { method: 'POST' });
+            const data = await response.json();
+            if (data.success) {
+                status.innerText = data.message;
+                status.style.display = 'block';
+            } else {
+                confirmError.innerText = data.message;
                 confirmError.style.display = 'block';
             }
+        } catch (err) {
+            confirmError.innerText = "Server error occurred.";
+            confirmError.style.display = 'block';
         }
+    }
 
-        async function resendConfirmCode() {
-            const status = document.getElementById('confirm-status');
-            confirmError.style.display = 'none';
-            try {
-                const response = await fetch('/api/register/resend', { method: 'POST' });
-                const data = await response.json();
-                if (data.success) {
-                    status.innerText = data.message;
-                    status.style.display = 'block';
-                } else {
-                    confirmError.innerText = data.message;
-                    confirmError.style.display = 'block';
-                }
-            } catch (err) {
-                confirmError.innerText = "Server error occurred.";
-                confirmError.style.display = 'block';
-            }
-        }
+    async function cancelConfirm() {
+        closeConfirmModal();
+        try { await fetch('/api/register/cancel', { method: 'POST' }); } catch (err) {}
+    }
 
-        async function cancelConfirm() {
-            closeConfirmModal();
-            try { await fetch('/api/register/cancel', { method: 'POST' }); } catch (err) {}
-        }
+    async function attemptLogin() {
+        const user = document.getElementById('login-username').value.trim();
+        const pass = document.getElementById('login-password').value.trim();
 
-        async function attemptLogin() {
-            const user = document.getElementById('login-username').value.trim();
-            const pass = document.getElementById('login-password').value.trim();
-            
-            try {
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: user, password: pass })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    window.location.href = '/hks-bank-dashboard.html';
-                } else {
-                    loginError.innerText = data.message;
-                    loginError.style.display = 'block';
-                }
-            } catch (err) {
-                loginError.innerText = "Server error occurred.";
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                window.location.href = '/hks-bank-dashboard.html';
+            } else {
+                loginError.innerText = data.message;
                 loginError.style.display = 'block';
             }
+        } catch (err) {
+            loginError.innerText = "Server error occurred.";
+            loginError.style.display = 'block';
         }
+    }
 
-        window.addEventListener('load', async () => {
-            const response = await fetch('/api/current-user');
-            const data = await response.json();
-            if (data.loggedIn) {
-                window.location.href = '/hks-bank-dashboard.html';
-            }
-        });
-        // Allow Enter key to submit
-        document.addEventListener('keydown', e => {
-            if (e.key !== 'Enter') return;
+    window.addEventListener('load', async () => {
+        const response = await fetch('/api/current-user');
+        const data = await response.json();
+        if (data.loggedIn) {
+            window.location.href = '/hks-bank-dashboard.html';
+        }
+    });
 
-            if (confirmModal.style.display === 'flex') {
-                submitConfirmCode();
-            } else if (registerModal.style.display === 'flex') {
-                registerAccount();
-            } else {
-                attemptLogin();
-            }
+    // Allow Enter key to submit whichever modal is open
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+
+        if (confirmModal.style.display === 'flex') {
+            submitConfirmCode();
+        } else if (registerModal.style.display === 'flex') {
+            registerAccount();
+        } else if (loginModal.style.display === 'flex') {
+            attemptLogin();
+        }
+    });
+
+    // ── Hero slideshow ──────────────────────────────────────
+    const slides = [
+        {
+            eyebrow: 'Accounts',
+            heading: 'Banking that keeps up with you',
+            body: "Check balances, move money between accounts, and keep an eye on every transaction — anytime, from anywhere.",
+            variant: 'accounts'
+        },
+        {
+            eyebrow: 'Cards',
+            heading: 'Your cards, always under control',
+            body: "Freeze a lost card in seconds, reveal your full card number when you need it, and issue new cards without visiting a branch.",
+            variant: 'cards'
+        },
+        {
+            eyebrow: 'Transfers',
+            heading: 'Send money in moments',
+            body: "Move funds between your own accounts, or send a payment to anyone else at HKS Bank, instantly.",
+            variant: 'transfer'
+        },
+        {
+            eyebrow: 'Support',
+            heading: "We're here when you need us",
+            body: "Reach our support team directly from your dashboard and track every request until it's resolved.",
+            variant: 'support'
+        }
+    ];
+
+    let currentSlide = 0;
+    let autoplayTimer = null;
+    let isPlaying = true;
+    const AUTOPLAY_MS = 6000;
+
+    const heroEyebrow = document.getElementById('hero-eyebrow');
+    const heroHeading = document.getElementById('hero-heading');
+    const heroBody    = document.getElementById('hero-body');
+    const iconSet     = document.getElementById('hero-icon-set');
+    const dotsWrap    = document.getElementById('carouselDots');
+    const playBtn     = document.getElementById('playPause');
+    const playIcon    = document.getElementById('playPauseIcon');
+
+    function buildDots() {
+        dotsWrap.innerHTML = '';
+        slides.forEach((_, i) => {
+            const dot = document.createElement('button');
+            dot.className = 'carousel-dot' + (i === 0 ? ' active' : '');
+            dot.setAttribute('aria-label', `Go to slide ${i + 1}`);
+            dot.onclick = () => goToSlide(i, true);
+            dotsWrap.appendChild(dot);
         });
-    </script>
+    }
+
+    function renderSlide(index) {
+        const s = slides[index];
+        [heroHeading, heroBody].forEach(el => el.style.opacity = 0);
+        setTimeout(() => {
+            heroEyebrow.innerText = s.eyebrow;
+            heroHeading.innerText = s.heading;
+            heroBody.innerText = s.body;
+            heroHeading.style.opacity = 1;
+            heroBody.style.opacity = 1;
+        }, 150);
+
+        iconSet.querySelectorAll('svg').forEach(svg => {
+            svg.classList.toggle('show', svg.dataset.variant === s.variant);
+        });
+
+        dotsWrap.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
+    }
+
+    function goToSlide(index, userTriggered) {
+        currentSlide = (index + slides.length) % slides.length;
+        renderSlide(currentSlide);
+        if (userTriggered) restartAutoplay();
+    }
+
+    function nextSlide(userTriggered) { goToSlide(currentSlide + 1, userTriggered); }
+    function prevSlide(userTriggered) { goToSlide(currentSlide - 1, userTriggered); }
+
+    function startAutoplay() {
+        clearInterval(autoplayTimer);
+        autoplayTimer = setInterval(() => nextSlide(false), AUTOPLAY_MS);
+    }
+    function stopAutoplay() { clearInterval(autoplayTimer); }
+    function restartAutoplay() { if (isPlaying) startAutoplay(); }
+
+    document.getElementById('prevSlide').addEventListener('click', () => prevSlide(true));
+    document.getElementById('nextSlide').addEventListener('click', () => nextSlide(true));
+
+    playBtn.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        playBtn.classList.toggle('playing', isPlaying);
+        playBtn.setAttribute('aria-label', isPlaying ? 'Pause slideshow' : 'Play slideshow');
+        if (isPlaying) {
+            startAutoplay();
+            playIcon.innerHTML = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'; // pause icon
+        } else {
+            stopAutoplay();
+            playIcon.innerHTML = '<polygon points="7 4 20 12 7 20 7 4"/>'; // play icon
+        }
+    });
+
+    buildDots();
+    renderSlide(0);
+    playBtn.classList.add('playing');
+    startAutoplay();
+</script>
 </body>
 </html>
