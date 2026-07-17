@@ -258,6 +258,7 @@
                     <th>Full Name</th>
                     <th>Role</th>
                     <th>Primary Balance</th>
+                    <th>Joined</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -832,6 +833,7 @@
                     <td>${u.full_name || '—'}</td>
                     <td><span id="role-lbl-${u.username}">${u.is_admin ? 'Admin' : u.is_employee ? 'Employee' : 'User'}</span></td>
                     <td id="bal-lbl-${u.username}">$${fmt(u.balance)}</td>
+                    <td>${formatCaseDate(u.created_at)}</td>
                     <td><button class="edit-user-btn" onclick="openEditModal('${u.username}', ${u.is_admin}, ${u.is_employee})">Edit</button></td>`;
                 tbody.appendChild(tr);
             });

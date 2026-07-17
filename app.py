@@ -30,7 +30,8 @@ def init_db():
             is_admin INTEGER NOT NULL DEFAULT 0,
             is_employee INTEGER NOT NULL DEFAULT 0,
             balance REAL NOT NULL DEFAULT 0.0,
-            full_name TEXT NOT NULL DEFAULT ''
+            full_name TEXT NOT NULL DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -134,11 +135,21 @@ def init_db():
         "ALTER TABLE users ADD COLUMN is_employee INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE cards ADD COLUMN card_type TEXT NOT NULL DEFAULT 'regular'",
+        # SQLite's ALTER TABLE won't accept CURRENT_TIMESTAMP as a column
+        # default (only constant defaults are allowed there), so the column
+        # is added nullable and backfilled just below.
+        "ALTER TABLE users ADD COLUMN created_at DATETIME",
     ]:
         try:
             cur.execute(stmt)
         except sqlite3.OperationalError:
             pass
+
+    # Backfill: any account created before this column existed has no real
+    # creation timestamp on record, so it's stamped with "now" the first time
+    # this migration runs — the best available approximation, not the true
+    # original signup time.
+    cur.execute("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL")
 
     conn.commit()
     conn.close()
@@ -583,7 +594,8 @@ def register_confirm():
     is_admin = 1 if cur.fetchone()[0] == 0 else 0
     try:
         cur.execute(
-            "INSERT INTO users (username, password_hash, is_admin, balance, full_name, email) VALUES (?, ?, ?, 0.0, ?, ?)",
+            "INSERT INTO users (username, password_hash, is_admin, balance, full_name, email, created_at) "
+            "VALUES (?, ?, ?, 0.0, ?, ?, CURRENT_TIMESTAMP)",
             (pending["username"], pending["password_hash"], is_admin, pending["full_name"], pending["email"])
         )
         conn.commit()
@@ -761,9 +773,10 @@ def admin_users():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT id, username, full_name, balance, is_admin, is_employee FROM users")
+    cur.execute("SELECT id, username, full_name, balance, is_admin, is_employee, created_at FROM users")
     users = [
-        {"id": r[0], "username": r[1], "full_name": r[2], "balance": r[3], "is_admin": bool(r[4]), "is_employee": bool(r[5])}
+        {"id": r[0], "username": r[1], "full_name": r[2], "balance": r[3], "is_admin": bool(r[4]),
+         "is_employee": bool(r[5]), "created_at": r[6]}
         for r in cur.fetchall()
     ]
     conn.close()
