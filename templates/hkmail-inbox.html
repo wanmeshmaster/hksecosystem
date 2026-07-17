@@ -1005,6 +1005,11 @@
         .danger-zone-body { margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         .btn-delete-account { background: var(--red); color: #fff; border: none; border-radius: 7px; padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
         .btn-delete-account:hover { background: var(--red-dk); }
+        .btn-disable-account { background: #B45309; color: #fff; border: none; border-radius: 7px; padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+        .btn-disable-account:hover { background: #92400E; }
+        .btn-reinstate-account { background: #059669; color: #fff; border: none; border-radius: 7px; padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+        .btn-reinstate-account:hover { background: #047857; }
+        .badge-disabled { display: inline-block; background: #FEE8EB; color: var(--red); font-size: 0.68rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 4px; }
         .terms-link-row { text-align: center; margin-top: 14px; }
         .btn-terms-link {
             background: none; border: none; color: var(--muted); font-size: 0.76rem;
@@ -1318,6 +1323,17 @@
                     <h5>Premium subscriptions</h5>
                     <div id="admin-sub-rows"></div>
                 </div>
+
+                <details class="danger-zone" style="margin-top:14px;">
+                    <summary>Danger zone</summary>
+                    <div id="admin-account-status" style="font-size:0.78rem;color:var(--muted);margin-top:8px;display:none;"></div>
+                    <div class="danger-zone-body">
+                        <button class="btn-disable-account" id="admin-disable-btn" onclick="adminDisableUser()">Disable for 30 days</button>
+                        <button class="btn-reinstate-account" id="admin-reinstate-btn" style="display:none;" onclick="adminReinstateUser()">Reinstate account</button>
+                        <button class="btn-delete-account" id="admin-delete-user-btn" onclick="adminDeleteUser()">Delete account permanently</button>
+                    </div>
+                    <div style="font-size:0.76rem;color:var(--muted);margin-top:8px;">Disable starts a 30-day recovery window before permanent deletion. Delete removes the account immediately.</div>
+                </details>
             </div>
         </div>
 
@@ -2355,18 +2371,31 @@
     function renderAdminUsers() {
         const tbody = document.getElementById('admin-user-table-body');
         if (!adminUsersCache.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);">No users yet.</td></tr>'; return; }
-        tbody.innerHTML = adminUsersCache.map(u => `
+        tbody.innerHTML = adminUsersCache.map(u => {
+            const statusBadges = (senderBadges(u.is_admin, u.is_verified) || '')
+                + (u.is_employee && !u.is_admin ? '<span class="badge-verified" style="margin-left:4px;">Support</span>' : '')
+                + (u.is_disabled ? '<span class="badge-disabled">Disabled</span>' : '')
+                + (!u.is_admin && !u.is_verified && !u.is_employee && !u.is_disabled ? '<span style="color:var(--muted);">User</span>' : '');
+            return `
             <tr>
                 <td>${escHtml(u.username)}</td>
                 <td>${escHtml(u.full_name || '—')}</td>
-                <td>${senderBadges(u.is_admin, u.is_verified) || ''}${u.is_employee && !u.is_admin ? '<span class="badge-verified" style="margin-left:4px;">Support</span>' : ''}${!u.is_admin && !u.is_verified && !u.is_employee ? '<span style="color:var(--muted);">User</span>' : ''}</td>
+                <td>${statusBadges}</td>
                 <td style="color:var(--muted);">${formatDate(u.created_at)}</td>
-                <td><button class="admin-edit-btn" onclick="openAdminEdit('${escJs(u.username)}', ${u.is_admin}, ${u.is_verified}, ${u.is_employee})">Edit</button></td>
-            </tr>
-        `).join('');
+                <td><button class="admin-edit-btn" onclick="openAdminEdit('${escJs(u.username)}')">Edit</button></td>
+            </tr>`;
+        }).join('');
     }
 
-    function openAdminEdit(username, isAdmin, isVerified, isEmployee) {
+    function openAdminEdit(username) {
+        const user = adminUsersCache.find(u => u.username === username);
+        if (!user) return;
+
+        const isAdmin = user.is_admin;
+        const isVerified = user.is_verified;
+        const isEmployee = user.is_employee;
+        const isDisabled = user.is_disabled;
+
         adminEditingUsername = username;
         document.getElementById('admin-edit-box').style.display = 'block';
         document.getElementById('admin-edit-username').textContent = username;
@@ -2376,8 +2405,14 @@
         const roleBtn = document.getElementById('admin-role-btn');
         const verifyBtn = document.getElementById('admin-verify-btn');
         const employeeBtn = document.getElementById('admin-employee-btn');
+        const disableBtn = document.getElementById('admin-disable-btn');
+        const reinstateBtn = document.getElementById('admin-reinstate-btn');
+        const deleteBtn = document.getElementById('admin-delete-user-btn');
+        const accountStatus = document.getElementById('admin-account-status');
 
         const isSelf = username === myUsername;
+        const isProtected = ['admin@hkmail.cn', 'hksbank@hkmail.cn', 'noreply@hkmail.cn', 'support@hkmail.cn', 'hksbank.support@hkmail.cn'].includes(username);
+
         roleBtn.disabled = isSelf || username === 'hksbank@hkmail.cn';
         roleBtn.textContent = isSelf ? "Can't change your own role" : (isAdmin ? 'Demote to User' : 'Promote to Admin');
         roleBtn.dataset.isAdmin = isAdmin ? '1' : '0';
@@ -2389,8 +2424,20 @@
         employeeBtn.textContent = isAdmin ? 'Admin (full access)' : (isEmployee ? 'Revoke support staff' : 'Grant support staff');
         employeeBtn.dataset.isEmployee = isEmployee ? '1' : '0';
 
-        const user = adminUsersCache.find(u => u.username === username);
-        renderAdminSubRows(user ? (user.subscriptions || []) : []);
+        disableBtn.style.display = isDisabled ? 'none' : '';
+        disableBtn.disabled = isSelf || isProtected;
+        reinstateBtn.style.display = isDisabled ? '' : 'none';
+        deleteBtn.disabled = isSelf || isProtected;
+
+        if (isDisabled && user.scheduled_deletion_at) {
+            accountStatus.style.display = 'block';
+            accountStatus.textContent = `Account disabled — scheduled for permanent deletion on ${formatDate(user.scheduled_deletion_at, true)}.`;
+        } else {
+            accountStatus.style.display = 'none';
+            accountStatus.textContent = '';
+        }
+
+        renderAdminSubRows(user.subscriptions || []);
     }
 
     function renderAdminSubRows(subs) {
@@ -2515,6 +2562,80 @@
             } else {
                 msg.textContent = data.message || 'Failed.';
                 msg.className = 'admin-status-msg err';
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function adminDisableUser() {
+        if (!adminEditingUsername) return;
+        if (!confirm(`Disable ${adminEditingUsername}? The account will be suspended for 30 days before permanent deletion.`)) return;
+        const msg = document.getElementById('admin-edit-msg');
+        try {
+            const res  = await fetch('/api/hkmail/admin/users/disable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: adminEditingUsername })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                await loadAdminUsers();
+                openAdminEdit(adminEditingUsername);
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function adminReinstateUser() {
+        if (!adminEditingUsername) return;
+        if (!confirm(`Reinstate ${adminEditingUsername} and cancel the pending deletion?`)) return;
+        const msg = document.getElementById('admin-edit-msg');
+        try {
+            const res  = await fetch('/api/hkmail/admin/users/reinstate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: adminEditingUsername })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                await loadAdminUsers();
+                openAdminEdit(adminEditingUsername);
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function adminDeleteUser() {
+        if (!adminEditingUsername) return;
+        if (!confirm(`Permanently delete ${adminEditingUsername}? This cancels any Premium plan and cannot be undone.`)) return;
+        if (!confirm(`Are you absolutely sure you want to permanently delete ${adminEditingUsername}?`)) return;
+        const msg = document.getElementById('admin-edit-msg');
+        try {
+            const res  = await fetch('/api/hkmail/admin/users/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: adminEditingUsername })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                adminEditingUsername = null;
+                document.getElementById('admin-edit-box').style.display = 'none';
+                await loadAdminUsers();
             }
         } catch {
             msg.textContent = 'Connection error.';

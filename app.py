@@ -4076,7 +4076,8 @@ def hkmail_admin_users():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT id, username, full_name, is_admin, is_verified, is_employee, created_at
+        SELECT id, username, full_name, is_admin, is_verified, is_employee, created_at,
+               is_disabled, disabled_at, scheduled_deletion_at
         FROM mail_users ORDER BY created_at
     """)
     rows = cur.fetchall()
@@ -4100,8 +4101,177 @@ def hkmail_admin_users():
         users.append({"id": r[0], "username": username, "full_name": r[2],
                        "is_admin": bool(r[3]), "is_verified": bool(r[4]),
                        "is_employee": bool(r[5]), "created_at": r[6],
+                       "is_disabled": bool(r[7]), "disabled_at": r[8],
+                       "scheduled_deletion_at": r[9],
                        "subscriptions": subs})
     return jsonify({"success": True, "users": users})
+
+
+# ── HKMail: admin — disable / reinstate / delete user accounts ────────────────
+
+MAIL_PROTECTED_ACCOUNTS = (
+    ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME,
+    SUPPORT_MAIL_USERNAME, BANK_SUPPORT_MAIL_USERNAME,
+)
+
+
+@app.route('/api/hkmail/admin/users/disable', methods=['POST'])
+def hkmail_admin_disable_user():
+    """Admin-initiated account disable — same 30-day recovery window as
+    approving an account-deletion support request."""
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data     = request.get_json() or {}
+    username = (data.get("username", "") or "").strip().lower()
+    admin_username = mail_current_user()
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+    if username == admin_username:
+        return jsonify({"success": False, "message": "You cannot disable your own account."}), 400
+    if username in MAIL_PROTECTED_ACCOUNTS:
+        return jsonify({"success": False, "message": "This system account can't be disabled."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("SELECT is_disabled FROM mail_users WHERE username=?", (username,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "User not found."}), 404
+        if row[0]:
+            return jsonify({"success": False, "message": "This account is already disabled."}), 400
+
+        now = datetime.now()
+        disabled_at = now.strftime("%Y-%m-%d %H:%M:%S")
+        scheduled_deletion_at = (now + timedelta(days=ACCOUNT_DELETION_GRACE_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+
+        cur.execute("""
+            UPDATE mail_users SET is_disabled=1, disabled_at=?, scheduled_deletion_at=?
+            WHERE username=?
+        """, (disabled_at, scheduled_deletion_at, username))
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, username, "Your HKMail account has been disabled",
+             "Your account has been disabled by an HKMail administrator.\n\n"
+             "Your account is now disabled. You have "
+             f"{ACCOUNT_DELETION_GRACE_DAYS} days (until {scheduled_deletion_at}) to request "
+             "reinstatement before it's permanently deleted. Sign in at any point during "
+             "this window to request reinstatement.\n\n"
+             "— HKMail Support")
+        )
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, ADMIN_MAIL_USERNAME, f"[Account disabled] {username}",
+             f"Administrator {admin_username} disabled {username}'s account. "
+             f"Scheduled for permanent deletion on {scheduled_deletion_at}.")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success": True,
+        "message": f"{username}'s account has been disabled and scheduled for deletion on {scheduled_deletion_at}."
+    })
+
+
+@app.route('/api/hkmail/admin/users/reinstate', methods=['POST'])
+def hkmail_admin_reinstate_user():
+    """Re-enable a disabled account and cancel any pending deletion."""
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data     = request.get_json() or {}
+    username = (data.get("username", "") or "").strip().lower()
+    admin_username = mail_current_user()
+    admin_role = "admin"
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("SELECT is_disabled FROM mail_users WHERE username=?", (username,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "User not found."}), 404
+        if not row[0]:
+            return jsonify({"success": False, "message": "This account is not disabled."}), 400
+
+        cur.execute("""
+            UPDATE mail_users SET is_disabled=0, disabled_at=NULL, scheduled_deletion_at=NULL
+            WHERE username=?
+        """, (username,))
+
+        cur.execute("""
+            SELECT id FROM mail_support_requests
+            WHERE username=? AND request_type='account_deletion' AND status='approved'
+        """, (username,))
+        for (req_id,) in cur.fetchall():
+            cur.execute("""
+                UPDATE mail_support_requests
+                SET status='cancelled', decided_by=?, decided_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (admin_username, req_id))
+            mail_log_support_event(cur, req_id, "status_change", admin_username, admin_role,
+                                    old_status="approved", new_status="cancelled",
+                                    note="Account reinstated by administrator.")
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, username, "Your HKMail account has been reinstated",
+             "Good news — your account has been reinstated by an HKMail administrator and is "
+             "fully active again.\n\nIf you didn't expect this, please contact HKMail Support "
+             "immediately.\n\n— HKMail Support")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": f"{username}'s account has been reinstated."})
+
+
+@app.route('/api/hkmail/admin/users/delete', methods=['POST'])
+def hkmail_admin_delete_user():
+    """Immediately and permanently delete a user account (admin action)."""
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data     = request.get_json() or {}
+    username = (data.get("username", "") or "").strip().lower()
+    admin_username = mail_current_user()
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+    if username == admin_username:
+        return jsonify({"success": False, "message": "You cannot delete your own account."}), 400
+    if username in MAIL_PROTECTED_ACCOUNTS:
+        return jsonify({"success": False, "message": "This system account can't be deleted."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM mail_users WHERE username=?", (username,))
+        if not cur.fetchone():
+            return jsonify({"success": False, "message": "User not found."}), 404
+
+        cur.execute("DELETE FROM mail_subscriptions WHERE username=?", (username,))
+        cur.execute("DELETE FROM mail_users WHERE username=?", (username,))
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, ADMIN_MAIL_USERNAME, f"[Account permanently deleted] {username}",
+             f"Administrator {admin_username} permanently deleted the account {username}.")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": f"{username}'s account has been permanently deleted."})
 
 
 # ── HKMail: admin — immediately revoke a subscription ─────────────────────────
