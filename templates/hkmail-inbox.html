@@ -265,6 +265,16 @@
 
         .badge.visible { display: block; }
 
+        .admin-tab .badge {
+            margin-left: 6px;
+            display: none;
+            vertical-align: middle;
+            padding: 1px 5px;
+            min-width: 16px;
+        }
+
+        .admin-tab .badge.visible { display: inline-block; }
+
         /* ── Email list pane ── */
         .list-pane {
             width: 340px;
@@ -1112,6 +1122,7 @@
                     <line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
                 Account Requests
+                <span class="badge" id="account-requests-badge">0</span>
             </div>
         </nav>
         <div class="sidebar-footer">
@@ -1291,7 +1302,7 @@
 
         <div class="admin-tabs" id="admin-tabs-bar">
             <button class="admin-tab active" id="admin-tab-users" onclick="switchAdminTab('users')">User Directory</button>
-            <button class="admin-tab" id="admin-tab-requests" onclick="switchAdminTab('requests')">Account Requests</button>
+            <button class="admin-tab" id="admin-tab-requests" onclick="switchAdminTab('requests')">Account Requests <span class="badge" id="admin-tab-requests-badge">0</span></button>
             <button class="admin-tab" id="admin-tab-create" onclick="switchAdminTab('create')">Create Official Account</button>
         </div>
 
@@ -1481,6 +1492,10 @@
             const when = data.scheduledDeletionAt ? formatDate(data.scheduledDeletionAt, true) : 'soon';
             textEl.innerHTML = `<strong>Account scheduled for deletion.</strong> You have approximately <strong>${daysRemaining} day${daysRemaining === 1 ? '' : 's'}</strong> left to request reinstatement (permanent deletion after ${escHtml(when)}).`;
             banner.classList.add('show');
+            setReinstateButtonPending(!!data.reinstatementPending);
+        }
+        if (iAmSupportStaff) {
+            refreshSupportRequestNotifications();
         }
         if (data.isPremium) {
             const topbarBadge = document.getElementById('topbar-premium-badge');
@@ -1747,6 +1762,36 @@
                 badge.classList.remove('visible');
             }
         } catch {}
+    }
+
+    function updateNotificationBadge(badgeId, count) {
+        const badge = document.getElementById(badgeId);
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = count;
+            badge.classList.add('visible');
+        } else {
+            badge.classList.remove('visible');
+        }
+    }
+
+    async function refreshSupportRequestNotifications() {
+        if (!iAmSupportStaff) return;
+        try {
+            const res  = await fetch('/api/hkmail/admin/support-requests/notification-count');
+            const data = await res.json();
+            if (!data.success) return;
+            const count = data.count || 0;
+            updateNotificationBadge('account-requests-badge', count);
+            updateNotificationBadge('admin-tab-requests-badge', count);
+        } catch {}
+    }
+
+    function setReinstateButtonPending(pending) {
+        const btn = document.getElementById('recovery-reinstate-btn');
+        if (!btn) return;
+        btn.disabled = pending;
+        btn.textContent = pending ? 'Reinstatement requested' : 'Request reinstatement';
     }
 
     // ── Compose ────────────────────────────────────────────────────────────────
@@ -2059,14 +2104,19 @@
 
     async function requestReinstatement() {
         const btn = document.getElementById('recovery-reinstate-btn');
+        if (btn.disabled) return;
         btn.disabled = true;
         try {
             const res  = await fetch('/api/hkmail/account/request-reinstatement', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
             const data = await res.json();
             showToast(data.message || (data.success ? 'Request sent.' : 'Failed.'));
+            if (data.success || data.alreadyPending) {
+                setReinstateButtonPending(true);
+            } else {
+                btn.disabled = false;
+            }
         } catch {
             showToast('Connection error.');
-        } finally {
             btn.disabled = false;
         }
     }

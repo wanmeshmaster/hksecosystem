@@ -2186,11 +2186,25 @@ def init_mail_db():
             -- table onto the row itself purely for fast list/filter queries.
             decided_by          TEXT,
             decided_at          DATETIME,
+            -- Set when the account owner clicks "Request reinstatement" on the
+            -- recovery banner; cleared from the badge count once support opens
+            -- the request detail (reinstatement_seen_at).
+            reinstatement_requested_at DATETIME,
+            reinstatement_seen_at    DATETIME,
             created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_support_requests_username ON mail_support_requests(username)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_support_requests_status ON mail_support_requests(status)")
+
+    for stmt in [
+        "ALTER TABLE mail_support_requests ADD COLUMN reinstatement_requested_at DATETIME",
+        "ALTER TABLE mail_support_requests ADD COLUMN reinstatement_seen_at DATETIME",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
 
     # Full audit trail for the above — every submission, verification,
     # approval, rejection, and completion, plus who (user or staff) did it.
@@ -2336,9 +2350,36 @@ def mail_log_support_event(cur, request_id, action, actor_username, actor_role,
     """, (request_id, action, old_status, new_status, note, actor_username, actor_role))
 
 
+def mail_reinstatement_is_pending(reinstatement_requested_at, reinstatement_seen_at):
+    """True while a recovery-banner reinstatement click is waiting for support
+    to open the linked account-deletion request."""
+    if not reinstatement_requested_at:
+        return False
+    if not reinstatement_seen_at:
+        return True
+    return reinstatement_requested_at > reinstatement_seen_at
+
+
+def mail_support_requests_notification_count(cur):
+    """How many account-service items still need support attention."""
+    cur.execute("""
+        SELECT COUNT(*) FROM mail_support_requests
+        WHERE (request_type='account_deletion' AND status='pending')
+           OR (
+               request_type='account_deletion'
+               AND status='approved'
+               AND reinstatement_requested_at IS NOT NULL
+               AND (reinstatement_seen_at IS NULL
+                    OR reinstatement_requested_at > reinstatement_seen_at)
+           )
+    """)
+    return cur.fetchone()[0]
+
+
 def mail_support_request_to_dict(row):
     (req_id, req_number, username, req_type, status, message, verified,
-     verified_at, decided_by, decided_at, created_at) = row
+     verified_at, decided_by, decided_at, created_at,
+     reinstatement_requested_at, reinstatement_seen_at) = row
     return {
         "id": req_id,
         "request_number": req_number,
@@ -2353,6 +2394,8 @@ def mail_support_request_to_dict(row):
         "decided_by": decided_by,
         "decided_at": decided_at,
         "created_at": created_at,
+        "reinstatement_pending": mail_reinstatement_is_pending(
+            reinstatement_requested_at, reinstatement_seen_at),
     }
 
 
@@ -2785,6 +2828,18 @@ def hkmail_login_api():
             payload["disabled"] = True
             payload["scheduledDeletionAt"] = row[6]
             payload["daysRemaining"] = _mail_days_remaining(row[6])
+            conn_rein = sqlite3.connect(MAIL_DATABASE)
+            cur_rein  = conn_rein.cursor()
+            cur_rein.execute("""
+                SELECT reinstatement_requested_at, reinstatement_seen_at
+                FROM mail_support_requests
+                WHERE username=? AND request_type='account_deletion' AND status='approved'
+                ORDER BY id DESC LIMIT 1
+            """, (username,))
+            rein_row = cur_rein.fetchone()
+            conn_rein.close()
+            if rein_row:
+                payload["reinstatementPending"] = mail_reinstatement_is_pending(rein_row[0], rein_row[1])
         return jsonify(payload)
     return jsonify({"success": False, "message": "Incorrect email or password."}), 401
 
@@ -2811,7 +2866,6 @@ def hkmail_current_user():
             FROM mail_users WHERE username=?
         """, (u,))
         row = cur.fetchone()
-        conn.close()
         if row:
             is_premium, badge_label, badge_tier = mail_get_premium_summary(u)
             payload = {"loggedIn": True, "username": u, "fullName": row[0],
@@ -2824,7 +2878,19 @@ def hkmail_current_user():
                 payload["disabled"] = True
                 payload["scheduledDeletionAt"] = row[5]
                 payload["daysRemaining"] = _mail_days_remaining(row[5])
+                cur.execute("""
+                    SELECT reinstatement_requested_at, reinstatement_seen_at
+                    FROM mail_support_requests
+                    WHERE username=? AND request_type='account_deletion' AND status='approved'
+                    ORDER BY id DESC LIMIT 1
+                """, (u,))
+                rein_row = cur.fetchone()
+                if rein_row:
+                    payload["reinstatementPending"] = mail_reinstatement_is_pending(
+                        rein_row[0], rein_row[1])
+            conn.close()
             return jsonify(payload)
+        conn.close()
     return jsonify({"loggedIn": False})
 
 
@@ -3209,10 +3275,9 @@ def hkmail_request_account_deletion():
 
 @app.route('/api/hkmail/account/request-reinstatement', methods=['POST'])
 def hkmail_request_reinstatement():
-    """Called from the recovery banner shown to a disabled account. Doesn't
-    reinstate on its own — flags the open, approved deletion request for
-    staff attention (via the audit trail and an email to admin@hkmail.cn) so
-    a human confirms it's really the account owner asking."""
+    """Called from the recovery banner shown to a disabled account. Reopens
+    the original account-deletion support case for staff review. Only one
+    pending reinstatement click is allowed until support opens the request."""
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
@@ -3226,22 +3291,41 @@ def hkmail_request_reinstatement():
             return jsonify({"success": False, "message": "Your account isn't disabled."}), 400
 
         cur.execute("""
-            SELECT id FROM mail_support_requests
+            SELECT id, request_number, reinstatement_requested_at, reinstatement_seen_at
+            FROM mail_support_requests
             WHERE username=? AND request_type='account_deletion' AND status='approved'
             ORDER BY id DESC LIMIT 1
         """, (u,))
         req = cur.fetchone()
-        if req:
-            mail_log_support_event(cur, req[0], "note", u, "user",
-                                    note="Account owner requested reinstatement from the recovery banner.")
+        if not req:
+            return jsonify({"success": False, "message": "No approved account deletion request found."}), 400
 
+        req_id, case_number, rein_requested_at, rein_seen_at = req
+        if mail_reinstatement_is_pending(rein_requested_at, rein_seen_at):
+            return jsonify({
+                "success": False,
+                "message": "You already have a reinstatement request pending review.",
+                "alreadyPending": True,
+            }), 400
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        support_body = (
+            f"Reinstatement requested\n\n"
+            f"User: {u}\n"
+            f"Original case: {case_number}\n\n"
+            "The account owner has requested reinstatement from the recovery banner. "
+            "Please review and reinstate from the Account Requests tab if appropriate."
+        )
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (NOREPLY_MAIL_USERNAME, ADMIN_MAIL_USERNAME, f"[Reinstatement requested] {u}",
-             f"{u} has requested reinstatement of their disabled HKMail account from the "
-             "recovery banner. Please review and reinstate from the Account Requests admin "
-             "tab if appropriate.")
+            (u, SUPPORT_MAIL_USERNAME, f"[{case_number}] Reinstatement requested", support_body)
         )
+        cur.execute(
+            "UPDATE mail_support_requests SET reinstatement_requested_at=? WHERE id=?",
+            (now, req_id),
+        )
+        mail_log_support_event(cur, req_id, "note", u, "user",
+                                note="Account owner requested reinstatement from the recovery banner.")
         conn.commit()
     finally:
         conn.close()
@@ -3259,7 +3343,9 @@ def hkmail_my_support_requests():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     cur.execute("""
-        SELECT id, request_number, username, request_type, status, message, verified, verified_at, created_at
+        SELECT id, request_number, username, request_type, status, message, verified,
+               verified_at, decided_by, decided_at, created_at,
+               reinstatement_requested_at, reinstatement_seen_at
         FROM mail_support_requests WHERE username=? ORDER BY created_at DESC LIMIT 20
     """, (u,))
     rows = cur.fetchall()
@@ -3267,12 +3353,23 @@ def hkmail_my_support_requests():
 
     requests_out = []
     for row in rows:
-        padded = row[:8] + (None, None, row[8])
-        requests_out.append(mail_support_request_to_dict(padded))
+        requests_out.append(mail_support_request_to_dict(row))
     return jsonify({"success": True, "requests": requests_out})
 
 
 # ── HKMail: admin — account-service support requests ───────────────────────────
+
+@app.route('/api/hkmail/admin/support-requests/notification-count', methods=['GET'])
+def hkmail_admin_support_requests_notification_count():
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    mail_finalize_pending_deletions()
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    count = mail_support_requests_notification_count(cur)
+    conn.close()
+    return jsonify({"success": True, "count": count})
 
 @app.route('/api/hkmail/admin/support-requests', methods=['GET'])
 def hkmail_admin_list_support_requests():
@@ -3286,7 +3383,8 @@ def hkmail_admin_list_support_requests():
 
     query  = """
         SELECT id, request_number, username, request_type, status, message, verified,
-               verified_at, decided_by, decided_at, created_at
+               verified_at, decided_by, decided_at, created_at,
+               reinstatement_requested_at, reinstatement_seen_at
         FROM mail_support_requests
     """
     clauses, params = [], []
@@ -3329,7 +3427,8 @@ def hkmail_admin_get_support_request(request_id):
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, request_number, username, request_type, status, message, verified,
-               verified_at, decided_by, decided_at, created_at
+               verified_at, decided_by, decided_at, created_at,
+               reinstatement_requested_at, reinstatement_seen_at
         FROM mail_support_requests WHERE id=?
     """, (request_id,))
     row = cur.fetchone()
@@ -3343,6 +3442,14 @@ def hkmail_admin_get_support_request(request_id):
         u_row = cur.fetchone()
         req["account_is_disabled"] = bool(u_row[0]) if u_row else False
         req["scheduled_deletion_at"] = u_row[1] if u_row else None
+
+    if req.get("reinstatement_pending"):
+        cur.execute("""
+            UPDATE mail_support_requests SET reinstatement_seen_at=CURRENT_TIMESTAMP
+            WHERE id=? AND reinstatement_requested_at IS NOT NULL
+        """, (request_id,))
+        req["reinstatement_pending"] = False
+        conn.commit()
 
     cur.execute("""
         SELECT action, old_status, new_status, note, actor_username, actor_role, created_at

@@ -1,0 +1,1 @@
+notifications need to clear when case is closed or solved or whatever.
