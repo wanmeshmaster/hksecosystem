@@ -175,6 +175,17 @@ ADMIN_MAIL_DEFAULT_PASSWORD = "AdminPass123!"  # demo credential, change in a re
 # password as the admin account so it's easy to check what it's sending.
 NOREPLY_MAIL_USERNAME = "noreply@hkmail.cn"
 
+# Address used as the "From" on automatic non-delivery (bounce) notices.
+# Deliberately not a real, loggable-into HKMail mailbox — just a from-address
+# string stored on the email row, the same way a real mail server's
+# mailer-daemon isn't an account anyone signs into.
+MAILER_DAEMON_SENDER = "mailer-daemon@hkmail.cn"
+
+# Local-parts that mark a mailbox as automated/no-reply. Users can't send
+# mail to any address matching one of these, since a real mail provider
+# wouldn't be able to connect to an address that never accepts incoming mail.
+NOREPLY_LOCAL_PARTS = {"noreply", "no-reply"}
+
 # Fixed demo credential for the HKS Bank system mailbox (SYSTEM_MAIL_SENDER),
 # same pattern as ADMIN_MAIL_DEFAULT_PASSWORD — change in a real deployment.
 HKSBANK_MAIL_DEFAULT_PASSWORD = "HksBankSys456!"
@@ -2572,6 +2583,29 @@ def hkmail_current_user():
 
 # ── HKMail: compose / send ─────────────────────────────────────────────────────
 
+def mail_deliver_bounce(sender_username, recipient, subject, reason_text):
+    """Insert an automatic non-delivery notice into sender_username's inbox,
+    the way a real mail server's mailer-daemon reports a failed delivery."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?,?,?,?)",
+        (
+            MAILER_DAEMON_SENDER,
+            sender_username,
+            f"Undeliverable: {subject}",
+            "This is an automated message from the HKMail delivery system.\n\n"
+            f"Your message could not be delivered to {recipient}.\n"
+            f"{reason_text}\n\n"
+            "--- Original message ---\n"
+            f"To: {recipient}\n"
+            f"Subject: {subject}"
+        )
+    )
+    conn.commit()
+    conn.close()
+
+
 @app.route('/api/hkmail/send', methods=['POST'])
 def hkmail_send():
     u = mail_current_user()
@@ -2629,6 +2663,20 @@ def hkmail_send():
     if "@" not in recipient:
         recipient = recipient + "@hkmail.cn"
 
+    # No-reply mailboxes never accept incoming mail — a real mail provider
+    # couldn't connect to them either, so bounce immediately without ever
+    # touching quotas or the recipient's mailbox.
+    recipient_local_part = recipient.split("@", 1)[0]
+    if recipient_local_part in NOREPLY_LOCAL_PARTS:
+        mail_deliver_bounce(
+            u, recipient, subject,
+            "This address does not accept incoming mail (no-reply mailbox)."
+        )
+        return jsonify({
+            "success": False,
+            "message": f"{recipient} doesn't accept incoming mail. A delivery failure notice has been added to your inbox."
+        }), 400
+
     # Renewals/downgrades may have just changed either mailbox's limit
     mail_run_billing_cycle(u)
     mail_run_billing_cycle(recipient)
@@ -2657,7 +2705,15 @@ def hkmail_send():
         cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
         if not cur.fetchone():
             conn.rollback()
-            return jsonify({"success": False, "message": f"No HKMail account found for {recipient}."}), 404
+            conn.close()
+            mail_deliver_bounce(
+                u, recipient, subject,
+                "The HKMail delivery system couldn't connect to this address — it doesn't exist."
+            )
+            return jsonify({
+                "success": False,
+                "message": f"No HKMail account found for {recipient}. A delivery failure notice has been added to your inbox."
+            }), 404
 
         sender_limit_bytes = mail_storage_limit_mb(u) * 1024 * 1024
         if mail_storage_used_bytes(u, cur=cur) + message_size > sender_limit_bytes:
