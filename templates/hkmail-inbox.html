@@ -1207,8 +1207,8 @@
             <div class="support-actions">
                 <button type="button" class="support-action-btn" onclick="showSupportSubflow('password')">
                     <div>
-                        <strong>Password reset</strong>
-                        <span class="desc">Request a reset — you'll verify with a code sent to your inbox.</span>
+                        <strong>Change password</strong>
+                        <span class="desc">Verify your current password, then set a new one.</span>
                     </div>
                     <span class="chev">›</span>
                 </button>
@@ -1233,14 +1233,27 @@
         <div id="support-view-password" style="display:none;">
             <div class="support-subflow">
                 <button type="button" class="support-subflow-back" onclick="showSupportSubflow('main')">← Back</button>
-                <h4>Password reset</h4>
-                <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;">We'll email a verification code to your inbox. Enter it here so support can process your reset securely.</p>
-                <button class="btn-send" type="button" id="pw-request-btn" onclick="doRequestPasswordReset()" style="width:100%;margin-bottom:14px;">Send verification code</button>
-                <div class="c-field">
-                    <label class="c-label" for="pw-verify-code">Verification code</label>
-                    <input class="c-input" type="text" id="pw-verify-code" placeholder="6-digit code from your email" maxlength="6" inputmode="numeric">
+                <h4>Change password</h4>
+                <div id="pw-step-1">
+                    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;">Enter your current password to continue.</p>
+                    <div class="c-field">
+                        <label class="c-label" for="pw-current">Current password</label>
+                        <input class="c-input" type="password" id="pw-current" autocomplete="current-password">
+                    </div>
+                    <button class="btn-send" type="button" id="pw-continue-btn" onclick="doPasswordResetContinue()" style="width:100%;">Continue</button>
                 </div>
-                <button class="btn-send" type="button" id="pw-verify-btn" onclick="doVerifyPasswordReset()" style="width:100%;">Confirm verification</button>
+                <div id="pw-step-2" style="display:none;">
+                    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;">Choose a new password (at least 8 characters). You'll be signed out when done.</p>
+                    <div class="c-field">
+                        <label class="c-label" for="pw-new">New password</label>
+                        <input class="c-input" type="password" id="pw-new" autocomplete="new-password">
+                    </div>
+                    <div class="c-field">
+                        <label class="c-label" for="pw-confirm">Confirm new password</label>
+                        <input class="c-input" type="password" id="pw-confirm" autocomplete="new-password">
+                    </div>
+                    <button class="btn-send" type="button" id="pw-submit-btn" onclick="doPasswordResetSubmit()" style="width:100%;">Update password</button>
+                </div>
             </div>
         </div>
 
@@ -1327,7 +1340,7 @@
             <table class="req-table">
                 <thead>
                     <tr>
-                        <th>Request #</th>
+                        <th>Case #</th>
                         <th>User</th>
                         <th>Type</th>
                         <th>Status</th>
@@ -1899,18 +1912,27 @@
     function openSupportModal() {
         clearSupportMsg();
         document.getElementById('s-body').value = '';
-        document.getElementById('pw-verify-code').value = '';
+        document.getElementById('pw-current').value = '';
+        document.getElementById('pw-new').value = '';
+        document.getElementById('pw-confirm').value = '';
         document.getElementById('del-message').value = '';
         showSupportSubflow('main');
+        resetPasswordSteps();
         document.getElementById('support-modal').classList.add('open');
         loadMySupportRequests();
         document.getElementById('s-body').focus();
+    }
+
+    function resetPasswordSteps() {
+        document.getElementById('pw-step-1').style.display = 'block';
+        document.getElementById('pw-step-2').style.display = 'none';
     }
 
     function showSupportSubflow(which) {
         document.getElementById('support-view-main').style.display = which === 'main' ? 'block' : 'none';
         document.getElementById('support-view-password').style.display = which === 'password' ? 'block' : 'none';
         document.getElementById('support-view-deletion').style.display = which === 'deletion' ? 'block' : 'none';
+        if (which === 'password') resetPasswordSteps();
         clearSupportMsg();
     }
 
@@ -1927,12 +1949,12 @@
             box.style.display = 'block';
             list.innerHTML = data.requests.map(r => {
                 const pill = reqStatusPillClass(r.status);
-                const ver = r.request_type === 'password_reset'
-                    ? (r.verified ? ' · <span class="req-verified-yes">Verified</span>' : ' · <span class="req-verified-no">Awaiting verification</span>')
+                const extra = r.request_type === 'password_reset'
+                    ? ' · Self-service'
                     : '';
                 return `<div style="padding:6px 0;border-bottom:1px solid var(--border);">
                     <strong>${escHtml(r.request_type_label)}</strong> ${escHtml(r.request_number)}
-                    <span class="req-status-pill ${pill}">${escHtml(r.status_label)}</span>${ver}
+                    <span class="req-status-pill ${pill}">${escHtml(r.status_label)}</span>${extra}
                 </div>`;
             }).join('');
         } catch {
@@ -1940,15 +1962,26 @@
         }
     }
 
-    async function doRequestPasswordReset() {
-        const btn = document.getElementById('pw-request-btn');
+    async function doPasswordResetContinue() {
+        const current = document.getElementById('pw-current').value;
+        const btn     = document.getElementById('pw-continue-btn');
+        if (!current) { showSupportMsg('Please enter your current password.', 'error'); return; }
         btn.disabled = true;
         clearSupportMsg();
         try {
-            const res  = await fetch('/api/hkmail/support/password-reset', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            const res  = await fetch('/api/hkmail/support/password-reset/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ current_password: current })
+            });
             const data = await res.json();
-            showSupportMsg(data.message || (data.success ? 'Code sent.' : 'Failed.'), data.success ? 'success' : 'error');
-            if (data.success) loadMySupportRequests();
+            if (data.success) {
+                document.getElementById('pw-step-1').style.display = 'none';
+                document.getElementById('pw-step-2').style.display = 'block';
+                document.getElementById('pw-new').focus();
+            } else {
+                showSupportMsg(data.message || 'Incorrect password.', 'error');
+            }
         } catch {
             showSupportMsg('Connection error.', 'error');
         } finally {
@@ -1956,23 +1989,33 @@
         }
     }
 
-    async function doVerifyPasswordReset() {
-        const code = document.getElementById('pw-verify-code').value.trim();
-        const btn  = document.getElementById('pw-verify-btn');
-        if (!code) { showSupportMsg('Enter the code from your email.', 'error'); return; }
+    async function doPasswordResetSubmit() {
+        const current = document.getElementById('pw-current').value;
+        const newPw   = document.getElementById('pw-new').value;
+        const confirm = document.getElementById('pw-confirm').value;
+        const btn     = document.getElementById('pw-submit-btn');
+        if (!newPw || !confirm) { showSupportMsg('Please enter and confirm your new password.', 'error'); return; }
         btn.disabled = true;
         clearSupportMsg();
         try {
-            const res  = await fetch('/api/hkmail/support/password-reset/verify', {
+            const res  = await fetch('/api/hkmail/support/password-reset', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code })
+                body: JSON.stringify({
+                    current_password: current,
+                    new_password: newPw,
+                    confirm_password: confirm
+                })
             });
             const data = await res.json();
-            showSupportMsg(data.message || '', data.success ? 'success' : 'error');
-            if (data.success) {
-                document.getElementById('pw-verify-code').value = '';
-                loadMySupportRequests();
+            if (data.success && data.logout) {
+                showSupportMsg(data.message, 'success');
+                setTimeout(() => { window.location.href = '/hkmail.html'; }, 1200);
+            } else if (data.success) {
+                showSupportMsg(data.message, 'success');
+                closeSupportModal();
+            } else {
+                showSupportMsg(data.message || 'Failed to update password.', 'error');
             }
         } catch {
             showSupportMsg('Connection error.', 'error');
@@ -2149,7 +2192,7 @@
                     <td>${escHtml(r.username)}</td>
                     <td>${escHtml(r.request_type_label)}</td>
                     <td><span class="req-status-pill ${reqStatusPillClass(r.status)}">${escHtml(r.status_label)}</span></td>
-                    <td>${r.request_type === 'password_reset' ? (r.verified ? '<span class="req-verified-yes">Yes</span>' : '<span class="req-verified-no">No</span>') : '—'}</td>
+                    <td>${r.request_type === 'password_reset' ? '<span class="req-verified-yes">Self-service</span>' : (r.verified ? '<span class="req-verified-yes">Yes</span>' : '<span class="req-verified-no">—</span>')}</td>
                     <td style="color:var(--muted);">${formatDate(r.created_at, true)}</td>
                     <td><button class="admin-edit-btn" onclick="openSupportRequestDetail(${r.id})">Review</button></td>
                 </tr>
@@ -2178,7 +2221,7 @@
             document.getElementById('req-detail-number').textContent = r.request_number;
             let meta = `${escHtml(r.username)} · ${escHtml(r.request_type_label)} · <span class="req-status-pill ${reqStatusPillClass(r.status)}">${escHtml(r.status_label)}</span>`;
             if (r.request_type === 'password_reset') {
-                meta += r.verified ? ' · Verified' : ' · Not verified';
+                meta += ' · Self-service (no staff action required)';
             }
             if (r.scheduled_deletion_at) {
                 meta += ` · Deletes ${escHtml(formatDate(r.scheduled_deletion_at, true))}`;
@@ -2190,22 +2233,12 @@
 
             const actions = document.getElementById('req-detail-actions');
             actions.innerHTML = '';
-            if (r.status === 'pending') {
-                if (r.request_type === 'password_reset') {
-                    const approveBtn = document.createElement('button');
-                    approveBtn.className = 'req-action-btn req-approve-btn';
-                    approveBtn.textContent = 'Approve & reset password';
-                    approveBtn.disabled = !r.verified;
-                    approveBtn.title = r.verified ? '' : 'User must verify via emailed code first';
-                    approveBtn.onclick = () => approveSupportRequest(requestId, r.request_type);
-                    actions.appendChild(approveBtn);
-                } else {
-                    const approveBtn = document.createElement('button');
-                    approveBtn.className = 'req-action-btn req-approve-btn';
-                    approveBtn.textContent = 'Approve deletion (30-day window)';
-                    approveBtn.onclick = () => approveSupportRequest(requestId, r.request_type);
-                    actions.appendChild(approveBtn);
-                }
+            if (r.status === 'pending' && r.request_type === 'account_deletion') {
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'req-action-btn req-approve-btn';
+                approveBtn.textContent = 'Approve deletion (30-day window)';
+                approveBtn.onclick = () => approveSupportRequest(requestId);
+                actions.appendChild(approveBtn);
                 const rejectBtn = document.createElement('button');
                 rejectBtn.className = 'req-action-btn req-reject-btn';
                 rejectBtn.textContent = 'Reject';
@@ -2239,10 +2272,8 @@
         }
     }
 
-    async function approveSupportRequest(requestId, reqType) {
-        if (!confirm(reqType === 'password_reset'
-            ? 'Approve this password reset? A new temporary password will be emailed to the user.'
-            : 'Approve account deletion? The account will be disabled for 30 days before permanent deletion.')) return;
+    async function approveSupportRequest(requestId) {
+        if (!confirm('Approve account deletion? The account will be disabled for 30 days before permanent deletion.')) return;
         const msg = document.getElementById('req-detail-msg');
         try {
             const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}/approve`, {

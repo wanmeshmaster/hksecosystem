@@ -2284,8 +2284,9 @@ def mail_is_support_staff():
 
 
 def generate_support_request_number(cur, length=10):
-    """Random alphanumeric request number, unique within
-    mail_support_requests, in the same style as HKS Bank's case numbers."""
+    """Deprecated — account-service cases now use CASE-{email_id} numbering
+    shared with the general support inbox. Kept only so old migrations/rows
+    with SR-* numbers don't break lookups."""
     alphabet = string.ascii_uppercase + string.digits
     while True:
         number = "SR-" + ''.join(random.choices(alphabet, k=length))
@@ -2294,21 +2295,36 @@ def generate_support_request_number(cur, length=10):
             return number
 
 
-def generate_verification_code():
-    """6-digit numeric one-time code used to verify a requester still
-    controls their own inbox before a password reset is performed."""
-    return ''.join(random.choices(string.digits, k=6))
+def mail_insert_support_case(cur, sender, subject_stub, body):
+    """Deliver a support case to support@hkmail.cn as a normal inbox email.
+    Returns (case_email_id, case_number) where case_number is CASE-{id:06d}."""
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (sender, SUPPORT_MAIL_USERNAME, subject_stub, body)
+    )
+    case_id = cur.lastrowid
+    case_number = f"CASE-{case_id:06d}"
+    cur.execute(
+        "UPDATE emails SET subject=? WHERE id=?",
+        (f"[{case_number}] {subject_stub} from {sender}", case_id)
+    )
+    return case_id, case_number
 
 
-def generate_temp_password(length=14):
-    """Random strong temporary password issued when staff complete an
-    approved password-reset request."""
-    alphabet = string.ascii_letters + string.digits
-    # Guarantee at least one digit and one uppercase letter so it always
-    # satisfies HKMail's 8-character minimum-strength expectations.
-    pwd = random.choice(string.ascii_uppercase) + random.choice(string.digits) + \
-        ''.join(random.choices(alphabet, k=length - 2))
-    return ''.join(random.sample(pwd, len(pwd)))
+def mail_send_support_case_confirmation(cur, recipient, case_number, request_label, extra_body=""):
+    """Drop the standard case-number confirmation into the user's inbox."""
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (
+            NOREPLY_MAIL_USERNAME, recipient,
+            f"We've received your {request_label} ({case_number})",
+            "Thanks for contacting HKMail Support.\n\n"
+            f"Your case number is {case_number}. Please reference it in any "
+            "follow-up correspondence about this issue.\n\n"
+            + (extra_body + "\n\n" if extra_body else "")
+            + "— HKMail Support"
+        )
+    )
 
 
 def mail_log_support_event(cur, request_id, action, actor_username, actor_role,
@@ -3019,37 +3035,12 @@ def hkmail_support():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     try:
-        # 1) File the request with the support team. Subject is patched in
-        #    right after the insert so it can carry the case number, which
-        #    only exists once the row (and therefore its id) does.
-        cur.execute(
-            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (u, SUPPORT_MAIL_USERNAME, "Support request", message)
+        _case_id, case_number = mail_insert_support_case(cur, u, "Support request", message)
+        mail_send_support_case_confirmation(
+            cur, u, case_number, "support request",
+            extra_body="Our support team will get back to you as soon as possible.\n\n"
+                       "――――――――――――――――――\nYour original message:\n" + message
         )
-        case_id     = cur.lastrowid
-        case_number = f"CASE-{case_id:06d}"
-        cur.execute(
-            "UPDATE emails SET subject=? WHERE id=?",
-            (f"[{case_number}] Support request from {u}", case_id)
-        )
-
-        # 2) Confirm to the user, with the case number — this is the only
-        #    place the case number is ever shown to them.
-        cur.execute(
-            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (
-                NOREPLY_MAIL_USERNAME, u,
-                f"We've received your support request ({case_number})",
-                "Thanks for reaching out to HKMail Support.\n\n"
-                f"Your case number is {case_number}. Please reference it in any "
-                "follow-up correspondence about this issue.\n\n"
-                "Our support team will get back to you as soon as possible.\n\n"
-                "— HKMail Support\n\n"
-                "――――――――――――――――――\n"
-                "Your original message:\n" + message
-            )
-        )
-
         conn.commit()
     finally:
         conn.close()
@@ -3059,109 +3050,104 @@ def hkmail_support():
 
 # ── HKMail: account-service support requests (password reset / deletion) ──────
 
-@app.route('/api/hkmail/support/password-reset', methods=['POST'])
-def hkmail_request_password_reset():
-    """File a password-reset request. A 6-digit verification code is emailed
-    to the requester's own inbox — staff can't approve the reset until the
-    requester proves they still control that inbox by submitting the code
-    back via /verify below."""
-    u = mail_current_user()
-    if not u:
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-
-    conn = sqlite3.connect(MAIL_DATABASE)
-    cur  = conn.cursor()
-    try:
-        # Only one open password-reset request at a time — reuse it instead
-        # of piling up duplicates if the user clicks the button again.
-        cur.execute("""
-            SELECT id FROM mail_support_requests
-            WHERE username=? AND request_type='password_reset' AND status='pending'
-        """, (u,))
-        existing = cur.fetchone()
-
-        code = generate_verification_code()
-
-        if existing:
-            request_id = existing[0]
-            cur.execute("""
-                UPDATE mail_support_requests
-                SET verification_code=?, verified=0, verified_at=NULL
-                WHERE id=?
-            """, (code, request_id))
-            mail_log_support_event(cur, request_id, "note", u, "user",
-                                    note="Requested a new verification code.")
-        else:
-            request_number = generate_support_request_number(cur)
-            cur.execute("""
-                INSERT INTO mail_support_requests
-                    (request_number, username, request_type, status, verification_code)
-                VALUES (?, ?, 'password_reset', 'pending', ?)
-            """, (request_number, u, code))
-            request_id = cur.lastrowid
-            mail_log_support_event(cur, request_id, "submitted", u, "user",
-                                    new_status="pending", note="Password reset requested.")
-
-        cur.execute(
-            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (
-                NOREPLY_MAIL_USERNAME, u,
-                "Your HKMail password reset verification code",
-                "We received a request to reset your HKMail password.\n\n"
-                f"Your verification code is: {code}\n\n"
-                "Enter this code in the Support panel to confirm it's really you. "
-                "Once verified, our support team will review and process your request.\n\n"
-                "If you didn't request this, you can safely ignore this email — no "
-                "changes will be made without the code above.\n\n"
-                "— HKMail Support"
-            )
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return jsonify({"success": True, "message": "A verification code has been sent to your inbox."})
-
-
-@app.route('/api/hkmail/support/password-reset/verify', methods=['POST'])
-def hkmail_verify_password_reset():
-    """Confirm the code emailed by the endpoint above, marking the open
-    password-reset request as identity-verified so staff can approve it."""
+@app.route('/api/hkmail/support/password-reset/check', methods=['POST'])
+def hkmail_password_reset_check():
+    """Validate the user's current password before the new-password step."""
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
 
     data = request.get_json() or {}
-    code = (data.get("code", "") or "").strip()
-    if not code:
-        return jsonify({"success": False, "message": "Please enter the code from your email."}), 400
+    current = (data.get("current_password", "") or "").strip()
+    if not current:
+        return jsonify({"success": False, "message": "Please enter your current password."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT password_hash FROM mail_users WHERE username=?", (u,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row or not check_password_hash(row[0], current):
+        return jsonify({"success": False, "message": "That password is incorrect."}), 400
+
+    return jsonify({"success": True})
+
+
+@app.route('/api/hkmail/support/password-reset', methods=['POST'])
+def hkmail_password_reset():
+    """Self-service password change: verify current password, set a new one,
+    file a CASE-numbered support ticket for the audit trail, then sign out."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data    = request.get_json() or {}
+    current = (data.get("current_password", "") or "").strip()
+    new_pw  = (data.get("new_password", "") or "").strip()
+    confirm = (data.get("confirm_password", "") or "").strip()
+
+    if not current:
+        return jsonify({"success": False, "message": "Please enter your current password."}), 400
+    if not new_pw or not confirm:
+        return jsonify({"success": False, "message": "Please enter and confirm your new password."}), 400
+    if new_pw != confirm:
+        return jsonify({"success": False, "message": "New passwords don't match."}), 400
+    if len(new_pw) < 8:
+        return jsonify({"success": False, "message": "New password must be at least 8 characters."}), 400
+    if current == new_pw:
+        return jsonify({"success": False, "message": "New password must be different from your current password."}), 400
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     try:
-        cur.execute("""
-            SELECT id, verification_code FROM mail_support_requests
-            WHERE username=? AND request_type='password_reset' AND status='pending'
-            ORDER BY id DESC LIMIT 1
-        """, (u,))
+        cur.execute("SELECT password_hash FROM mail_users WHERE username=?", (u,))
         row = cur.fetchone()
-        if not row:
-            return jsonify({"success": False, "message": "No pending password reset request found. Please request one first."}), 404
+        if not row or not check_password_hash(row[0], current):
+            return jsonify({"success": False, "message": "That password is incorrect."}), 400
 
-        request_id, expected_code = row
-        if not expected_code or code != expected_code:
-            return jsonify({"success": False, "message": "That code doesn't match. Please check your email and try again."}), 400
+        cur.execute("UPDATE mail_users SET password_hash=? WHERE username=?",
+                    (generate_password_hash(new_pw), u))
+
+        support_body = (
+            f"Password reset (self-service)\n\n"
+            f"User: {u}\n"
+            "The account holder verified their current password and set a new "
+            "password through HKMail Support. No staff action is required."
+        )
+        _case_id, case_number = mail_insert_support_case(cur, u, "Password reset", support_body)
 
         cur.execute("""
-            UPDATE mail_support_requests SET verified=1, verified_at=CURRENT_TIMESTAMP WHERE id=?
-        """, (request_id,))
-        mail_log_support_event(cur, request_id, "verified", u, "user",
-                                note="Requester verified identity via emailed code.")
+            INSERT INTO mail_support_requests
+                (request_number, username, request_type, status, verified, verified_at)
+            VALUES (?, ?, 'password_reset', 'completed', 1, CURRENT_TIMESTAMP)
+        """, (case_number, u))
+        request_id = cur.lastrowid
+        mail_log_support_event(cur, request_id, "submitted", u, "user",
+                                new_status="completed", note="Self-service password reset.")
+        mail_log_support_event(cur, request_id, "status_change", u, "user",
+                                old_status="pending", new_status="completed",
+                                note="Password changed by account holder.")
+
+        mail_send_support_case_confirmation(
+            cur, u, case_number, "password reset",
+            extra_body="Your password has been changed. Please sign in again with your new password."
+        )
+
         conn.commit()
     finally:
         conn.close()
 
-    return jsonify({"success": True, "message": "Verified! Our support team will review your request shortly."})
+    session.pop("mail_username", None)
+    session.pop("mail_full_name", None)
+    session.pop("mail_is_admin", None)
+    session.pop("mail_is_employee", None)
+
+    return jsonify({
+        "success": True,
+        "logout": True,
+        "message": "Password updated. Please sign in again with your new password."
+    })
 
 
 @app.route('/api/hkmail/support/account-deletion', methods=['POST'])
@@ -3189,30 +3175,30 @@ def hkmail_request_account_deletion():
         if cur.fetchone():
             return jsonify({"success": False, "message": "You already have an account deletion request pending review."}), 400
 
-        request_number = generate_support_request_number(cur)
+        support_body = f"Account deletion request\n\nUser: {u}\n"
+        if message:
+            support_body += f"\nNote from user:\n{message}"
+        else:
+            support_body += "\n(No additional message from user.)"
+
+        _case_id, case_number = mail_insert_support_case(cur, u, "Account deletion request", support_body)
+
         cur.execute("""
             INSERT INTO mail_support_requests
                 (request_number, username, request_type, status, message)
             VALUES (?, ?, 'account_deletion', 'pending', ?)
-        """, (request_number, u, message))
+        """, (case_number, u, message))
         request_id = cur.lastrowid
         mail_log_support_event(cur, request_id, "submitted", u, "user",
                                 new_status="pending", note="Account deletion requested.")
 
-        cur.execute(
-            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (
-                NOREPLY_MAIL_USERNAME, u,
-                f"We've received your account deletion request ({request_number})",
-                "Thanks for contacting HKMail Support.\n\n"
-                f"Your request number is {request_number}. Our support team will review it "
-                "shortly.\n\n"
-                "If approved, your account will be disabled and enter a "
-                f"{ACCOUNT_DELETION_GRACE_DAYS}-day recovery window before it's permanently "
-                "deleted — you'll be able to request reinstatement at any point during that "
-                "window.\n\n"
-                "— HKMail Support"
-            )
+        mail_send_support_case_confirmation(
+            cur, u, case_number, "account deletion request",
+            extra_body="Our support team will review your request shortly.\n\n"
+                       "If approved, your account will be disabled and enter a "
+                       f"{ACCOUNT_DELETION_GRACE_DAYS}-day recovery window before it's permanently "
+                       "deleted — you'll be able to request reinstatement at any point during that "
+                       "window."
         )
         conn.commit()
     finally:
@@ -3373,72 +3359,33 @@ def hkmail_admin_get_support_request(request_id):
 
 @app.route('/api/hkmail/admin/support-requests/<int:request_id>/approve', methods=['POST'])
 def hkmail_admin_approve_support_request(request_id):
-    """Approve a pending request. Password resets are applied immediately
-    (identity verification already gates this button on the frontend, but
-    it's re-checked here too); account-deletion approvals disable the
-    account and start its 30-day recovery window rather than deleting it
-    outright."""
+    """Approve a pending account-deletion request — disables the account and
+    starts its 30-day recovery window. Password resets are self-service and
+    never reach this endpoint."""
     if not mail_is_support_staff():
         return jsonify({"success": False, "message": "Support staff access required."}), 403
 
     actor_username = mail_current_user()
     actor_role = "admin" if session.get("mail_is_admin") else "employee"
 
-    data = request.get_json() or {}
-
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     try:
         cur.execute("""
-            SELECT username, request_type, status, verified FROM mail_support_requests WHERE id=?
+            SELECT username, request_type, status FROM mail_support_requests WHERE id=?
         """, (request_id,))
         row = cur.fetchone()
         if not row:
             return jsonify({"success": False, "message": "Request not found."}), 404
-        username, req_type, status, verified = row
+        username, req_type, status = row
+
+        if req_type == "password_reset":
+            return jsonify({"success": False, "message": "Password resets are self-service — no staff approval is needed."}), 400
 
         if status != "pending":
             return jsonify({"success": False, "message": "This request has already been decided."}), 400
 
-        if req_type == "password_reset":
-            if not verified:
-                return jsonify({"success": False, "message": "This requester hasn't verified their identity yet."}), 400
-
-            new_password = (data.get("new_password", "") or "").strip()
-            auto_generated = False
-            if not new_password:
-                new_password = generate_temp_password()
-                auto_generated = True
-            elif len(new_password) < 8:
-                return jsonify({"success": False, "message": "Password must be at least 8 characters."}), 400
-
-            cur.execute("SELECT id FROM mail_users WHERE username=?", (username,))
-            if not cur.fetchone():
-                return jsonify({"success": False, "message": "User account no longer exists."}), 404
-
-            cur.execute("UPDATE mail_users SET password_hash=? WHERE username=?",
-                        (generate_password_hash(new_password), username))
-            cur.execute("""
-                UPDATE mail_support_requests
-                SET status='completed', decided_by=?, decided_at=CURRENT_TIMESTAMP
-                WHERE id=?
-            """, (actor_username, request_id))
-            mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
-                                    old_status="pending", new_status="completed",
-                                    note="Password reset approved and applied" + (" (auto-generated password)." if auto_generated else " (staff-set password)."))
-
-            cur.execute(
-                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-                (NOREPLY_MAIL_USERNAME, username, "Your HKMail password has been reset",
-                 "Your password reset request has been approved and completed.\n\n"
-                 f"Your new temporary password is: {new_password}\n\n"
-                 "Please sign in with it and change it as soon as possible.\n\n"
-                 "— HKMail Support")
-            )
-            conn.commit()
-            return jsonify({"success": True, "message": f"Password reset for {username}.", "new_password": new_password})
-
-        elif req_type == "account_deletion":
+        if req_type == "account_deletion":
             now = datetime.now()
             scheduled_deletion_at = (now + timedelta(days=ACCOUNT_DELETION_GRACE_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
 
