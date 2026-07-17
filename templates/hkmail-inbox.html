@@ -1429,14 +1429,6 @@
 
         <div class="admin-status-msg" id="storage-msg"></div>
 
-        <details class="danger-zone">
-            <summary>Danger zone</summary>
-            <div class="danger-zone-body">
-                <button class="btn-delete-account" onclick="promptDeleteAccount()">Delete my HKMail account</button>
-                <span style="font-size:0.78rem;color:var(--muted);">This cancels any Premium plan immediately and can't be undone.</span>
-            </div>
-        </details>
-
         <div class="terms-link-row">
             <button class="btn-terms-link" onclick="openPremiumTerms()">View Premium subscription terms &amp; conditions</button>
         </div>
@@ -2832,26 +2824,6 @@
         } catch {
             msg.textContent = 'Connection error.';
             msg.className = 'admin-status-msg err';
-        }
-    }
-
-    async function promptDeleteAccount() {
-        const password = prompt('This permanently deletes your HKMail account and cancels any Premium plan.\nEnter your password to confirm:');
-        if (!password) return;
-        try {
-            const res  = await fetch('/api/hkmail/account/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password })
-            });
-            const data = await res.json();
-            if (data.success) {
-                window.location.href = '/hkmail.html';
-            } else {
-                alert(data.message || 'Could not delete account.');
-            }
-        } catch {
-            alert('Connection error.');
         }
     }
 
