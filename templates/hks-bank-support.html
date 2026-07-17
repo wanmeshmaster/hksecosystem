@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customer Service | HKS Bank</title>
+<style>
+    :root {
+        --blue: #0052cc;
+        --blue-dark: #003d99;
+        --navy: #0b1a33;
+        --bg: #f4f6f8;
+        --panel: #eef2f6;
+        --border: #e2e8f0;
+        --border-strong: #cbd5e1;
+        --muted: #64748b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    html { scroll-behavior: smooth; }
+    body { background: #fff; color: var(--navy); }
+    a { color: inherit; }
+    button { font-family: inherit; }
+    :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+    /* ── Utility bar ── */
+    .utility-bar { background: var(--panel); border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+    .utility-bar-inner { max-width: 1400px; margin: 0 auto; padding: 0 30px; display: flex; align-items: center; justify-content: space-between; }
+    .utility-tabs { display: flex; }
+    .utility-tab { padding: 14px 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--muted); text-decoration: none; border-top: 3px solid transparent; cursor: pointer; }
+    .utility-tab.active { color: var(--navy); border-top-color: var(--blue); background: #fff; }
+    .utility-tab:not(.active):hover { color: var(--navy); }
+    .utility-actions { display: flex; align-items: center; gap: 22px; }
+    .utility-link { display: flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-weight: 600; cursor: pointer; white-space: nowrap; background: none; border: none; padding: 14px 0; border-top: 3px solid transparent; }
+    .utility-link:hover { color: var(--navy); }
+    .utility-link.active { color: var(--navy); border-top-color: var(--blue); }
+    .utility-link svg { flex-shrink: 0; }
+    .login-pill { display: flex; align-items: center; gap: 8px; background: #fff; color: var(--blue); border: 1.5px solid var(--blue); padding: 9px 18px; border-radius: 30px; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+    .login-pill:hover { background: var(--blue); color: #fff; }
+    .account-pill { display: flex; align-items: center; gap: 8px; color: var(--navy); text-decoration: none; font-weight: 700; font-size: 0.82rem; }
+    .account-pill:hover { color: var(--blue); }
+    .logout-link { color: var(--muted); background: none; border: none; font-weight: 600; font-size: 0.82rem; cursor: pointer; }
+    .logout-link:hover { color: #ef4444; }
+
+    /* ── Main nav ── */
+    .main-nav { border-bottom: 1px solid var(--border); }
+    .main-nav-inner { max-width: 1400px; margin: 0 auto; padding: 16px 30px; display: flex; align-items: center; gap: 46px; }
+    .brand-mark { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+    .brand-badge { width: 38px; height: 38px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.05rem; }
+    .brand-wordmark { font-size: 1.25rem; font-weight: 800; color: var(--navy); }
+    .nav-items { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .nav-item { position: relative; }
+    .nav-item-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 10px 12px; font-size: 0.98rem; font-weight: 600; color: var(--navy); cursor: pointer; border-radius: 6px; }
+    .nav-item-btn:hover { background: var(--panel); }
+    .nav-item-btn svg { transition: transform 0.15s; }
+    .nav-item:hover .nav-item-btn svg { transform: rotate(180deg); }
+    .nav-dropdown { position: absolute; top: calc(100% + 8px); left: 0; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 28px rgba(11,26,51,0.12); min-width: 270px; padding: 8px; opacity: 0; pointer-events: none; transform: translateY(-6px); transition: all 0.15s; z-index: 20; }
+    .nav-item:hover .nav-dropdown { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    .nav-dropdown-link { display: block; padding: 10px 12px; border-radius: 6px; color: var(--navy); text-decoration: none; font-size: 0.87rem; font-weight: 600; line-height: 1.4; }
+    .nav-dropdown-link:hover { background: var(--panel); color: var(--blue); }
+    .nav-dropdown-viewall { color: var(--blue); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px; border-radius: 0 0 6px 6px; }
+
+    /* ── Page body ── */
+    main { max-width: 1150px; margin: 0 auto; padding: 26px 30px 80px; }
+    .breadcrumb { font-size: 0.88rem; color: var(--muted); margin-bottom: 34px; }
+    .breadcrumb a { color: var(--muted); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--blue); }
+    .breadcrumb .sep { margin: 0 8px; color: var(--border-strong); }
+    .breadcrumb .current { color: var(--navy); }
+
+    .page-heading { font-size: 2.6rem; font-weight: 700; color: var(--navy); line-height: 1.15; margin-bottom: 18px; }
+    .page-subheading { font-size: 1.1rem; color: #3a4a5e; line-height: 1.6; max-width: 760px; margin-bottom: 40px; }
+
+    /* ── Contact callout ── */
+    .contact-callout { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 40px; overflow: hidden; }
+    .contact-callout-head { width: 100%; background: none; border: none; display: flex; align-items: center; gap: 18px; padding: 26px 28px; cursor: pointer; text-align: left; }
+    .contact-callout-icon { width: 44px; height: 44px; border-radius: 10px; background: var(--panel); color: var(--blue); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .contact-callout-text { flex: 1; }
+    .contact-callout-text h2 { font-size: 1.25rem; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .contact-callout-text p { font-size: 0.9rem; color: var(--muted); }
+    .contact-callout-chevron { transition: transform 0.2s; color: var(--muted); flex-shrink: 0; }
+    .contact-callout.open .contact-callout-chevron { transform: rotate(90deg); }
+    .contact-callout-body { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; border-top: 1px solid transparent; }
+    .contact-callout.open .contact-callout-body { max-height: 600px; border-top-color: var(--border); }
+    .contact-callout-inner { padding: 26px 28px 30px; }
+    .contact-email-note { font-size: 0.9rem; color: var(--muted); margin-bottom: 18px; line-height: 1.5; }
+    .contact-email-note strong { color: var(--navy); }
+    .contact-textarea { width: 100%; padding: 13px; border: 1px solid var(--border-strong); border-radius: 8px; font-size: 0.95rem; font-family: inherit; resize: vertical; outline: none; min-height: 110px; }
+    .contact-textarea:focus { border-color: var(--blue); }
+    .contact-send-btn { margin-top: 14px; background: var(--blue); color: #fff; border: none; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 0.92rem; cursor: pointer; transition: background 0.15s; }
+    .contact-send-btn:hover { background: var(--blue-dark); }
+    .contact-send-btn:disabled { background: var(--border-strong); cursor: not-allowed; }
+    .contact-status { font-size: 0.87rem; margin-top: 12px; min-height: 1.2em; }
+    .contact-login-gate { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; background: var(--panel); border-radius: 8px; padding: 18px 20px; }
+    .contact-login-gate p { font-size: 0.9rem; color: var(--navy); font-weight: 600; }
+    .contact-login-gate button { background: var(--blue); color: #fff; border: none; padding: 10px 22px; border-radius: 30px; font-weight: 700; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+    .contact-login-gate button:hover { background: var(--blue-dark); }
+
+    /* ── FAQ grid ── */
+    .faq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
+    .faq-card { border: 1px solid var(--border); border-radius: 10px; padding: 26px 24px; scroll-margin-top: 24px; }
+    .faq-card h3 { font-size: 1.2rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-q { width: 100%; background: none; border: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 2px; text-align: left; cursor: pointer; font-size: 0.94rem; font-weight: 600; color: var(--navy); }
+    .faq-q:hover { color: var(--blue); }
+    .faq-q svg { flex-shrink: 0; color: var(--muted); transition: transform 0.2s; }
+    .faq-item.open .faq-q svg { transform: rotate(90deg); color: var(--blue); }
+    .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.2s ease; }
+    .faq-item.open .faq-a { max-height: 300px; }
+    .faq-a p { font-size: 0.87rem; color: var(--muted); line-height: 1.55; padding: 0 2px 16px; }
+
+    /* ── Footer ── */
+    footer { border-top: 1px solid var(--border); padding: 26px 30px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+    footer a { color: var(--blue); font-weight: 600; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Login modal ── */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(11,26,51,0.55); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); padding: 20px; }
+    .modal-content { background-color: #ffffff; padding: 40px; border-radius: 12px; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; position: relative; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); }
+    .modal-content h1 { color: var(--navy); margin-bottom: 25px; font-size: 1.7rem; }
+    .close-btn { position: absolute; top: 15px; right: 20px; font-size: 1.5rem; color: #94a3b8; cursor: pointer; transition: color 0.2s; background: none; border: none; line-height: 1; }
+    .close-btn:hover { color: #ef4444; }
+    .input-group { margin-bottom: 15px; text-align: left; }
+    .input-group label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+    input[type="text"], input[type="password"] { width: 100%; padding: 12px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 1rem; outline: none; transition: border-color 0.2s; }
+    input[type="text"]:focus, input[type="password"]:focus { border-color: var(--blue); }
+    .primary-btn, .secondary-btn { width: 100%; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 10px; }
+    .primary-btn { background-color: var(--blue); color: white; border: none; }
+    .primary-btn:hover { background-color: var(--blue-dark); }
+    .secondary-btn { background-color: transparent; color: var(--blue); border: 1px solid var(--blue); margin-top: 15px; text-decoration: none; display: block; text-align: center; }
+    .secondary-btn:hover { background-color: #f0f7ff; }
+    .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 860px) {
+        .main-nav-inner { flex-wrap: wrap; gap: 18px; }
+        .page-heading { font-size: 2rem; }
+    }
+    @media (max-width: 640px) {
+        .utility-bar-inner { flex-wrap: wrap; padding: 10px 16px; row-gap: 8px; }
+        .utility-tabs { order: 2; width: 100%; overflow-x: auto; }
+        .utility-actions { order: 1; width: 100%; justify-content: flex-end; gap: 14px; }
+        .utility-link span { display: none; }
+        .contact-callout-head { padding: 20px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        * { transition-duration: 0.01ms !important; }
+    }
+</style>
+</head>
+<body>
+
+<!-- ── Utility bar ── -->
+<div class="utility-bar">
+    <div class="utility-bar-inner">
+        <div class="utility-tabs">
+            <a href="/hks-bank.html" class="utility-tab">Personal Customers</a>
+            <span class="utility-tab">Business Customers</span>
+            <span class="utility-tab">About HKS Bank</span>
+        </div>
+        <div class="utility-actions">
+            <button class="utility-link">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>Search</span>
+            </button>
+            <a href="/hks-bank-support.html" class="utility-link active">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                <span>Customer Service</span>
+            </a>
+            <div id="auth-slot">
+                <button class="login-pill" onclick="openLoginModal()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Log In
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Main nav ── -->
+<nav class="main-nav">
+    <div class="main-nav-inner">
+        <a href="/hks-bank.html" class="brand-mark">
+            <span class="brand-badge">H</span>
+            <span class="brand-wordmark">HKS Bank</span>
+        </a>
+        <div class="nav-items">
+            <div class="nav-item">
+                <button class="nav-item-btn">Accounts <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-dropdown">
+                    <a href="#accounts" class="nav-dropdown-link">How do I open an additional account?</a>
+                    <a href="#accounts" class="nav-dropdown-link">How do I move money between my accounts?</a>
+                    <a href="#accounts" class="nav-dropdown-link nav-dropdown-viewall">View all account FAQs →</a>
+                </div>
+            </div>
+            <div class="nav-item">
+                <button class="nav-item-btn">Cards <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-dropdown">
+                    <a href="#cards" class="nav-dropdown-link">How do I freeze a lost or stolen card?</a>
+                    <a href="#cards" class="nav-dropdown-link">How do I view my full card number?</a>
+                    <a href="#cards" class="nav-dropdown-link nav-dropdown-viewall">View all card FAQs →</a>
+                </div>
+            </div>
+            <div class="nav-item">
+                <button class="nav-item-btn">Transfers <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-dropdown">
+                    <a href="#transfers" class="nav-dropdown-link">How do I send money to another person?</a>
+                    <a href="#transfers" class="nav-dropdown-link">How do I move funds between my accounts?</a>
+                    <a href="#transfers" class="nav-dropdown-link nav-dropdown-viewall">View all transfer FAQs →</a>
+                </div>
+            </div>
+            <div class="nav-item">
+                <button class="nav-item-btn">Support <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                <div class="nav-dropdown">
+                    <a href="#contact" class="nav-dropdown-link">Contact customer service</a>
+                    <a href="#login-security" class="nav-dropdown-link">Login &amp; security help</a>
+                    <a href="#support" class="nav-dropdown-link nav-dropdown-viewall">View all support FAQs →</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main id="support">
+    <p class="breadcrumb">
+        <a href="/hks-bank.html">Personal Customers</a><span class="sep">/</span><span class="current">Customer Service for HKS Bank</span>
+    </p>
+
+    <h1 class="page-heading">HKS Bank Customer Service</h1>
+    <p class="page-subheading">We've put together shortcuts to help you handle your banking matters quickly online. Choose a topic below, or contact us directly and we'll get back to you.</p>
+
+    <!-- ── Contact callout ── -->
+    <div class="contact-callout" id="contact-callout">
+        <button class="contact-callout-head" id="contact" onclick="toggleContactCallout()">
+            <span class="contact-callout-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span class="contact-callout-text">
+                <h2>Contact Customer Service</h2>
+                <p>Send us a message and we'll follow up by email — or write to us anytime.</p>
+            </span>
+            <svg class="contact-callout-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <div class="contact-callout-body">
+            <div class="contact-callout-inner">
+                <p class="contact-email-note">You can also reach us anytime by emailing <strong>hksbank.support@hkmail.cn</strong>. Messages sent from the form below are logged as a support case so we can track it through to resolution.</p>
+
+                <div id="contact-form-wrap">
+                    <textarea id="support-message" class="contact-textarea" placeholder="Describe your issue…"></textarea>
+                    <div id="support-status" class="contact-status"></div>
+                    <button class="contact-send-btn" id="support-send-btn" onclick="submitSupportRequest()">Send Message</button>
+                </div>
+
+                <div id="contact-login-gate" class="contact-login-gate" style="display:none;">
+                    <p>Log in to send a message to customer service.</p>
+                    <button onclick="openLoginModal()">Log In</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── FAQ categories ── -->
+    <div class="faq-grid">
+        <div class="faq-card" id="login-security">
+            <h3>Login &amp; Security</h3>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">What if I forget my password?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Contact customer service using the form above and we'll help verify your identity and get you back into your account.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I register for HKS Bank?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>From the homepage, select "Create an account" and fill in your details. You'll need an HKMail address on hand — we'll send a confirmation code there to verify it's you.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">Is my account secure?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Your account is protected by your username and password. If you ever notice activity you don't recognize, contact customer service right away.</p></div>
+            </div>
+        </div>
+
+        <div class="faq-card" id="accounts">
+            <h3>Accounts</h3>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I open an additional account?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>From your dashboard, look for the option to open a new account alongside your primary account. It'll appear in your accounts list right away.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I check my balance and history?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Your balance is shown on each account card on your dashboard. Select "View History" on any account to see its full transaction history.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">Can I rename my accounts?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Not yet — this is something we're planning to add. In the meantime, additional accounts are labelled in the order you opened them.</p></div>
+            </div>
+        </div>
+
+        <div class="faq-card" id="cards">
+            <h3>Cards</h3>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I freeze a lost or stolen card?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Open the Cards section on your dashboard and select the card in question — you can freeze it instantly from there.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I view my full card number?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>On your dashboard's Cards section, select the card to reveal its full number, expiry, and CVV whenever you need them.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I request a new card?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Contact customer service with your request and the account it should be linked to, and we'll take it from there.</p></div>
+            </div>
+        </div>
+
+        <div class="faq-card" id="transfers">
+            <h3>Transfers</h3>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I send money to another person?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Use "Send Money" on your dashboard, enter the recipient's username and an amount, and confirm — it's instant.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">How do I move funds between my own accounts?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Use "Transfer Money" on your dashboard to move funds between any of your own accounts.</p></div>
+            </div>
+            <div class="faq-item">
+                <button class="faq-q" onclick="toggleFaq(this)">A transfer looks wrong — what do I do?<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <div class="faq-a"><p>Contact customer service with the date, amount, and account involved, and we'll look into it for you.</p></div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <a href="/hks-bank.html">&larr; Back to HKS Bank</a> &nbsp;·&nbsp; © 2026 HKS Bank
+</footer>
+
+<!-- ── Sign In Modal ── -->
+<div id="loginModal" class="modal-overlay">
+    <div class="modal-content">
+        <button class="close-btn" onclick="closeLoginModal()">&times;</button>
+        <h1>Sign In</h1>
+        <div class="input-group">
+            <label for="login-username">Username</label>
+            <input type="text" id="login-username" placeholder="Enter your username">
+        </div>
+        <div class="input-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" placeholder="Enter your password">
+        </div>
+        <p id="login-error" class="error-msg">Invalid username or password.</p>
+        <button onclick="attemptLogin()" class="primary-btn">Sign In</button>
+        <a href="/hks-bank.html" class="secondary-btn">New here? Create an account</a>
+    </div>
+</div>
+
+<script>
+    const loginModal = document.getElementById('loginModal');
+    const loginError = document.getElementById('login-error');
+    let isLoggedIn = false;
+
+    // ── Contact callout accordion ──────────────────────────
+    function toggleContactCallout() {
+        document.getElementById('contact-callout').classList.toggle('open');
+    }
+
+    // ── FAQ accordion ──────────────────────────────────────
+    function toggleFaq(btn) {
+        btn.parentElement.classList.toggle('open');
+    }
+
+    // Deep-linking: open the right FAQ card / contact panel if the URL has a hash
+    function handleHash() {
+        const hash = window.location.hash.replace('#', '');
+        if (!hash) return;
+        if (hash === 'contact' || hash === 'support') {
+            document.getElementById('contact-callout').classList.add('open');
+        }
+    }
+
+    // ── Auth state ──────────────────────────────────────────
+    async function refreshAuthState() {
+        const authSlot = document.getElementById('auth-slot');
+        const formWrap = document.getElementById('contact-form-wrap');
+        const loginGate = document.getElementById('contact-login-gate');
+        try {
+            const res = await fetch('/api/current-user');
+            const data = await res.json();
+            isLoggedIn = !!data.loggedIn;
+
+            if (isLoggedIn) {
+                authSlot.innerHTML = `
+                    <a href="/hks-bank-dashboard.html" class="account-pill">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+                        My Account
+                    </a>
+                    <button class="logout-link" onclick="executeLogout()" style="margin-left:16px;">Log Out</button>
+                `;
+                formWrap.style.display = 'block';
+                loginGate.style.display = 'none';
+            } else {
+                authSlot.innerHTML = `
+                    <button class="login-pill" onclick="openLoginModal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Log In
+                    </button>
+                `;
+                formWrap.style.display = 'none';
+                loginGate.style.display = 'flex';
+            }
+        } catch (e) {
+            isLoggedIn = false;
+        }
+    }
+
+    async function executeLogout() {
+        try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
+        refreshAuthState();
+    }
+
+    // ── Login modal ──────────────────────────────────────────
+    function openLoginModal() {
+        loginModal.style.display = 'flex';
+        loginError.style.display = 'none';
+        document.getElementById('login-username').focus();
+    }
+    function closeLoginModal() { loginModal.style.display = 'none'; }
+
+    window.onclick = (e) => { if (e.target === loginModal) closeLoginModal(); };
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && loginModal.style.display === 'flex') attemptLogin();
+    });
+
+    async function attemptLogin() {
+        const user = document.getElementById('login-username').value.trim();
+        const pass = document.getElementById('login-password').value.trim();
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                closeLoginModal();
+                document.getElementById('login-username').value = '';
+                document.getElementById('login-password').value = '';
+                await refreshAuthState();
+                document.getElementById('contact-callout').classList.add('open');
+            } else {
+                loginError.innerText = data.message;
+                loginError.style.display = 'block';
+            }
+        } catch (err) {
+            loginError.innerText = 'Server error occurred.';
+            loginError.style.display = 'block';
+        }
+    }
+
+    // ── Contact form submission ──────────────────────────────
+    async function submitSupportRequest() {
+        const msg = document.getElementById('support-message').value.trim();
+        const statusEl = document.getElementById('support-status');
+        const btn = document.getElementById('support-send-btn');
+
+        if (!msg) {
+            statusEl.innerHTML = '<span style="color:#ef4444;">Please describe your issue.</span>';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'Sending…';
+        try {
+            const response = await fetch('/api/bank/support', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: msg })
+            });
+            const data = await response.json();
+            if (data.success) {
+                statusEl.innerHTML = `<span style="color:#10b981;">${data.message}</span>`;
+                document.getElementById('support-message').value = '';
+            } else {
+                statusEl.innerHTML = `<span style="color:#ef4444;">${data.message}</span>`;
+            }
+        } catch (e) {
+            statusEl.innerHTML = '<span style="color:#ef4444;">Request failed. Please try again.</span>';
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'Send Message';
+        }
+    }
+
+    window.addEventListener('load', () => {
+        refreshAuthState();
+        handleHash();
+    });
+</script>
+</body>
+</html>

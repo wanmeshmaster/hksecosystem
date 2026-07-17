@@ -506,6 +506,10 @@ def bank_dashboard():
 def bank_checkout():
     return render_template('hks-bank-checkout.html')
 
+@app.route('/hks-bank-support.html')
+def bank_support_page():
+    return render_template('hks-bank-support.html')
+
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 

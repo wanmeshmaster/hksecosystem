@@ -48,9 +48,11 @@
     .nav-item-btn:hover { background: var(--panel); }
     .nav-item-btn svg { transition: transform 0.15s; }
     .nav-item:hover .nav-item-btn svg { transform: rotate(180deg); }
-    .nav-tooltip { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(-4px); background: var(--navy); color: #fff; font-size: 0.78rem; font-weight: 600; padding: 8px 12px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: all 0.15s; z-index: 20; }
-    .nav-tooltip::after { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-bottom-color: var(--navy); }
-    .nav-item:hover .nav-tooltip { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .nav-dropdown { position: absolute; top: calc(100% + 8px); left: 0; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 14px 28px rgba(11,26,51,0.12); min-width: 270px; padding: 8px; opacity: 0; pointer-events: none; transform: translateY(-6px); transition: all 0.15s; z-index: 20; }
+    .nav-item:hover .nav-dropdown { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    .nav-dropdown-link { display: block; padding: 10px 12px; border-radius: 6px; color: var(--navy); text-decoration: none; font-size: 0.87rem; font-weight: 600; line-height: 1.4; }
+    .nav-dropdown-link:hover { background: var(--panel); color: var(--blue); }
+    .nav-dropdown-viewall { color: var(--blue); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px; border-radius: 0 0 6px 6px; }
 
     /* ── Hero ── */
     main { max-width: 1400px; margin: 0 auto; padding: 40px 30px 0; }
@@ -151,10 +153,10 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 <span>Search</span>
             </button>
-            <button class="utility-link">
+            <a href="/hks-bank-support.html" class="utility-link">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
                 <span>Customer Service</span>
-            </button>
+            </a>
             <button class="login-pill" onclick="openLoginModal()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 Log In
@@ -173,19 +175,35 @@
         <div class="nav-items">
             <div class="nav-item">
                 <button class="nav-item-btn">Accounts <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-                <div class="nav-tooltip">Log in to manage your accounts</div>
+                <div class="nav-dropdown">
+                    <a href="/hks-bank-support.html#accounts" class="nav-dropdown-link">How do I open an additional account?</a>
+                    <a href="/hks-bank-support.html#accounts" class="nav-dropdown-link">How do I move money between my accounts?</a>
+                    <a href="/hks-bank-support.html#accounts" class="nav-dropdown-link nav-dropdown-viewall">View all account FAQs →</a>
+                </div>
             </div>
             <div class="nav-item">
                 <button class="nav-item-btn">Cards <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-                <div class="nav-tooltip">Log in to view and manage your cards</div>
+                <div class="nav-dropdown">
+                    <a href="/hks-bank-support.html#cards" class="nav-dropdown-link">How do I freeze a lost or stolen card?</a>
+                    <a href="/hks-bank-support.html#cards" class="nav-dropdown-link">How do I view my full card number?</a>
+                    <a href="/hks-bank-support.html#cards" class="nav-dropdown-link nav-dropdown-viewall">View all card FAQs →</a>
+                </div>
             </div>
             <div class="nav-item">
                 <button class="nav-item-btn">Transfers <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-                <div class="nav-tooltip">Log in to send or move money</div>
+                <div class="nav-dropdown">
+                    <a href="/hks-bank-support.html#transfers" class="nav-dropdown-link">How do I send money to another person?</a>
+                    <a href="/hks-bank-support.html#transfers" class="nav-dropdown-link">How do I move funds between my accounts?</a>
+                    <a href="/hks-bank-support.html#transfers" class="nav-dropdown-link nav-dropdown-viewall">View all transfer FAQs →</a>
+                </div>
             </div>
             <div class="nav-item">
                 <button class="nav-item-btn">Support <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
-                <div class="nav-tooltip">Log in to contact support</div>
+                <div class="nav-dropdown">
+                    <a href="/hks-bank-support.html#contact" class="nav-dropdown-link">Contact customer service</a>
+                    <a href="/hks-bank-support.html#support" class="nav-dropdown-link">How do I check my request status?</a>
+                    <a href="/hks-bank-support.html" class="nav-dropdown-link nav-dropdown-viewall">View all support FAQs →</a>
+                </div>
             </div>
         </div>
     </div>
