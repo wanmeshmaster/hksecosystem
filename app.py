@@ -2664,18 +2664,16 @@ def hkmail_send():
         recipient = recipient + "@hkmail.cn"
 
     # No-reply mailboxes never accept incoming mail — a real mail provider
-    # couldn't connect to them either, so bounce immediately without ever
-    # touching quotas or the recipient's mailbox.
+    # couldn't connect to them either. As far as the sender is concerned the
+    # message goes out normally; the failure only shows up moments later as
+    # a bounce notice in their inbox, same as real email.
     recipient_local_part = recipient.split("@", 1)[0]
     if recipient_local_part in NOREPLY_LOCAL_PARTS:
         mail_deliver_bounce(
             u, recipient, subject,
             "This address does not accept incoming mail (no-reply mailbox)."
         )
-        return jsonify({
-            "success": False,
-            "message": f"{recipient} doesn't accept incoming mail. A delivery failure notice has been added to your inbox."
-        }), 400
+        return jsonify({"success": True, "message": f"Message sent to {recipient}."})
 
     # Renewals/downgrades may have just changed either mailbox's limit
     mail_run_billing_cycle(u)
@@ -2710,10 +2708,7 @@ def hkmail_send():
                 u, recipient, subject,
                 "The HKMail delivery system couldn't connect to this address — it doesn't exist."
             )
-            return jsonify({
-                "success": False,
-                "message": f"No HKMail account found for {recipient}. A delivery failure notice has been added to your inbox."
-            }), 404
+            return jsonify({"success": True, "message": f"Message sent to {recipient}."})
 
         sender_limit_bytes = mail_storage_limit_mb(u) * 1024 * 1024
         if mail_storage_used_bytes(u, cur=cur) + message_size > sender_limit_bytes:
