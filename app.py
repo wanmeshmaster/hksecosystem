@@ -5,7 +5,7 @@ import os
 import random
 import string
 import base64
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
 app.secret_key = os.urandom(32)
@@ -203,6 +203,27 @@ SUPPORT_MAIL_DEFAULT_PASSWORD = "SupportQueue321!"
 # the accounts above, with its own fixed demo credential.
 BANK_SUPPORT_MAIL_USERNAME = "hksbank.support@hkmail.cn"
 BANK_SUPPORT_MAIL_DEFAULT_PASSWORD = "HksBankSupport852!"
+
+
+# ── HKMail: account-service support requests (password reset / deletion) ──────
+
+# How long a disabled (pending-deletion) account can be reinstated before it's
+# eligible for permanent deletion.
+ACCOUNT_DELETION_GRACE_DAYS = 30
+
+MAIL_SUPPORT_REQUEST_TYPES = ("password_reset", "account_deletion")
+MAIL_SUPPORT_REQUEST_STATUSES = ("pending", "approved", "rejected", "completed", "cancelled")
+MAIL_SUPPORT_REQUEST_STATUS_LABELS = {
+    "pending": "Pending Review",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+}
+MAIL_SUPPORT_REQUEST_TYPE_LABELS = {
+    "password_reset": "Password Reset",
+    "account_deletion": "Account Deletion",
+}
 
 
 def generate_signup_code(length=8):
@@ -2057,11 +2078,26 @@ def init_mail_db():
         )
     """)
 
-    # Safe migration for existing databases created before is_verified existed
-    try:
-        cur.execute("ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    # Safe migrations for existing databases
+    for stmt in [
+        "ALTER TABLE mail_users ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0",
+        # Support-staff tier, distinct from full Admins — mirrors HKS Bank's
+        # is_employee/is_admin split. Support personnel can review/process
+        # support requests but can't manage roles, verified status, etc.
+        "ALTER TABLE mail_users ADD COLUMN is_employee INTEGER NOT NULL DEFAULT 0",
+        # Account-deletion disablement state. A disabled account is not
+        # deleted yet — it's in the 30-day recovery window that starts once
+        # an account-deletion support request is approved. `disabled_at` is
+        # when that window started; `scheduled_deletion_at` is the date the
+        # account becomes eligible for permanent deletion.
+        "ALTER TABLE mail_users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE mail_users ADD COLUMN disabled_at DATETIME",
+        "ALTER TABLE mail_users ADD COLUMN scheduled_deletion_at DATETIME",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
 
     # Premium subscriptions — one row per plan a mailbox has purchased. Plans
     # stack: a mailbox can hold several rows at once (e.g. both 50gb and
@@ -2126,6 +2162,54 @@ def init_mail_db():
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_attachments_email ON email_attachments(email_id)")
 
+    # Account-service support requests: password resets and account-deletion
+    # requests filed through HKMail Support, reviewed and processed by
+    # authorised support staff (Employees/Admins). Deliberately its own
+    # table (rather than free-text emails to support@hkmail.cn, like the
+    # general "Contact Support" button) since these two request types carry
+    # their own state machine, verification step, and audit trail.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS mail_support_requests (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_number      TEXT UNIQUE NOT NULL,
+            username            TEXT NOT NULL,
+            request_type        TEXT NOT NULL,               -- password_reset | account_deletion
+            status              TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected | completed | cancelled
+            message             TEXT NOT NULL DEFAULT '',
+            -- Password-reset identity verification (a one-time code emailed
+            -- to the requester's own inbox; staff can't approve a reset
+            -- until the requester has proven they still control the inbox).
+            verification_code   TEXT,
+            verified            INTEGER NOT NULL DEFAULT 0,
+            verified_at         DATETIME,
+            -- Handled-by / decision bookkeeping, duplicated from the events
+            -- table onto the row itself purely for fast list/filter queries.
+            decided_by          TEXT,
+            decided_at          DATETIME,
+            created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_support_requests_username ON mail_support_requests(username)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_support_requests_status ON mail_support_requests(status)")
+
+    # Full audit trail for the above — every submission, verification,
+    # approval, rejection, and completion, plus who (user or staff) did it.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS mail_support_request_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id      INTEGER NOT NULL,
+            action          TEXT NOT NULL,           -- submitted | verified | status_change | note
+            old_status      TEXT,
+            new_status      TEXT,
+            note            TEXT NOT NULL DEFAULT '',
+            actor_username  TEXT NOT NULL,
+            actor_role      TEXT NOT NULL,            -- user | employee | admin
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (request_id) REFERENCES mail_support_requests(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_support_events_request ON mail_support_request_events(request_id)")
+
     # Ensure the HKMail administrator account exists. It's inserted first so
     # it is literally the first user of the HKMail service, and it is both
     # an admin and a verified/official account from the start.
@@ -2166,9 +2250,11 @@ def init_mail_db():
     if not cur.fetchone():
         support_password_hash = generate_password_hash(SUPPORT_MAIL_DEFAULT_PASSWORD)
         cur.execute(
-            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified, is_employee) VALUES (?, ?, ?, 0, 1, 1)",
             (SUPPORT_MAIL_USERNAME, support_password_hash, "HKMail Support")
         )
+    # Existing deployments: ensure the support mailbox can manage account requests.
+    cur.execute("UPDATE mail_users SET is_employee=1 WHERE username=?", (SUPPORT_MAIL_USERNAME,))
 
     # Ensure the hksbank.support@hkmail.cn mailbox exists so it can receive
     # support requests submitted from the "Support" button on the HKS Bank
@@ -2188,6 +2274,126 @@ def init_mail_db():
 def mail_current_user():
     """Return the HKMail username from session, or None."""
     return session.get("mail_username")
+
+
+def mail_is_support_staff():
+    """True if the logged-in HKMail user is an Admin or Support-staff
+    (Employee) account — the only roles allowed to review/process support
+    requests."""
+    return bool(session.get("mail_is_admin")) or bool(session.get("mail_is_employee"))
+
+
+def generate_support_request_number(cur, length=10):
+    """Random alphanumeric request number, unique within
+    mail_support_requests, in the same style as HKS Bank's case numbers."""
+    alphabet = string.ascii_uppercase + string.digits
+    while True:
+        number = "SR-" + ''.join(random.choices(alphabet, k=length))
+        cur.execute("SELECT 1 FROM mail_support_requests WHERE request_number = ?", (number,))
+        if not cur.fetchone():
+            return number
+
+
+def generate_verification_code():
+    """6-digit numeric one-time code used to verify a requester still
+    controls their own inbox before a password reset is performed."""
+    return ''.join(random.choices(string.digits, k=6))
+
+
+def generate_temp_password(length=14):
+    """Random strong temporary password issued when staff complete an
+    approved password-reset request."""
+    alphabet = string.ascii_letters + string.digits
+    # Guarantee at least one digit and one uppercase letter so it always
+    # satisfies HKMail's 8-character minimum-strength expectations.
+    pwd = random.choice(string.ascii_uppercase) + random.choice(string.digits) + \
+        ''.join(random.choices(alphabet, k=length - 2))
+    return ''.join(random.sample(pwd, len(pwd)))
+
+
+def mail_log_support_event(cur, request_id, action, actor_username, actor_role,
+                            old_status=None, new_status=None, note=""):
+    cur.execute("""
+        INSERT INTO mail_support_request_events
+            (request_id, action, old_status, new_status, note, actor_username, actor_role)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (request_id, action, old_status, new_status, note, actor_username, actor_role))
+
+
+def mail_support_request_to_dict(row):
+    (req_id, req_number, username, req_type, status, message, verified,
+     verified_at, decided_by, decided_at, created_at) = row
+    return {
+        "id": req_id,
+        "request_number": req_number,
+        "username": username,
+        "request_type": req_type,
+        "request_type_label": MAIL_SUPPORT_REQUEST_TYPE_LABELS.get(req_type, req_type),
+        "status": status,
+        "status_label": MAIL_SUPPORT_REQUEST_STATUS_LABELS.get(status, status),
+        "message": message,
+        "verified": bool(verified),
+        "verified_at": verified_at,
+        "decided_by": decided_by,
+        "decided_at": decided_at,
+        "created_at": created_at,
+    }
+
+
+def _mail_days_remaining(scheduled_deletion_at):
+    """Whole days left until scheduled_deletion_at, floored at 0 — used to
+    drive the recovery-banner countdown."""
+    if not scheduled_deletion_at:
+        return 0
+    try:
+        deadline = datetime.strptime(scheduled_deletion_at, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return 0
+    remaining = deadline - datetime.now()
+    return max(0, remaining.days + (1 if remaining.seconds > 0 else 0))
+
+
+def mail_finalize_pending_deletions():
+    """Lazy sweep: permanently delete any HKMail account whose 30-day
+    disablement/recovery window has elapsed. Safe to call on every request
+    that touches login or the support-request queue — a no-op unless a
+    deletion is actually due, same pattern as mail_run_billing_cycle()."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT username FROM mail_users
+        WHERE is_disabled = 1 AND scheduled_deletion_at IS NOT NULL AND scheduled_deletion_at <= ?
+    """, (now,))
+    due = [r[0] for r in cur.fetchall()]
+
+    for username in due:
+        cur.execute("DELETE FROM mail_subscriptions WHERE username=?", (username,))
+        cur.execute("DELETE FROM mail_users WHERE username=?", (username,))
+        # Audit trail: log permanent deletion against any of that user's
+        # still-open support requests (there should be exactly one approved
+        # account_deletion request driving this).
+        cur.execute("""
+            SELECT id, status FROM mail_support_requests
+            WHERE username=? AND request_type='account_deletion' AND status='approved'
+        """, (username,))
+        for req_id, old_status in cur.fetchall():
+            cur.execute("UPDATE mail_support_requests SET status='completed' WHERE id=?", (req_id,))
+            mail_log_support_event(cur, req_id, "status_change", "system", "system",
+                                    old_status=old_status, new_status="completed",
+                                    note=f"30-day recovery period elapsed; account {username} permanently deleted.")
+        # Audit log to admin@hkmail.cn as well, for visibility outside the
+        # request itself.
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, ADMIN_MAIL_USERNAME, f"[Account permanently deleted] {username}",
+             f"The 30-day recovery period for {username}'s account deletion has elapsed. "
+             "The account has been permanently deleted.")
+        )
+
+    if due:
+        conn.commit()
+    conn.close()
 
 
 # ── HKMail: storage & premium subscription helpers ─────────────────────────────
@@ -2535,9 +2741,17 @@ def hkmail_login_api():
     if username and "@" not in username:
         username = username + "@hkmail.cn"
 
+    # Sweep first so a login attempt right at the end of the recovery window
+    # sees the account as already (permanently) gone rather than stale.
+    mail_finalize_pending_deletions()
+
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT password_hash, full_name, is_admin, is_verified FROM mail_users WHERE username=?", (username,))
+    cur.execute("""
+        SELECT password_hash, full_name, is_admin, is_verified, is_employee,
+               is_disabled, scheduled_deletion_at
+        FROM mail_users WHERE username=?
+    """, (username,))
     row = cur.fetchone()
     conn.close()
 
@@ -2545,8 +2759,17 @@ def hkmail_login_api():
         session["mail_username"] = username
         session["mail_full_name"] = row[1]
         session["mail_is_admin"]  = bool(row[2])
-        return jsonify({"success": True, "username": username, "fullName": row[1],
-                         "isAdmin": bool(row[2]), "isVerified": bool(row[3])})
+        session["mail_is_employee"] = bool(row[4])
+        payload = {"success": True, "username": username, "fullName": row[1],
+                   "isAdmin": bool(row[2]), "isVerified": bool(row[3])}
+        # A disabled account can still sign in — it's in its recovery window,
+        # not gone yet — but the inbox flags it so the UI can show the
+        # recovery banner instead of pretending everything's normal.
+        if row[5]:
+            payload["disabled"] = True
+            payload["scheduledDeletionAt"] = row[6]
+            payload["daysRemaining"] = _mail_days_remaining(row[6])
+        return jsonify(payload)
     return jsonify({"success": False, "message": "Incorrect email or password."}), 401
 
 
@@ -2555,6 +2778,7 @@ def hkmail_logout():
     session.pop("mail_username", None)
     session.pop("mail_full_name", None)
     session.pop("mail_is_admin", None)
+    session.pop("mail_is_employee", None)
     return jsonify({"success": True})
 
 
@@ -2562,22 +2786,29 @@ def hkmail_logout():
 def hkmail_current_user():
     u = mail_current_user()
     if u:
+        mail_finalize_pending_deletions()
         mail_run_billing_cycle(u)
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
         cur.execute("""
-            SELECT full_name, is_admin, is_verified
+            SELECT full_name, is_admin, is_verified, is_employee, is_disabled, scheduled_deletion_at
             FROM mail_users WHERE username=?
         """, (u,))
         row = cur.fetchone()
         conn.close()
         if row:
             is_premium, badge_label, badge_tier = mail_get_premium_summary(u)
-            return jsonify({"loggedIn": True, "username": u, "fullName": row[0],
-                            "isAdmin": bool(row[1]), "isVerified": bool(row[2]),
-                            "isPremium": is_premium,
-                            "premiumLabel": badge_label,
-                            "premiumTier": badge_tier})
+            payload = {"loggedIn": True, "username": u, "fullName": row[0],
+                       "isAdmin": bool(row[1]), "isVerified": bool(row[2]),
+                       "isSupportStaff": bool(row[1]) or bool(row[3]),
+                       "isPremium": is_premium,
+                       "premiumLabel": badge_label,
+                       "premiumTier": badge_tier}
+            if row[4]:
+                payload["disabled"] = True
+                payload["scheduledDeletionAt"] = row[5]
+                payload["daysRemaining"] = _mail_days_remaining(row[5])
+            return jsonify(payload)
     return jsonify({"loggedIn": False})
 
 
@@ -2611,6 +2842,14 @@ def hkmail_send():
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn_check = sqlite3.connect(MAIL_DATABASE)
+    cur_check  = conn_check.cursor()
+    cur_check.execute("SELECT is_disabled FROM mail_users WHERE username=?", (u,))
+    disabled_row = cur_check.fetchone()
+    conn_check.close()
+    if disabled_row and disabled_row[0]:
+        return jsonify({"success": False, "message": "Your account is disabled pending deletion. Request reinstatement to resume sending mail."}), 403
 
     data      = request.get_json()
     recipient = data.get("recipient", "").strip().lower()
@@ -2816,6 +3055,517 @@ def hkmail_support():
         conn.close()
 
     return jsonify({"success": True, "message": "Your support request has been sent. Check your inbox for a confirmation."})
+
+
+# ── HKMail: account-service support requests (password reset / deletion) ──────
+
+@app.route('/api/hkmail/support/password-reset', methods=['POST'])
+def hkmail_request_password_reset():
+    """File a password-reset request. A 6-digit verification code is emailed
+    to the requester's own inbox — staff can't approve the reset until the
+    requester proves they still control that inbox by submitting the code
+    back via /verify below."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        # Only one open password-reset request at a time — reuse it instead
+        # of piling up duplicates if the user clicks the button again.
+        cur.execute("""
+            SELECT id FROM mail_support_requests
+            WHERE username=? AND request_type='password_reset' AND status='pending'
+        """, (u,))
+        existing = cur.fetchone()
+
+        code = generate_verification_code()
+
+        if existing:
+            request_id = existing[0]
+            cur.execute("""
+                UPDATE mail_support_requests
+                SET verification_code=?, verified=0, verified_at=NULL
+                WHERE id=?
+            """, (code, request_id))
+            mail_log_support_event(cur, request_id, "note", u, "user",
+                                    note="Requested a new verification code.")
+        else:
+            request_number = generate_support_request_number(cur)
+            cur.execute("""
+                INSERT INTO mail_support_requests
+                    (request_number, username, request_type, status, verification_code)
+                VALUES (?, ?, 'password_reset', 'pending', ?)
+            """, (request_number, u, code))
+            request_id = cur.lastrowid
+            mail_log_support_event(cur, request_id, "submitted", u, "user",
+                                    new_status="pending", note="Password reset requested.")
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (
+                NOREPLY_MAIL_USERNAME, u,
+                "Your HKMail password reset verification code",
+                "We received a request to reset your HKMail password.\n\n"
+                f"Your verification code is: {code}\n\n"
+                "Enter this code in the Support panel to confirm it's really you. "
+                "Once verified, our support team will review and process your request.\n\n"
+                "If you didn't request this, you can safely ignore this email — no "
+                "changes will be made without the code above.\n\n"
+                "— HKMail Support"
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "A verification code has been sent to your inbox."})
+
+
+@app.route('/api/hkmail/support/password-reset/verify', methods=['POST'])
+def hkmail_verify_password_reset():
+    """Confirm the code emailed by the endpoint above, marking the open
+    password-reset request as identity-verified so staff can approve it."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+    code = (data.get("code", "") or "").strip()
+    if not code:
+        return jsonify({"success": False, "message": "Please enter the code from your email."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, verification_code FROM mail_support_requests
+            WHERE username=? AND request_type='password_reset' AND status='pending'
+            ORDER BY id DESC LIMIT 1
+        """, (u,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "No pending password reset request found. Please request one first."}), 404
+
+        request_id, expected_code = row
+        if not expected_code or code != expected_code:
+            return jsonify({"success": False, "message": "That code doesn't match. Please check your email and try again."}), 400
+
+        cur.execute("""
+            UPDATE mail_support_requests SET verified=1, verified_at=CURRENT_TIMESTAMP WHERE id=?
+        """, (request_id,))
+        mail_log_support_event(cur, request_id, "verified", u, "user",
+                                note="Requester verified identity via emailed code.")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Verified! Our support team will review your request shortly."})
+
+
+@app.route('/api/hkmail/support/account-deletion', methods=['POST'])
+def hkmail_request_account_deletion():
+    """File a support-mediated account-deletion request. Distinct from the
+    instant, password-confirmed self-delete in the Danger Zone: this path
+    goes through staff review, and once approved the account is disabled
+    for a 30-day recovery window rather than deleted immediately."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    if u in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME, SUPPORT_MAIL_USERNAME, BANK_SUPPORT_MAIL_USERNAME):
+        return jsonify({"success": False, "message": "This account can't be deleted."}), 400
+
+    data    = request.get_json() or {}
+    message = (data.get("message", "") or "").strip()
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id FROM mail_support_requests
+            WHERE username=? AND request_type='account_deletion' AND status='pending'
+        """, (u,))
+        if cur.fetchone():
+            return jsonify({"success": False, "message": "You already have an account deletion request pending review."}), 400
+
+        request_number = generate_support_request_number(cur)
+        cur.execute("""
+            INSERT INTO mail_support_requests
+                (request_number, username, request_type, status, message)
+            VALUES (?, ?, 'account_deletion', 'pending', ?)
+        """, (request_number, u, message))
+        request_id = cur.lastrowid
+        mail_log_support_event(cur, request_id, "submitted", u, "user",
+                                new_status="pending", note="Account deletion requested.")
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (
+                NOREPLY_MAIL_USERNAME, u,
+                f"We've received your account deletion request ({request_number})",
+                "Thanks for contacting HKMail Support.\n\n"
+                f"Your request number is {request_number}. Our support team will review it "
+                "shortly.\n\n"
+                "If approved, your account will be disabled and enter a "
+                f"{ACCOUNT_DELETION_GRACE_DAYS}-day recovery window before it's permanently "
+                "deleted — you'll be able to request reinstatement at any point during that "
+                "window.\n\n"
+                "— HKMail Support"
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Your account deletion request has been sent. Check your inbox for a confirmation."})
+
+
+@app.route('/api/hkmail/account/request-reinstatement', methods=['POST'])
+def hkmail_request_reinstatement():
+    """Called from the recovery banner shown to a disabled account. Doesn't
+    reinstate on its own — flags the open, approved deletion request for
+    staff attention (via the audit trail and an email to admin@hkmail.cn) so
+    a human confirms it's really the account owner asking."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("SELECT is_disabled FROM mail_users WHERE username=?", (u,))
+        row = cur.fetchone()
+        if not row or not row[0]:
+            return jsonify({"success": False, "message": "Your account isn't disabled."}), 400
+
+        cur.execute("""
+            SELECT id FROM mail_support_requests
+            WHERE username=? AND request_type='account_deletion' AND status='approved'
+            ORDER BY id DESC LIMIT 1
+        """, (u,))
+        req = cur.fetchone()
+        if req:
+            mail_log_support_event(cur, req[0], "note", u, "user",
+                                    note="Account owner requested reinstatement from the recovery banner.")
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, ADMIN_MAIL_USERNAME, f"[Reinstatement requested] {u}",
+             f"{u} has requested reinstatement of their disabled HKMail account from the "
+             "recovery banner. Please review and reinstate from the Account Requests admin "
+             "tab if appropriate.")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Reinstatement requested. Our support team will review it shortly."})
+
+
+@app.route('/api/hkmail/support/my-requests', methods=['GET'])
+def hkmail_my_support_requests():
+    """Open account-service requests for the logged-in user (no staff-only fields)."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, request_number, username, request_type, status, message, verified, verified_at, created_at
+        FROM mail_support_requests WHERE username=? ORDER BY created_at DESC LIMIT 20
+    """, (u,))
+    rows = cur.fetchall()
+    conn.close()
+
+    requests_out = []
+    for row in rows:
+        padded = row[:8] + (None, None, row[8])
+        requests_out.append(mail_support_request_to_dict(padded))
+    return jsonify({"success": True, "requests": requests_out})
+
+
+# ── HKMail: admin — account-service support requests ───────────────────────────
+
+@app.route('/api/hkmail/admin/support-requests', methods=['GET'])
+def hkmail_admin_list_support_requests():
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    mail_finalize_pending_deletions()
+
+    req_type = (request.args.get("type") or "").strip()
+    status   = (request.args.get("status") or "").strip()
+
+    query  = """
+        SELECT id, request_number, username, request_type, status, message, verified,
+               verified_at, decided_by, decided_at, created_at
+        FROM mail_support_requests
+    """
+    clauses, params = [], []
+    if req_type in MAIL_SUPPORT_REQUEST_TYPES:
+        clauses.append("request_type=?")
+        params.append(req_type)
+    if status in MAIL_SUPPORT_REQUEST_STATUSES:
+        clauses.append("status=?")
+        params.append(status)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY created_at DESC"
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    requests_out = []
+    for row in rows:
+        d = mail_support_request_to_dict(row)
+        if d["request_type"] == "account_deletion":
+            cur.execute("SELECT is_disabled, scheduled_deletion_at FROM mail_users WHERE username=?", (d["username"],))
+            u_row = cur.fetchone()
+            d["account_is_disabled"] = bool(u_row[0]) if u_row else False
+            d["scheduled_deletion_at"] = u_row[1] if u_row else None
+        requests_out.append(d)
+    conn.close()
+
+    return jsonify({"success": True, "requests": requests_out})
+
+
+@app.route('/api/hkmail/admin/support-requests/<int:request_id>', methods=['GET'])
+def hkmail_admin_get_support_request(request_id):
+    """Full detail for one account-service request, including its audit trail."""
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT id, request_number, username, request_type, status, message, verified,
+               verified_at, decided_by, decided_at, created_at
+        FROM mail_support_requests WHERE id=?
+    """, (request_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Request not found."}), 404
+
+    req = mail_support_request_to_dict(row)
+    if req["request_type"] == "account_deletion":
+        cur.execute("SELECT is_disabled, scheduled_deletion_at FROM mail_users WHERE username=?", (req["username"],))
+        u_row = cur.fetchone()
+        req["account_is_disabled"] = bool(u_row[0]) if u_row else False
+        req["scheduled_deletion_at"] = u_row[1] if u_row else None
+
+    cur.execute("""
+        SELECT action, old_status, new_status, note, actor_username, actor_role, created_at
+        FROM mail_support_request_events WHERE request_id=? ORDER BY created_at ASC, id ASC
+    """, (request_id,))
+    events = [
+        {"action": e[0], "old_status": e[1], "new_status": e[2], "note": e[3],
+         "actor_username": e[4], "actor_role": e[5], "created_at": e[6]}
+        for e in cur.fetchall()
+    ]
+    conn.close()
+    return jsonify({"success": True, "request": req, "events": events})
+
+
+@app.route('/api/hkmail/admin/support-requests/<int:request_id>/approve', methods=['POST'])
+def hkmail_admin_approve_support_request(request_id):
+    """Approve a pending request. Password resets are applied immediately
+    (identity verification already gates this button on the frontend, but
+    it's re-checked here too); account-deletion approvals disable the
+    account and start its 30-day recovery window rather than deleting it
+    outright."""
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    actor_username = mail_current_user()
+    actor_role = "admin" if session.get("mail_is_admin") else "employee"
+
+    data = request.get_json() or {}
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT username, request_type, status, verified FROM mail_support_requests WHERE id=?
+        """, (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Request not found."}), 404
+        username, req_type, status, verified = row
+
+        if status != "pending":
+            return jsonify({"success": False, "message": "This request has already been decided."}), 400
+
+        if req_type == "password_reset":
+            if not verified:
+                return jsonify({"success": False, "message": "This requester hasn't verified their identity yet."}), 400
+
+            new_password = (data.get("new_password", "") or "").strip()
+            auto_generated = False
+            if not new_password:
+                new_password = generate_temp_password()
+                auto_generated = True
+            elif len(new_password) < 8:
+                return jsonify({"success": False, "message": "Password must be at least 8 characters."}), 400
+
+            cur.execute("SELECT id FROM mail_users WHERE username=?", (username,))
+            if not cur.fetchone():
+                return jsonify({"success": False, "message": "User account no longer exists."}), 404
+
+            cur.execute("UPDATE mail_users SET password_hash=? WHERE username=?",
+                        (generate_password_hash(new_password), username))
+            cur.execute("""
+                UPDATE mail_support_requests
+                SET status='completed', decided_by=?, decided_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (actor_username, request_id))
+            mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
+                                    old_status="pending", new_status="completed",
+                                    note="Password reset approved and applied" + (" (auto-generated password)." if auto_generated else " (staff-set password)."))
+
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (NOREPLY_MAIL_USERNAME, username, "Your HKMail password has been reset",
+                 "Your password reset request has been approved and completed.\n\n"
+                 f"Your new temporary password is: {new_password}\n\n"
+                 "Please sign in with it and change it as soon as possible.\n\n"
+                 "— HKMail Support")
+            )
+            conn.commit()
+            return jsonify({"success": True, "message": f"Password reset for {username}.", "new_password": new_password})
+
+        elif req_type == "account_deletion":
+            now = datetime.now()
+            scheduled_deletion_at = (now + timedelta(days=ACCOUNT_DELETION_GRACE_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+
+            cur.execute("""
+                UPDATE mail_users SET is_disabled=1, disabled_at=?, scheduled_deletion_at=?
+                WHERE username=?
+            """, (now.strftime("%Y-%m-%d %H:%M:%S"), scheduled_deletion_at, username))
+            cur.execute("""
+                UPDATE mail_support_requests
+                SET status='approved', decided_by=?, decided_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (actor_username, request_id))
+            mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
+                                    old_status="pending", new_status="approved",
+                                    note=f"Account deletion approved. Disabled with a {ACCOUNT_DELETION_GRACE_DAYS}-day recovery window ending {scheduled_deletion_at}.")
+
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (NOREPLY_MAIL_USERNAME, username, "Your HKMail account has been disabled",
+                 "Your account deletion request has been approved.\n\n"
+                 "Your account is now disabled. You have "
+                 f"{ACCOUNT_DELETION_GRACE_DAYS} days (until {scheduled_deletion_at}) to request "
+                 "reinstatement before it's permanently deleted. Sign in at any point during "
+                 "this window to request reinstatement.\n\n"
+                 "— HKMail Support")
+            )
+            conn.commit()
+            return jsonify({"success": True, "message": f"{username}'s account has been disabled and scheduled for deletion on {scheduled_deletion_at}."})
+
+        else:
+            return jsonify({"success": False, "message": "Unknown request type."}), 400
+    finally:
+        conn.close()
+
+
+@app.route('/api/hkmail/admin/support-requests/<int:request_id>/reject', methods=['POST'])
+def hkmail_admin_reject_support_request(request_id):
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    actor_username = mail_current_user()
+    actor_role = "admin" if session.get("mail_is_admin") else "employee"
+    data = request.get_json() or {}
+    note = (data.get("note", "") or "").strip()
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("SELECT username, request_type, status FROM mail_support_requests WHERE id=?", (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Request not found."}), 404
+        username, req_type, status = row
+        if status != "pending":
+            return jsonify({"success": False, "message": "This request has already been decided."}), 400
+
+        cur.execute("""
+            UPDATE mail_support_requests
+            SET status='rejected', decided_by=?, decided_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        """, (actor_username, request_id))
+        mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
+                                old_status="pending", new_status="rejected", note=note)
+
+        type_label = MAIL_SUPPORT_REQUEST_TYPE_LABELS.get(req_type, req_type)
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, username, f"Your {type_label} request was not approved",
+             f"Your {type_label.lower()} request has been reviewed and was not approved.\n\n"
+             + (f"Reason given: {note}\n\n" if note else "")
+             + "If you believe this was a mistake, please contact HKMail Support.\n\n— HKMail Support")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": f"{MAIL_SUPPORT_REQUEST_TYPE_LABELS.get(req_type, req_type)} request rejected."})
+
+
+@app.route('/api/hkmail/admin/support-requests/<int:request_id>/reinstate', methods=['POST'])
+def hkmail_admin_reinstate_account(request_id):
+    """Reverse an approved account-deletion request during its recovery
+    window: re-enable the account and mark the request cancelled."""
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    actor_username = mail_current_user()
+    actor_role = "admin" if session.get("mail_is_admin") else "employee"
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT username, request_type, status FROM mail_support_requests WHERE id=?
+        """, (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Request not found."}), 404
+        username, req_type, status = row
+        if req_type != "account_deletion" or status != "approved":
+            return jsonify({"success": False, "message": "Only an approved, still-pending account deletion can be reinstated."}), 400
+
+        cur.execute("""
+            UPDATE mail_users SET is_disabled=0, disabled_at=NULL, scheduled_deletion_at=NULL
+            WHERE username=?
+        """, (username,))
+        cur.execute("""
+            UPDATE mail_support_requests
+            SET status='cancelled', decided_by=?, decided_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        """, (actor_username, request_id))
+        mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
+                                old_status="approved", new_status="cancelled",
+                                note="Account reinstated within the recovery window.")
+
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, username, "Your HKMail account has been reinstated",
+             "Good news — your account deletion has been reversed and your account is fully "
+             "active again.\n\nIf you didn't request this, please contact HKMail Support "
+             "immediately.\n\n— HKMail Support")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": f"{username}'s account has been reinstated."})
 
 
 # ── HKMail: storage & premium subscription ─────────────────────────────────────
@@ -3378,7 +4128,10 @@ def hkmail_admin_users():
         return jsonify({"success": False, "message": "Admin access required."}), 403
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT id, username, full_name, is_admin, is_verified, created_at FROM mail_users ORDER BY created_at")
+    cur.execute("""
+        SELECT id, username, full_name, is_admin, is_verified, is_employee, created_at
+        FROM mail_users ORDER BY created_at
+    """)
     rows = cur.fetchall()
     conn.close()
 
@@ -3398,7 +4151,8 @@ def hkmail_admin_users():
                 "price": price, "status": status, "next_billing": next_billing,
             })
         users.append({"id": r[0], "username": username, "full_name": r[2],
-                       "is_admin": bool(r[3]), "is_verified": bool(r[4]), "created_at": r[5],
+                       "is_admin": bool(r[3]), "is_verified": bool(r[4]),
+                       "is_employee": bool(r[5]), "created_at": r[6],
                        "subscriptions": subs})
     return jsonify({"success": True, "users": users})
 
@@ -3506,6 +4260,42 @@ def hkmail_admin_promote():
 
     action = "promoted to Admin" if new_role else "demoted to User"
     return jsonify({"success": True, "message": f"{username} has been {action}.", "isAdmin": bool(new_role)})
+
+
+@app.route('/api/hkmail/admin/employee', methods=['POST'])
+def hkmail_admin_toggle_employee():
+    """Grant or revoke support-staff (Employee) access for account-request management."""
+    if not session.get("mail_is_admin"):
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+    data     = request.get_json() or {}
+    username = (data.get("username", "") or "").strip().lower()
+
+    if not username:
+        return jsonify({"success": False, "message": "Username required."}), 400
+    if username == mail_current_user():
+        return jsonify({"success": False, "message": "You cannot change your own role."}), 400
+    if username in (ADMIN_MAIL_USERNAME, SYSTEM_MAIL_SENDER, NOREPLY_MAIL_USERNAME,
+                    SUPPORT_MAIL_USERNAME, BANK_SUPPORT_MAIL_USERNAME):
+        return jsonify({"success": False, "message": "This system account's role can't be changed."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT is_employee, is_admin FROM mail_users WHERE username=?", (username,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "User not found."}), 404
+    if row[1]:
+        conn.close()
+        return jsonify({"success": False, "message": "Admins already have support access."}), 400
+
+    new_val = 0 if row[0] else 1
+    cur.execute("UPDATE mail_users SET is_employee=? WHERE username=?", (new_val, username))
+    conn.commit()
+    conn.close()
+
+    action = "granted support staff access" if new_val else "revoked support staff access"
+    return jsonify({"success": True, "message": f"{username} has been {action}.", "isEmployee": bool(new_val)})
 
 
 # ── HKMail: admin — verify / unverify an account ──────────────────────────────

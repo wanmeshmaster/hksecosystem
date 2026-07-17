@@ -789,6 +789,72 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+        /* ── Support modal: password reset / account deletion actions ── */
+        .support-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+        .support-action-btn {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            border: 1px solid var(--border); border-radius: 8px; padding: 11px 14px;
+            background: var(--bg); cursor: pointer; text-align: left; font-family: inherit;
+        }
+        .support-action-btn:hover { background: #EAEFF7; }
+        .support-action-btn strong { display: block; font-size: 0.88rem; color: var(--navy); }
+        .support-action-btn span.desc { display: block; font-size: 0.76rem; color: var(--muted); margin-top: 2px; }
+        .support-action-btn .chev { color: var(--muted); font-size: 1.1rem; }
+        .support-divider { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .support-divider::before, .support-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+        .support-subflow { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 18px; background: var(--bg); }
+        .support-subflow h4 { font-size: 0.92rem; color: var(--navy); margin-bottom: 10px; }
+        .support-subflow-back { background: none; border: none; color: var(--muted); font-size: 0.78rem; cursor: pointer; padding: 0 0 10px; font-family: inherit; }
+        .support-subflow-back:hover { color: var(--navy); }
+
+        /* ── Admin panel: Account Requests tab ── */
+        .req-filters { display: flex; gap: 10px; margin-bottom: 14px; }
+        .req-filters select { flex: 1; }
+        .req-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.83rem; }
+        .req-table th, .req-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .req-table th { font-weight: 700; color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.4px; }
+        .req-table tr:last-child td { border-bottom: none; }
+        .req-status-pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+        .req-status-pending { background: #FDF0D5; color: #8A5B00; }
+        .req-status-approved { background: #DCEEDD; color: #1A7A3C; }
+        .req-status-completed { background: #DCEEDD; color: #1A7A3C; }
+        .req-status-rejected { background: #FBE0E2; color: var(--red-dk); }
+        .req-status-cancelled { background: var(--bg); color: var(--muted); }
+        .req-verified-yes { color: #1A7A3C; font-weight: 700; }
+        .req-verified-no { color: var(--muted); }
+        .req-action-btn { border: none; border-radius: 6px; padding: 5px 11px; font-size: 0.76rem; font-weight: 700; cursor: pointer; color: #fff; margin-right: 4px; white-space: nowrap; }
+        .req-approve-btn { background: #1A7A3C; }
+        .req-approve-btn:hover { background: #14602F; }
+        .req-approve-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .req-reject-btn { background: var(--red); }
+        .req-reject-btn:hover { background: var(--red-dk); }
+        .req-reinstate-btn { background: var(--navy); }
+        .req-reinstate-btn:hover { background: var(--navy-lt); }
+        .req-empty { color: var(--muted); font-size: 0.82rem; padding: 14px 0; }
+        .req-audit-log { max-height: 200px; overflow-y: auto; font-size: 0.78rem; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fff; }
+        .req-audit-entry { padding: 7px 0; border-bottom: 1px solid var(--border); color: var(--navy); }
+        .req-audit-entry:last-child { border-bottom: none; }
+        .req-audit-entry .meta { color: var(--muted); font-size: 0.72rem; margin-top: 2px; }
+        .req-detail-box { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 14px; background: var(--bg); display: none; }
+        .req-detail-box.open { display: block; }
+        .req-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .topbar-badge-support { background: #0B66C2; color: #fff; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; }
+
+        /* ── Disabled-account recovery banner ── */
+        .recovery-banner {
+            display: none; align-items: center; justify-content: space-between; gap: 16px;
+            background: #FBE0E2; border-bottom: 1px solid #F1B3B9; color: var(--red-dk);
+            padding: 12px 24px; font-size: 0.85rem;
+        }
+        .recovery-banner.show { display: flex; }
+        .recovery-banner-text strong { font-weight: 800; }
+        .recovery-banner-btn {
+            background: var(--red-dk); color: #fff; border: none; border-radius: 7px;
+            padding: 8px 16px; font-size: 0.82rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+        }
+        .recovery-banner-btn:hover { background: #8f1620; }
+        .recovery-banner-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
         /* ── Admin panel modal ── */
         .admin-modal-card {
             background: var(--white);
@@ -964,6 +1030,7 @@
     <div class="topbar-user">
         <span class="topbar-email" id="topbar-email">—</span>
         <span class="topbar-badge-admin" id="topbar-admin-badge" style="display:none;">Admin</span>
+        <span class="topbar-badge-support" id="topbar-support-badge" style="display:none;">Support</span>
         <span class="badge-premium" id="topbar-premium-badge" style="display:none; cursor:pointer;" onclick="openStorageModal()" title="Manage your Premium subscription">★ Premium</span>
         <button class="btn-compose" onclick="openCompose()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -975,6 +1042,11 @@
         </button>
         <button class="btn-logout" onclick="doLogout()">Sign out</button>
     </div>
+</div>
+
+<div class="recovery-banner" id="recovery-banner">
+    <div class="recovery-banner-text" id="recovery-banner-text"></div>
+    <button type="button" class="recovery-banner-btn" id="recovery-reinstate-btn" onclick="requestReinstatement()">Request reinstatement</button>
 </div>
 
 <!-- ── Main layout ── -->
@@ -1025,6 +1097,16 @@
                     <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>
                 </svg>
                 Admin
+            </div>
+            <div class="nav-item" id="nav-account-requests" onclick="openAccountRequestsPanel()" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                Account Requests
             </div>
         </nav>
         <div class="sidebar-footer">
@@ -1115,18 +1197,69 @@
 
 <!-- ── Support modal ── -->
 <div class="modal-overlay" id="support-modal">
-    <div class="compose-card">
+    <div class="compose-card" style="max-width:480px;">
         <span class="compose-close" onclick="closeSupportModal()">&times;</span>
-        <h3>Contact Support</h3>
+        <h3>HKMail Support</h3>
 
         <div id="support-msg" class="compose-msg"></div>
 
-        <div class="c-field">
-            <label class="c-label" for="s-body">What can we help with?</label>
-            <textarea class="c-input c-textarea" id="s-body" placeholder="Describe the issue you're having…"></textarea>
+        <div id="support-view-main">
+            <div class="support-actions">
+                <button type="button" class="support-action-btn" onclick="showSupportSubflow('password')">
+                    <div>
+                        <strong>Password reset</strong>
+                        <span class="desc">Request a reset — you'll verify with a code sent to your inbox.</span>
+                    </div>
+                    <span class="chev">›</span>
+                </button>
+                <button type="button" class="support-action-btn" onclick="showSupportSubflow('deletion')">
+                    <div>
+                        <strong>Account deletion</strong>
+                        <span class="desc">Request deletion through support (30-day recovery window if approved).</span>
+                    </div>
+                    <span class="chev">›</span>
+                </button>
+            </div>
+            <div class="support-divider">or describe another issue</div>
+            <div class="c-field">
+                <label class="c-label" for="s-body">Message</label>
+                <textarea class="c-input c-textarea" id="s-body" placeholder="Describe the issue you're having…"></textarea>
+            </div>
+            <div class="compose-footer">
+                <button class="btn-send" id="support-send-btn" onclick="doSendSupport()">Send message</button>
+            </div>
         </div>
-        <div class="compose-footer">
-            <button class="btn-send" id="support-send-btn" onclick="doSendSupport()">Send</button>
+
+        <div id="support-view-password" style="display:none;">
+            <div class="support-subflow">
+                <button type="button" class="support-subflow-back" onclick="showSupportSubflow('main')">← Back</button>
+                <h4>Password reset</h4>
+                <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;">We'll email a verification code to your inbox. Enter it here so support can process your reset securely.</p>
+                <button class="btn-send" type="button" id="pw-request-btn" onclick="doRequestPasswordReset()" style="width:100%;margin-bottom:14px;">Send verification code</button>
+                <div class="c-field">
+                    <label class="c-label" for="pw-verify-code">Verification code</label>
+                    <input class="c-input" type="text" id="pw-verify-code" placeholder="6-digit code from your email" maxlength="6" inputmode="numeric">
+                </div>
+                <button class="btn-send" type="button" id="pw-verify-btn" onclick="doVerifyPasswordReset()" style="width:100%;">Confirm verification</button>
+            </div>
+        </div>
+
+        <div id="support-view-deletion" style="display:none;">
+            <div class="support-subflow">
+                <button type="button" class="support-subflow-back" onclick="showSupportSubflow('main')">← Back</button>
+                <h4>Account deletion request</h4>
+                <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;">If approved, your account will be disabled for 30 days before permanent deletion. You can request reinstatement during that window.</p>
+                <div class="c-field">
+                    <label class="c-label" for="del-message">Optional note for support</label>
+                    <textarea class="c-input c-textarea" id="del-message" placeholder="Why you're leaving, or anything we should know…" style="min-height:80px;"></textarea>
+                </div>
+                <button class="btn-send" type="button" id="del-request-btn" onclick="doRequestAccountDeletion()" style="width:100%;">Submit deletion request</button>
+            </div>
+        </div>
+
+        <div id="support-my-requests" style="margin-top:14px;display:none;">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);margin-bottom:8px;">Your account requests</div>
+            <div id="support-my-requests-list" style="font-size:0.8rem;"></div>
         </div>
     </div>
 </div>
@@ -1138,8 +1271,9 @@
         <h3>HKMail Administration</h3>
         <p class="admin-modal-sub">Manage user accounts, roles, and verified/official status.</p>
 
-        <div class="admin-tabs">
+        <div class="admin-tabs" id="admin-tabs-bar">
             <button class="admin-tab active" id="admin-tab-users" onclick="switchAdminTab('users')">User Directory</button>
+            <button class="admin-tab" id="admin-tab-requests" onclick="switchAdminTab('requests')">Account Requests</button>
             <button class="admin-tab" id="admin-tab-create" onclick="switchAdminTab('create')">Create Official Account</button>
         </div>
 
@@ -1163,6 +1297,7 @@
                 <div class="admin-role-row">
                     <button class="admin-role-btn role-admin" id="admin-role-btn" onclick="adminToggleRole()">Promote to Admin</button>
                     <button class="admin-role-btn role-verify" id="admin-verify-btn" onclick="adminToggleVerify()">Mark Verified</button>
+                    <button class="admin-role-btn" id="admin-employee-btn" onclick="adminToggleEmployee()" style="background:#0B66C2;">Support staff</button>
                 </div>
                 <div class="admin-status-msg" id="admin-edit-msg"></div>
 
@@ -1170,6 +1305,49 @@
                     <h5>Premium subscriptions</h5>
                     <div id="admin-sub-rows"></div>
                 </div>
+            </div>
+        </div>
+
+        <div class="admin-tab-panel" id="admin-panel-requests">
+            <div class="req-filters">
+                <select class="c-input" id="req-filter-type" onchange="loadSupportRequests()">
+                    <option value="">All types</option>
+                    <option value="password_reset">Password reset</option>
+                    <option value="account_deletion">Account deletion</option>
+                </select>
+                <select class="c-input" id="req-filter-status" onchange="loadSupportRequests()">
+                    <option value="">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <table class="req-table">
+                <thead>
+                    <tr>
+                        <th>Request #</th>
+                        <th>User</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Verified</th>
+                        <th>Submitted</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="req-table-body"></tbody>
+            </table>
+            <p class="req-empty" id="req-table-empty" style="display:none;">No requests match these filters.</p>
+
+            <div class="req-detail-box" id="req-detail-box">
+                <h4 style="font-size:0.95rem;margin-bottom:8px;">Request <span id="req-detail-number" style="color:var(--red);"></span></h4>
+                <div id="req-detail-meta" style="font-size:0.8rem;color:var(--muted);margin-bottom:10px;"></div>
+                <div id="req-detail-message" style="font-size:0.83rem;margin-bottom:10px;"></div>
+                <div class="req-detail-actions" id="req-detail-actions"></div>
+                <div class="admin-status-msg" id="req-detail-msg"></div>
+                <div style="margin-top:14px;font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--muted);">Audit log</div>
+                <div class="req-audit-log" id="req-audit-log"></div>
             </div>
         </div>
 
@@ -1245,9 +1423,14 @@
     let currentEmailId = null;
     let emailCache = [];
     let iAmAdmin = false;
+    let iAmSupportStaff = false;
     let adminUsersCache = [];
     let adminEditingUsername = null;
     let myUsername = null;
+    let supportRequestsCache = [];
+    let supportRequestDetailId = null;
+    let accountDisabled = false;
+    let daysRemaining = 0;
 
     // ── Init ───────────────────────────────────────────────────────────────────
     (async function init() {
@@ -1261,9 +1444,22 @@
         const firstName = (data.fullName || data.username).trim().split(/\s+/)[0];
         document.getElementById('topbar-email').textContent = `Hello, ${firstName}`;
         iAmAdmin = !!data.isAdmin;
+        iAmSupportStaff = !!data.isSupportStaff;
         if (iAmAdmin) {
             document.getElementById('topbar-admin-badge').style.display = 'inline-block';
             document.getElementById('nav-admin').style.display = 'flex';
+        } else if (iAmSupportStaff) {
+            document.getElementById('topbar-support-badge').style.display = 'inline-block';
+            document.getElementById('nav-account-requests').style.display = 'flex';
+        }
+        if (data.disabled) {
+            accountDisabled = true;
+            daysRemaining = data.daysRemaining ?? 0;
+            const banner = document.getElementById('recovery-banner');
+            const textEl = document.getElementById('recovery-banner-text');
+            const when = data.scheduledDeletionAt ? formatDate(data.scheduledDeletionAt, true) : 'soon';
+            textEl.innerHTML = `<strong>Account scheduled for deletion.</strong> You have approximately <strong>${daysRemaining} day${daysRemaining === 1 ? '' : 's'}</strong> left to request reinstatement (permanent deletion after ${escHtml(when)}).`;
+            banner.classList.add('show');
         }
         if (data.isPremium) {
             const topbarBadge = document.getElementById('topbar-premium-badge');
@@ -1703,8 +1899,125 @@
     function openSupportModal() {
         clearSupportMsg();
         document.getElementById('s-body').value = '';
+        document.getElementById('pw-verify-code').value = '';
+        document.getElementById('del-message').value = '';
+        showSupportSubflow('main');
         document.getElementById('support-modal').classList.add('open');
+        loadMySupportRequests();
         document.getElementById('s-body').focus();
+    }
+
+    function showSupportSubflow(which) {
+        document.getElementById('support-view-main').style.display = which === 'main' ? 'block' : 'none';
+        document.getElementById('support-view-password').style.display = which === 'password' ? 'block' : 'none';
+        document.getElementById('support-view-deletion').style.display = which === 'deletion' ? 'block' : 'none';
+        clearSupportMsg();
+    }
+
+    async function loadMySupportRequests() {
+        const box = document.getElementById('support-my-requests');
+        const list = document.getElementById('support-my-requests-list');
+        try {
+            const res  = await fetch('/api/hkmail/support/my-requests');
+            const data = await res.json();
+            if (!data.success || !(data.requests || []).length) {
+                box.style.display = 'none';
+                return;
+            }
+            box.style.display = 'block';
+            list.innerHTML = data.requests.map(r => {
+                const pill = reqStatusPillClass(r.status);
+                const ver = r.request_type === 'password_reset'
+                    ? (r.verified ? ' · <span class="req-verified-yes">Verified</span>' : ' · <span class="req-verified-no">Awaiting verification</span>')
+                    : '';
+                return `<div style="padding:6px 0;border-bottom:1px solid var(--border);">
+                    <strong>${escHtml(r.request_type_label)}</strong> ${escHtml(r.request_number)}
+                    <span class="req-status-pill ${pill}">${escHtml(r.status_label)}</span>${ver}
+                </div>`;
+            }).join('');
+        } catch {
+            box.style.display = 'none';
+        }
+    }
+
+    async function doRequestPasswordReset() {
+        const btn = document.getElementById('pw-request-btn');
+        btn.disabled = true;
+        clearSupportMsg();
+        try {
+            const res  = await fetch('/api/hkmail/support/password-reset', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            const data = await res.json();
+            showSupportMsg(data.message || (data.success ? 'Code sent.' : 'Failed.'), data.success ? 'success' : 'error');
+            if (data.success) loadMySupportRequests();
+        } catch {
+            showSupportMsg('Connection error.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function doVerifyPasswordReset() {
+        const code = document.getElementById('pw-verify-code').value.trim();
+        const btn  = document.getElementById('pw-verify-btn');
+        if (!code) { showSupportMsg('Enter the code from your email.', 'error'); return; }
+        btn.disabled = true;
+        clearSupportMsg();
+        try {
+            const res  = await fetch('/api/hkmail/support/password-reset/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+            const data = await res.json();
+            showSupportMsg(data.message || '', data.success ? 'success' : 'error');
+            if (data.success) {
+                document.getElementById('pw-verify-code').value = '';
+                loadMySupportRequests();
+            }
+        } catch {
+            showSupportMsg('Connection error.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function doRequestAccountDeletion() {
+        const message = document.getElementById('del-message').value.trim();
+        const btn     = document.getElementById('del-request-btn');
+        if (!confirm('Submit an account deletion request to HKMail Support? If approved, your account will be disabled for 30 days before permanent deletion.')) return;
+        btn.disabled = true;
+        clearSupportMsg();
+        try {
+            const res  = await fetch('/api/hkmail/support/account-deletion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            const data = await res.json();
+            showSupportMsg(data.message || '', data.success ? 'success' : 'error');
+            if (data.success) {
+                document.getElementById('del-message').value = '';
+                loadMySupportRequests();
+            }
+        } catch {
+            showSupportMsg('Connection error.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    async function requestReinstatement() {
+        const btn = document.getElementById('recovery-reinstate-btn');
+        btn.disabled = true;
+        try {
+            const res  = await fetch('/api/hkmail/account/request-reinstatement', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            const data = await res.json();
+            showToast(data.message || (data.success ? 'Request sent.' : 'Failed.'));
+        } catch {
+            showToast('Connection error.');
+        } finally {
+            btn.disabled = false;
+        }
     }
 
     function closeSupportModal() {
@@ -1764,22 +2077,234 @@
     // ── Admin panel ────────────────────────────────────────────────────────────
     function openAdminPanel() {
         if (!iAmAdmin) return;
+        setAdminTabsVisibility(true);
         document.getElementById('admin-modal').classList.add('open');
         switchAdminTab('users');
         loadAdminUsers();
     }
 
+    function openAccountRequestsPanel() {
+        if (!iAmSupportStaff) return;
+        setAdminTabsVisibility(iAmAdmin);
+        document.getElementById('admin-modal').classList.add('open');
+        switchAdminTab('requests');
+        loadSupportRequests();
+    }
+
+    function setAdminTabsVisibility(showAllAdminTabs) {
+        document.getElementById('admin-tab-users').style.display = showAllAdminTabs ? '' : 'none';
+        document.getElementById('admin-tab-create').style.display = showAllAdminTabs ? '' : 'none';
+        document.getElementById('admin-tab-requests').style.display = '';
+    }
+
     function closeAdminPanel() {
         document.getElementById('admin-modal').classList.remove('open');
         document.getElementById('admin-edit-box').style.display = 'none';
+        document.getElementById('req-detail-box').classList.remove('open');
+        supportRequestDetailId = null;
         adminEditingUsername = null;
     }
 
     function switchAdminTab(which) {
         document.getElementById('admin-panel-users').classList.toggle('active', which === 'users');
+        document.getElementById('admin-panel-requests').classList.toggle('active', which === 'requests');
         document.getElementById('admin-panel-create').classList.toggle('active', which === 'create');
         document.getElementById('admin-tab-users').classList.toggle('active', which === 'users');
+        document.getElementById('admin-tab-requests').classList.toggle('active', which === 'requests');
         document.getElementById('admin-tab-create').classList.toggle('active', which === 'create');
+        if (which === 'requests') loadSupportRequests();
+    }
+
+    function reqStatusPillClass(status) {
+        return 'req-status-' + (status || 'pending');
+    }
+
+    async function loadSupportRequests() {
+        if (!iAmSupportStaff) return;
+        const tbody = document.getElementById('req-table-body');
+        const empty = document.getElementById('req-table-empty');
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);">Loading…</td></tr>';
+        empty.style.display = 'none';
+        const type   = document.getElementById('req-filter-type').value;
+        const status = document.getElementById('req-filter-status').value;
+        const qs = new URLSearchParams();
+        if (type) qs.set('type', type);
+        if (status) qs.set('status', status);
+        try {
+            const res  = await fetch('/api/hkmail/admin/support-requests?' + qs.toString());
+            const data = await res.json();
+            if (!data.success) {
+                tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red);">${escHtml(data.message || 'Failed to load.')}</td></tr>`;
+                return;
+            }
+            supportRequestsCache = data.requests || [];
+            if (!supportRequestsCache.length) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            tbody.innerHTML = supportRequestsCache.map(r => `
+                <tr>
+                    <td>${escHtml(r.request_number)}</td>
+                    <td>${escHtml(r.username)}</td>
+                    <td>${escHtml(r.request_type_label)}</td>
+                    <td><span class="req-status-pill ${reqStatusPillClass(r.status)}">${escHtml(r.status_label)}</span></td>
+                    <td>${r.request_type === 'password_reset' ? (r.verified ? '<span class="req-verified-yes">Yes</span>' : '<span class="req-verified-no">No</span>') : '—'}</td>
+                    <td style="color:var(--muted);">${formatDate(r.created_at, true)}</td>
+                    <td><button class="admin-edit-btn" onclick="openSupportRequestDetail(${r.id})">Review</button></td>
+                </tr>
+            `).join('');
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="7" style="color:var(--red);">Connection error.</td></tr>';
+        }
+    }
+
+    async function openSupportRequestDetail(requestId) {
+        supportRequestDetailId = requestId;
+        const box = document.getElementById('req-detail-box');
+        const msg = document.getElementById('req-detail-msg');
+        msg.textContent = '';
+        msg.className = 'admin-status-msg';
+        box.classList.add('open');
+        document.getElementById('req-audit-log').innerHTML = '<span style="color:var(--muted);">Loading…</span>';
+        try {
+            const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}`);
+            const data = await res.json();
+            if (!data.success) {
+                document.getElementById('req-audit-log').textContent = data.message || 'Failed to load.';
+                return;
+            }
+            const r = data.request;
+            document.getElementById('req-detail-number').textContent = r.request_number;
+            let meta = `${escHtml(r.username)} · ${escHtml(r.request_type_label)} · <span class="req-status-pill ${reqStatusPillClass(r.status)}">${escHtml(r.status_label)}</span>`;
+            if (r.request_type === 'password_reset') {
+                meta += r.verified ? ' · Verified' : ' · Not verified';
+            }
+            if (r.scheduled_deletion_at) {
+                meta += ` · Deletes ${escHtml(formatDate(r.scheduled_deletion_at, true))}`;
+            }
+            document.getElementById('req-detail-meta').innerHTML = meta;
+            document.getElementById('req-detail-message').innerHTML = r.message
+                ? `<strong>Note:</strong> ${escHtml(r.message)}`
+                : (r.request_type === 'password_reset' ? '<span style="color:var(--muted);">No additional message.</span>' : '');
+
+            const actions = document.getElementById('req-detail-actions');
+            actions.innerHTML = '';
+            if (r.status === 'pending') {
+                if (r.request_type === 'password_reset') {
+                    const approveBtn = document.createElement('button');
+                    approveBtn.className = 'req-action-btn req-approve-btn';
+                    approveBtn.textContent = 'Approve & reset password';
+                    approveBtn.disabled = !r.verified;
+                    approveBtn.title = r.verified ? '' : 'User must verify via emailed code first';
+                    approveBtn.onclick = () => approveSupportRequest(requestId, r.request_type);
+                    actions.appendChild(approveBtn);
+                } else {
+                    const approveBtn = document.createElement('button');
+                    approveBtn.className = 'req-action-btn req-approve-btn';
+                    approveBtn.textContent = 'Approve deletion (30-day window)';
+                    approveBtn.onclick = () => approveSupportRequest(requestId, r.request_type);
+                    actions.appendChild(approveBtn);
+                }
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'req-action-btn req-reject-btn';
+                rejectBtn.textContent = 'Reject';
+                rejectBtn.onclick = () => rejectSupportRequest(requestId);
+                actions.appendChild(rejectBtn);
+            } else if (r.request_type === 'account_deletion' && r.status === 'approved' && r.account_is_disabled) {
+                const reinstateBtn = document.createElement('button');
+                reinstateBtn.className = 'req-action-btn req-reinstate-btn';
+                reinstateBtn.textContent = 'Reinstate account';
+                reinstateBtn.onclick = () => reinstateSupportRequest(requestId);
+                actions.appendChild(reinstateBtn);
+            }
+
+            const log = document.getElementById('req-audit-log');
+            if (!(data.events || []).length) {
+                log.innerHTML = '<span style="color:var(--muted);">No actions recorded yet.</span>';
+            } else {
+                log.innerHTML = data.events.map(ev => {
+                    const statusBit = (ev.old_status || ev.new_status)
+                        ? ` ${escHtml(ev.old_status || '—')} → ${escHtml(ev.new_status || '—')}`
+                        : '';
+                    return `<div class="req-audit-entry">
+                        <div><strong>${escHtml(ev.action)}</strong>${statusBit}</div>
+                        ${ev.note ? `<div>${escHtml(ev.note)}</div>` : ''}
+                        <div class="meta">${escHtml(ev.actor_username)} (${escHtml(ev.actor_role)}) · ${formatDate(ev.created_at, true)}</div>
+                    </div>`;
+                }).join('');
+            }
+        } catch {
+            document.getElementById('req-audit-log').textContent = 'Connection error.';
+        }
+    }
+
+    async function approveSupportRequest(requestId, reqType) {
+        if (!confirm(reqType === 'password_reset'
+            ? 'Approve this password reset? A new temporary password will be emailed to the user.'
+            : 'Approve account deletion? The account will be disabled for 30 days before permanent deletion.')) return;
+        const msg = document.getElementById('req-detail-msg');
+        try {
+            const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                await loadSupportRequests();
+                await openSupportRequestDetail(requestId);
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function rejectSupportRequest(requestId) {
+        const note = window.prompt('Optional reason for rejection (emailed to the user):');
+        if (note === null) return;
+        const msg = document.getElementById('req-detail-msg');
+        try {
+            const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: (note || '').trim() })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                await loadSupportRequests();
+                await openSupportRequestDetail(requestId);
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function reinstateSupportRequest(requestId) {
+        if (!confirm('Reinstate this account and cancel the pending deletion?')) return;
+        const msg = document.getElementById('req-detail-msg');
+        try {
+            const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}/reinstate`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                await loadSupportRequests();
+                await openSupportRequestDetail(requestId);
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
     }
 
     async function loadAdminUsers() {
@@ -1803,14 +2328,14 @@
             <tr>
                 <td>${escHtml(u.username)}</td>
                 <td>${escHtml(u.full_name || '—')}</td>
-                <td>${senderBadges(u.is_admin, u.is_verified) || '<span style="color:var(--muted);">User</span>'}</td>
+                <td>${senderBadges(u.is_admin, u.is_verified) || ''}${u.is_employee && !u.is_admin ? '<span class="badge-verified" style="margin-left:4px;">Support</span>' : ''}${!u.is_admin && !u.is_verified && !u.is_employee ? '<span style="color:var(--muted);">User</span>' : ''}</td>
                 <td style="color:var(--muted);">${formatDate(u.created_at)}</td>
-                <td><button class="admin-edit-btn" onclick="openAdminEdit('${escJs(u.username)}', ${u.is_admin}, ${u.is_verified})">Edit</button></td>
+                <td><button class="admin-edit-btn" onclick="openAdminEdit('${escJs(u.username)}', ${u.is_admin}, ${u.is_verified}, ${u.is_employee})">Edit</button></td>
             </tr>
         `).join('');
     }
 
-    function openAdminEdit(username, isAdmin, isVerified) {
+    function openAdminEdit(username, isAdmin, isVerified, isEmployee) {
         adminEditingUsername = username;
         document.getElementById('admin-edit-box').style.display = 'block';
         document.getElementById('admin-edit-username').textContent = username;
@@ -1819,6 +2344,7 @@
 
         const roleBtn = document.getElementById('admin-role-btn');
         const verifyBtn = document.getElementById('admin-verify-btn');
+        const employeeBtn = document.getElementById('admin-employee-btn');
 
         const isSelf = username === myUsername;
         roleBtn.disabled = isSelf || username === 'hksbank@hkmail.cn';
@@ -1827,6 +2353,10 @@
 
         verifyBtn.textContent = isVerified ? 'Remove Verified Status' : 'Mark Verified';
         verifyBtn.dataset.isVerified = isVerified ? '1' : '0';
+
+        employeeBtn.disabled = isAdmin || isSelf;
+        employeeBtn.textContent = isAdmin ? 'Admin (full access)' : (isEmployee ? 'Revoke support staff' : 'Grant support staff');
+        employeeBtn.dataset.isEmployee = isEmployee ? '1' : '0';
 
         const user = adminUsersCache.find(u => u.username === username);
         renderAdminSubRows(user ? (user.subscriptions || []) : []);
@@ -1925,6 +2455,32 @@
                 await loadAdminUsers();
                 const verifyBtn = document.getElementById('admin-verify-btn');
                 verifyBtn.textContent = data.isVerified ? 'Remove Verified Status' : 'Mark Verified';
+            } else {
+                msg.textContent = data.message || 'Failed.';
+                msg.className = 'admin-status-msg err';
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function adminToggleEmployee() {
+        if (!adminEditingUsername) return;
+        const msg = document.getElementById('admin-edit-msg');
+        try {
+            const res  = await fetch('/api/hkmail/admin/employee', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: adminEditingUsername })
+            });
+            const data = await res.json();
+            if (data.success) {
+                msg.textContent = '✓ ' + data.message;
+                msg.className = 'admin-status-msg ok';
+                await loadAdminUsers();
+                const employeeBtn = document.getElementById('admin-employee-btn');
+                employeeBtn.textContent = data.isEmployee ? 'Revoke support staff' : 'Grant support staff';
             } else {
                 msg.textContent = data.message || 'Failed.';
                 msg.className = 'admin-status-msg err';
