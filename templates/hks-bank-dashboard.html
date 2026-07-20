@@ -29,6 +29,7 @@
         .utility-tabs { display: flex; }
         .utility-tab { padding: 14px 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--muted); text-decoration: none; border-top: 3px solid transparent; cursor: pointer; }
         .utility-tab.active { color: var(--navy); border-top-color: var(--blue); background: #fff; }
+        .utility-tab.active.business { border-top-color: #047857; }
         .utility-tab:not(.active):hover { color: var(--navy); }
         .utility-actions { display: flex; align-items: center; gap: 22px; }
         .utility-link { display: flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-weight: 600; cursor: pointer; white-space: nowrap; background: none; border: none; padding: 14px 0; border-top: 3px solid transparent; }
@@ -53,8 +54,11 @@
         /* ── Top Banner (legacy alias, unused but kept for safety) ── */
         .brand { font-size: 1.3rem; font-weight: 700; color: var(--blue); text-decoration: none; }
         .admin-badge { background: #ef4444; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 6px; text-transform: uppercase; }
+        /* Green matches HKMail's "Verified Business" badge (badge-business / topbar-badge-business) so the
+           same customer reads as a business account consistently across HKS Bank and HKMail. */
+        .business-badge { display: inline-flex; align-items: center; gap: 3px; background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; padding: 2px 7px; border-radius: 4px; font-size: 0.75rem; font-weight: 800; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.2px; }
         .customer-type-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 10px; border-radius: 12px; background: #eef2f6; color: #64748b; }
-        .customer-type-badge.business { background: #eff6ff; color: #0052cc; }
+        .customer-type-badge.business { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
         .logout-btn { background: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .logout-btn:hover { background: #ef4444; color: #fff; }
         .customer-service-link { display: flex; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
@@ -69,6 +73,15 @@
         /* ── Hero Banner ── */
         .hero-panel { display: grid; grid-template-columns: 1.15fr 1fr; border-radius: 4px; overflow: hidden; margin-bottom: 40px; min-height: 220px; }
         .hero-panel-text { background: var(--panel); display: flex; flex-direction: column; justify-content: center; padding: 44px 50px; gap: 16px; }
+
+        /* ── Business account differentiation ──
+           Same page/template as personal, but a distinct green accent (matching
+           HKMail's business branding) makes it unmistakable at a glance. */
+        body.business-account .brand-badge { background: #047857; }
+        body.business-account .hero-panel { border-top: 4px solid #047857; }
+        body.business-account .hero-panel-text .hero-eyebrow { color: #047857; }
+        body.business-account .hero-panel-actions .hero-btn-primary { background: #047857; }
+        body.business-account .hero-panel-actions .hero-btn-primary:hover { background: #036049; }
         .hero-eyebrow { font-size: 0.78rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--blue); }
         .hero-panel-text h2 { font-size: 1.9rem; font-weight: 700; color: var(--navy); line-height: 1.2; }
         .hero-panel-text p { font-size: 1rem; color: #3a4a5e; line-height: 1.55; max-width: 460px; }
@@ -317,7 +330,7 @@
             <button class="nav-item-btn" onclick="openSendModal()">Send Money</button>
             <button class="nav-item-btn" onclick="openMoveModal()">Transfer Money</button>
         </div>
-        <span class="nav-welcome">Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span><span id="employee-indicator" style="display:none;" class="employee-badge">Employee</span></span>
+        <span class="nav-welcome">Welcome, <strong id="user-display">User</strong><span id="business-indicator" style="display:none;" class="business-badge">Business</span><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span><span id="employee-indicator" style="display:none;" class="employee-badge">Employee</span></span>
     </div>
 </nav>
 
@@ -325,7 +338,7 @@
     <div class="hero-panel">
         <div class="hero-panel-text">
             <span class="hero-eyebrow">Dashboard</span>
-            <h2>Welcome to HKS Bank</h2>
+            <h2>Welcome to HKS Bank<span id="business-company-name" style="display:none; font-size:0.95rem; font-weight:700; color:#047857; margin-top:4px;"></span></h2>
             <p>Check your balances, review recent activity, and move money in a few clicks.</p>
             <div class="hero-panel-actions">
                 <button class="hero-btn-primary" onclick="openSendModal()">
@@ -701,8 +714,20 @@
             if (!data.loggedIn) { redirect(); return; }
             _me = data.username;
             document.getElementById('user-display').innerText = data.fullName || data.username;
-            document.getElementById('customer-type-tab').innerText =
-                data.customerType === 'business' ? 'Business Customer' : 'Personal Customer';
+
+            const typeTab = document.getElementById('customer-type-tab');
+            typeTab.innerText = data.isBusiness ? 'Business Customer' : 'Personal Customer';
+            typeTab.classList.toggle('business', !!data.isBusiness);
+
+            if (data.isBusiness) {
+                document.getElementById('business-indicator').style.display = 'inline-flex';
+                document.body.classList.add('business-account');
+                const companyEl = document.getElementById('business-company-name');
+                if (companyEl && data.companyName) {
+                    companyEl.innerText = data.companyName;
+                    companyEl.style.display = 'block';
+                }
+            }
 
             // Render accounts grid (primary first, then additional)
             await renderAccountsGrid(data.balance);

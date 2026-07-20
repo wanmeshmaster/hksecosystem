@@ -31,6 +31,8 @@ def init_db():
             is_employee INTEGER NOT NULL DEFAULT 0,
             balance REAL NOT NULL DEFAULT 0.0,
             full_name TEXT NOT NULL DEFAULT '',
+            customer_type TEXT NOT NULL DEFAULT 'personal',   -- personal | business
+            company_name TEXT NOT NULL DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -135,6 +137,8 @@ def init_db():
         "ALTER TABLE users ADD COLUMN is_employee INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE cards ADD COLUMN card_type TEXT NOT NULL DEFAULT 'regular'",
+        "ALTER TABLE users ADD COLUMN customer_type TEXT NOT NULL DEFAULT 'personal'",
+        "ALTER TABLE users ADD COLUMN company_name TEXT NOT NULL DEFAULT ''",
         # SQLite's ALTER TABLE won't accept CURRENT_TIMESTAMP as a column
         # default (only constant defaults are allowed there), so the column
         # is added nullable and backfilled just below.
@@ -256,6 +260,29 @@ def hkmail_account_lookup(email):
     row = cur.fetchone()
     conn.close()
     return row is not None
+
+
+def hkmail_account_details(email):
+    """Return {"exists", "account_type", "company_name", "is_verified_business"}
+    for the given HKMail address, or None if no such account exists. Used by
+    HKS Bank to decide whether a signup email qualifies for a business
+    account (must be a business-type HKMail address) and, if so, to pull the
+    company name across rather than asking for it twice."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute(
+        "SELECT account_type, company_name, is_verified_business FROM mail_users WHERE username=?",
+        (email,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "account_type": row[0] or "personal",
+        "company_name": row[1] or "",
+        "is_verified_business": bool(row[2]),
+    }
 
 
 def send_system_mail(recipient, subject, body):
@@ -524,6 +551,10 @@ def register():
     email      = normalize_mail_address(data.get("email", ""))
     full_name  = f"{first_name} {last_name}".strip()
 
+    customer_type = (data.get("customer_type", "personal") or "personal").strip().lower()
+    if customer_type not in ("personal", "business"):
+        customer_type = "personal"
+
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password required."}), 400
     if not first_name or not last_name:
@@ -532,13 +563,27 @@ def register():
         return jsonify({"success": False, "message": "An HKMail email address is required to sign up."}), 400
 
     # HKS Bank accounts must be tied to an existing HKMail address.
-    if not hkmail_account_lookup(email):
+    hkmail_details = hkmail_account_details(email)
+    if not hkmail_details:
         return jsonify({
             "success": False,
             "message": f"We couldn't find an HKMail account for {email}. Please create one first.",
             "needsHkmail": True,
             "email": email
         }), 400
+
+    # Business HKS Bank accounts must be backed by a business-type HKMail
+    # address — a personal @hkmail.cn mailbox doesn't qualify.
+    company_name = ""
+    if customer_type == "business":
+        if hkmail_details["account_type"] != "business":
+            return jsonify({
+                "success": False,
+                "message": f"{email} is a personal HKMail account. Business customers need a business HKMail address.",
+                "needsBusinessHkmail": True,
+                "email": email
+            }), 400
+        company_name = hkmail_details["company_name"]
 
     # Check both username and email
     conn = sqlite3.connect(DATABASE)
@@ -576,6 +621,8 @@ def register():
         "last_name": last_name,
         "full_name": full_name,
         "email": email,
+        "customer_type": customer_type,
+        "company_name": company_name,
         "code": signup_code,
         "attempts": 0,
     }
@@ -631,9 +678,11 @@ def register_confirm():
     is_admin = 1 if cur.fetchone()[0] == 0 else 0
     try:
         cur.execute(
-            "INSERT INTO users (username, password_hash, is_admin, balance, full_name, email, created_at) "
-            "VALUES (?, ?, ?, 0.0, ?, ?, CURRENT_TIMESTAMP)",
-            (pending["username"], pending["password_hash"], is_admin, pending["full_name"], pending["email"])
+            "INSERT INTO users (username, password_hash, is_admin, balance, full_name, email, "
+            "customer_type, company_name, created_at) "
+            "VALUES (?, ?, ?, 0.0, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+            (pending["username"], pending["password_hash"], is_admin, pending["full_name"], pending["email"],
+             pending.get("customer_type", "personal"), pending.get("company_name", ""))
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -710,10 +759,14 @@ def current_user():
     if "username" in session:
         conn = sqlite3.connect(DATABASE)
         cur  = conn.cursor()
-        cur.execute("SELECT is_admin, balance, full_name, is_employee FROM users WHERE username=?", (session["username"],))
+        cur.execute(
+            "SELECT is_admin, balance, full_name, is_employee, customer_type, company_name "
+            "FROM users WHERE username=?", (session["username"],)
+        )
         row = cur.fetchone()
         conn.close()
         if row:
+            customer_type = row[4] or "personal"
             return jsonify({
                 "loggedIn":  True,
                 "username":  session["username"],
@@ -721,6 +774,9 @@ def current_user():
                 "balance":   row[1],
                 "fullName":  row[2] if row[2] else session["username"],
                 "isEmployee": bool(row[3]),
+                "customerType": customer_type,
+                "isBusiness": customer_type == "business",
+                "companyName": row[5] or "",
             })
     return jsonify({"loggedIn": False})
 
@@ -810,10 +866,15 @@ def admin_users():
         return jsonify({"success": False, "message": "Administrator access required."}), 403
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT id, username, full_name, balance, is_admin, is_employee, created_at FROM users")
+    cur.execute(
+        "SELECT id, username, full_name, balance, is_admin, is_employee, created_at, "
+        "customer_type, company_name FROM users"
+    )
     users = [
         {"id": r[0], "username": r[1], "full_name": r[2], "balance": r[3], "is_admin": bool(r[4]),
-         "is_employee": bool(r[5]), "created_at": r[6]}
+         "is_employee": bool(r[5]), "created_at": r[6],
+         "customer_type": r[7] or "personal", "is_business": (r[7] or "personal") == "business",
+         "company_name": r[8] or ""}
         for r in cur.fetchall()
     ]
     conn.close()
@@ -2769,7 +2830,13 @@ def hkmail_account_exists():
     email = normalize_mail_address(request.args.get("email", ""))
     if not email:
         return jsonify({"success": False, "message": "Email is required."}), 400
-    return jsonify({"success": True, "email": email, "exists": hkmail_account_lookup(email)})
+    details = hkmail_account_details(email)
+    return jsonify({
+        "success": True,
+        "email": email,
+        "exists": details is not None,
+        "accountType": details["account_type"] if details else None,
+    })
 
 
 @app.route('/api/hkmail/register', methods=['POST'])

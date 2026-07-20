@@ -74,6 +74,25 @@
     .hero-icon-set svg { display: none; width: 100%; height: 100%; }
     .hero-icon-set svg.show { display: block; }
 
+    /* ── Business customer page layout (OP-style: page heading, compact promo
+       panel, quick-action icon row) — reuses HKS Bank's navy/blue palette. ── */
+    .biz-page-heading { display: none; font-size: 2.4rem; font-weight: 700; color: var(--navy); line-height: 1.2; margin: 44px 0 26px; }
+    body.business-context .biz-page-heading { display: block; }
+    body.business-context .hero { min-height: 320px; }
+    body.business-context .hero-text { padding: 44px; gap: 14px; }
+    body.business-context .hero-eyebrow { display: none; }
+    body.business-context .hero-heading { font-size: 1.7rem; }
+    body.business-context .hero-body { font-size: 0.98rem; max-width: 420px; }
+    body.business-context .hero-actions { margin-top: 10px; }
+    body.business-context .hero-btn-primary { padding: 11px 24px; border-radius: 30px; font-size: 0.88rem; }
+
+    .biz-quick-actions { display: none; justify-content: center; flex-wrap: wrap; gap: 34px 46px; margin: 36px 0 6px; }
+    body.business-context .biz-quick-actions { display: flex; }
+    .biz-action { display: flex; flex-direction: column; align-items: center; gap: 10px; background: none; border: none; cursor: pointer; text-decoration: none; width: 108px; }
+    .biz-action-icon { width: 54px; height: 54px; border-radius: 50%; background: var(--panel); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--blue); transition: all 0.15s; }
+    .biz-action:hover .biz-action-icon { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .biz-action-label { font-size: 0.82rem; font-weight: 700; color: var(--navy); text-align: center; line-height: 1.3; }
+
     /* ── Carousel controls ── */
     .carousel-controls { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 24px 0 44px; }
     .carousel-arrow, .carousel-play { width: 42px; height: 42px; border-radius: 50%; border: 1.5px solid var(--border-strong); background: #fff; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
@@ -210,6 +229,8 @@
 </nav>
 
 <main>
+    <h1 class="biz-page-heading" id="biz-page-heading">Banking and insurance services for businesses and organizations</h1>
+
     <!-- ── Hero / slideshow ── -->
     <section class="hero">
         <div class="hero-text">
@@ -266,6 +287,46 @@
         <button class="carousel-play" id="playPause" aria-label="Pause slideshow">
             <svg id="playPauseIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
         </button>
+    </div>
+
+    <!-- ── Business quick actions (OP-style icon row) ── -->
+    <div class="biz-quick-actions" id="bizQuickActions">
+        <a href="#" class="biz-action" onclick="openRegisterModal(); return false;">
+            <span class="biz-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/></svg>
+            </span>
+            <span class="biz-action-label">Open a business account</span>
+        </a>
+        <a href="/hks-bank-support.html#accounts" class="biz-action">
+            <span class="biz-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4.5 8-11V5l-8-3-8 3v6c0 6.5 8 11 8 11z"/></svg>
+            </span>
+            <span class="biz-action-label">Buy business insurance</span>
+        </a>
+        <a href="/hks-bank-support.html#transfers" class="biz-action">
+            <span class="biz-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.5 1.5-2.5 3-2.5s3 1 3 2.5-1.5 2-3 2.5-3 1-3 2.5 1.5 2.5 3 2.5 3-1 3-2.5"/></svg>
+            </span>
+            <span class="biz-action-label">Apply for a business loan</span>
+        </a>
+        <a href="/hks-bank-support.html#accounts" class="biz-action">
+            <span class="biz-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+            </span>
+            <span class="biz-action-label">Start investing</span>
+        </a>
+        <a href="/hks-bank-support.html#cards" class="biz-action">
+            <span class="biz-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            </span>
+            <span class="biz-action-label">Order a business card</span>
+        </a>
+        <a href="/hks-bank-support.html#support" class="biz-action">
+            <span class="biz-action-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+            </span>
+            <span class="biz-action-label">Update verification details</span>
+        </a>
     </div>
 
     <!-- ── Latest updates ── -->
@@ -395,6 +456,8 @@
         customerContext = (type === 'business') ? 'business' : 'personal';
         document.getElementById('tab-personal').classList.toggle('active', customerContext === 'personal');
         document.getElementById('tab-business').classList.toggle('active', customerContext === 'business');
+        document.body.classList.toggle('business-context', customerContext === 'business');
+        if (typeof renderSlide === 'function') renderSlide(currentSlide);
         applyRegisterContext();
     }
 
@@ -520,6 +583,9 @@
                 regError.style.display = 'block';
                 if (data.needsHkmail) {
                     needsHkmail.style.display = 'block';
+                }
+                if (data.needsBusinessHkmail) {
+                    needsBusinessHkmail.style.display = 'block';
                 }
             }
         } catch (err) {
@@ -679,6 +745,33 @@
         }
     ];
 
+    const bizSlides = [
+        {
+            eyebrow: 'Accounts',
+            heading: 'Open a business account in minutes',
+            body: "Get a dedicated current account for your company, with statements and transaction history ready from day one.",
+            variant: 'accounts'
+        },
+        {
+            eyebrow: 'Cards',
+            heading: 'Company cards, issued on demand',
+            body: "Order business debit cards for yourself or your team, and freeze or manage them anytime from the dashboard.",
+            variant: 'cards'
+        },
+        {
+            eyebrow: 'Transfers',
+            heading: 'Move company funds with ease',
+            body: "Pay suppliers, transfer between your business accounts, or send money to other HKS Bank customers instantly.",
+            variant: 'transfer'
+        },
+        {
+            eyebrow: 'Support',
+            heading: 'Dedicated support for business customers',
+            body: "Our support team handles business account verification, card requests, and everyday questions.",
+            variant: 'support'
+        }
+    ];
+
     let currentSlide = 0;
     let autoplayTimer = null;
     let isPlaying = true;
@@ -704,7 +797,7 @@
     }
 
     function renderSlide(index) {
-        const s = slides[index];
+        const s = (customerContext === 'business' ? bizSlides : slides)[index];
         [heroHeading, heroBody].forEach(el => el.style.opacity = 0);
         setTimeout(() => {
             heroEyebrow.innerText = s.eyebrow;
