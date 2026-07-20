@@ -211,7 +211,7 @@ BANK_SUPPORT_MAIL_DEFAULT_PASSWORD = "HksBankSupport852!"
 # eligible for permanent deletion.
 ACCOUNT_DELETION_GRACE_DAYS = 30
 
-MAIL_SUPPORT_REQUEST_TYPES = ("password_reset", "account_deletion")
+MAIL_SUPPORT_REQUEST_TYPES = ("password_reset", "account_deletion", "business_account")
 MAIL_SUPPORT_REQUEST_STATUSES = ("pending", "approved", "rejected", "completed", "cancelled")
 MAIL_SUPPORT_REQUEST_STATUS_LABELS = {
     "pending": "Pending Review",
@@ -223,6 +223,7 @@ MAIL_SUPPORT_REQUEST_STATUS_LABELS = {
 MAIL_SUPPORT_REQUEST_TYPE_LABELS = {
     "password_reset": "Password Reset",
     "account_deletion": "Account Deletion",
+    "business_account": "Business Account Verification",
 }
 
 
@@ -2097,6 +2098,29 @@ def init_mail_db():
         "ALTER TABLE mail_users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE mail_users ADD COLUMN disabled_at DATETIME",
         "ALTER TABLE mail_users ADD COLUMN scheduled_deletion_at DATETIME",
+        # Business accounts: a distinct registration path (separate window on
+        # the register screen) for companies. account_type separates these
+        # from ordinary personal mailboxes; business_status tracks the
+        # underlying business_account support-case lifecycle
+        # (''|pending|approved|rejected) independently of is_verified_business
+        # so a previously-approved business can be re-reviewed without losing
+        # its badge mid-review. is_verified_business drives the "Verified
+        # Business" badge shown on the account and on its outgoing mail —
+        # deliberately separate from is_verified (HKMail's "official account"
+        # badge for HKMail/HKS Bank's own service mailboxes) since the two
+        # mean different things and are granted through different flows.
+        "ALTER TABLE mail_users ADD COLUMN account_type TEXT NOT NULL DEFAULT 'personal'",
+        "ALTER TABLE mail_users ADD COLUMN business_status TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_users ADD COLUMN is_verified_business INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE mail_users ADD COLUMN company_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_users ADD COLUMN company_address TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_users ADD COLUMN company_phone TEXT NOT NULL DEFAULT ''",
+        # Custom email domain a business account registered with (e.g.
+        # "acme.com"), so their address is jane@acme.com instead of
+        # jane@hkmail.cn. Blank for personal accounts and for businesses
+        # that chose to stay on @hkmail.cn. Domain ownership isn't verified
+        # yet (HKMail isn't live), so any domain is accepted for now.
+        "ALTER TABLE mail_users ADD COLUMN custom_domain TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             cur.execute(stmt)
@@ -2204,6 +2228,13 @@ def init_mail_db():
     for stmt in [
         "ALTER TABLE mail_support_requests ADD COLUMN reinstatement_requested_at DATETIME",
         "ALTER TABLE mail_support_requests ADD COLUMN reinstatement_seen_at DATETIME",
+        # Company details captured at business registration, carried onto
+        # the request row so support staff can review them without a second
+        # lookup. Blank for password_reset/account_deletion requests.
+        "ALTER TABLE mail_support_requests ADD COLUMN company_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN company_address TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN company_phone TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN custom_domain TEXT NOT NULL DEFAULT ''",
     ]:
         try:
             cur.execute(stmt)
@@ -2369,6 +2400,7 @@ def mail_support_requests_notification_count(cur):
     cur.execute("""
         SELECT COUNT(*) FROM mail_support_requests
         WHERE (request_type='account_deletion' AND status='pending')
+           OR (request_type='business_account' AND status='pending')
            OR (
                request_type='account_deletion'
                AND status='approved'
@@ -2383,7 +2415,8 @@ def mail_support_requests_notification_count(cur):
 def mail_support_request_to_dict(row):
     (req_id, req_number, username, req_type, status, message, verified,
      verified_at, decided_by, decided_at, created_at,
-     reinstatement_requested_at, reinstatement_seen_at) = row
+     reinstatement_requested_at, reinstatement_seen_at,
+     company_name, company_address, company_phone, custom_domain) = row
     return {
         "id": req_id,
         "request_number": req_number,
@@ -2400,6 +2433,10 @@ def mail_support_request_to_dict(row):
         "created_at": created_at,
         "reinstatement_pending": mail_reinstatement_is_pending(
             reinstatement_requested_at, reinstatement_seen_at),
+        "company_name": company_name,
+        "company_address": company_address,
+        "company_phone": company_phone,
+        "custom_domain": custom_domain,
     }
 
 
@@ -2737,12 +2774,24 @@ def hkmail_account_exists():
 
 @app.route('/api/hkmail/register', methods=['POST'])
 def hkmail_register():
-    data       = request.get_json()
-    username   = data.get("username", "").strip().lower()   # full address
-    password   = data.get("password", "").strip()
-    first_name = data.get("first_name", "").strip()
-    last_name  = data.get("last_name", "").strip()
-    full_name  = f"{first_name} {last_name}".strip()
+    data         = request.get_json()
+    username     = data.get("username", "").strip().lower()   # full address
+    password     = data.get("password", "").strip()
+    first_name   = data.get("first_name", "").strip()
+    last_name    = data.get("last_name", "").strip()
+    full_name    = f"{first_name} {last_name}".strip()
+
+    account_type = (data.get("account_type", "personal") or "personal").strip().lower()
+    if account_type not in ("personal", "business"):
+        account_type = "personal"
+
+    company_name    = (data.get("company_name", "") or "").strip()
+    company_address = (data.get("company_address", "") or "").strip()
+    company_phone    = (data.get("company_phone", "") or "").strip()
+    custom_domain    = (data.get("custom_domain", "") or "").strip().lower()
+    # Strip a leading "@" if someone pastes "@acme.com" into the field.
+    if custom_domain.startswith("@"):
+        custom_domain = custom_domain[1:]
 
     if not username or not password:
         return jsonify({"success": False, "message": "Email and password are required."}), 400
@@ -2751,44 +2800,106 @@ def hkmail_register():
     if len(password) < 8:
         return jsonify({"success": False, "message": "Password must be at least 8 characters."}), 400
 
+    if account_type == "business":
+        if not company_name:
+            return jsonify({"success": False, "message": "Company name is required for a business account."}), 400
+        if not company_address:
+            return jsonify({"success": False, "message": "Company address is required for a business account."}), 400
+        if not company_phone:
+            return jsonify({"success": False, "message": "A contact phone number is required for a business account."}), 400
+        # Domain ownership isn't verified yet (HKMail isn't live), so any
+        # domain is accepted for now — but the chosen address must actually
+        # use it, so the mailbox and the domain being registered agree.
+        if custom_domain and not username.endswith("@" + custom_domain):
+            return jsonify({"success": False, "message": f"Your address must end in @{custom_domain} to use that custom domain."}), 400
+    else:
+        # Personal accounts don't carry business fields even if the client sent some.
+        company_name = company_address = company_phone = custom_domain = ""
+
     password_hash = generate_password_hash(password)
     try:
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
         # Self-registered accounts are always plain, unverified users. The
         # only admin account is the dedicated one seeded at startup; official
-        # accounts are created and verified explicitly by that admin.
-        cur.execute(
-            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 0)",
-            (username, password_hash, full_name)
-        )
+        # accounts are created and verified explicitly by that admin. Business
+        # accounts additionally start with business_status='pending' until a
+        # support member reviews the case filed just below.
+        cur.execute("""
+            INSERT INTO mail_users
+                (username, password_hash, full_name, is_admin, is_verified,
+                 account_type, business_status, company_name, company_address,
+                 company_phone, custom_domain)
+            VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)
+        """, (
+            username, password_hash, full_name, account_type,
+            "pending" if account_type == "business" else "",
+            company_name, company_address, company_phone, custom_domain
+        ))
 
         # Drop a welcome email from the no-reply system account into the new
         # inbox so every user's very first message shows what an official
         # HKMail sender looks like (and explains the badges they'll see).
+        welcome_body = (
+            f"Hi {first_name or 'there'},\n\n"
+            f"Welcome to HKMail — your new address is {username}.\n\n"
+            "A couple of things worth knowing as you get started:\n\n"
+            "  • This message comes from noreply@hkmail.cn — HKMail's automated system "
+            "account. Don't reply to it; nobody reads that inbox.\n"
+            "  • Messages from admin@hkmail.cn carry an \"Admin\" badge, so you can always "
+            "tell when HKMail's administrators are contacting you.\n"
+            "  • Some senders — like official service accounts and Premium subscribers — "
+            "carry a \"Verified\" or \"Premium\" badge. If a message claims to be from an "
+            "official service but has no badge, be cautious.\n\n"
+        )
+        if account_type == "business":
+            welcome_body += (
+                "  • Your business account is pending verification. We've opened a case "
+                "for our support team to review your company details — you'll get an email "
+                "here once it's decided, and a \"Verified Business\" badge will appear on your "
+                "account once approved.\n\n"
+            )
+        welcome_body += "That's it — enjoy your inbox!\n\n— HKMail"
+
         cur.execute(
             "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-            (
-                NOREPLY_MAIL_USERNAME,
-                username,
-                "Welcome to HKMail!",
-                f"Hi {first_name or 'there'},\n\n"
-                f"Welcome to HKMail — your new address is {username}.\n\n"
-                "A couple of things worth knowing as you get started:\n\n"
-                "  • This message comes from noreply@hkmail.cn — HKMail's automated system "
-                "account. Don't reply to it; nobody reads that inbox.\n"
-                "  • Messages from admin@hkmail.cn carry an \"Admin\" badge, so you can always "
-                "tell when HKMail's administrators are contacting you.\n"
-                "  • Some senders — like official service accounts and Premium subscribers — "
-                "carry a \"Verified\" or \"Premium\" badge. If a message claims to be from an "
-                "official service but has no badge, be cautious.\n\n"
-                "That's it — enjoy your inbox!\n\n"
-                "— HKMail"
-            )
+            (NOREPLY_MAIL_USERNAME, username, "Welcome to HKMail!", welcome_body)
         )
+
+        # Business accounts open a review case in the same Account Requests
+        # queue support staff already work (password resets / deletions),
+        # so it shows up for a support member to approve or reject.
+        if account_type == "business":
+            case_body = (
+                "New business account registration\n\n"
+                f"User: {username}\n"
+                f"Company name: {company_name}\n"
+                f"Company address: {company_address}\n"
+                f"Phone: {company_phone}\n"
+                f"Custom domain: {custom_domain or '(none — using @hkmail.cn)'}\n\n"
+                "Please review and approve or reject from the Account Requests tab."
+            )
+            _case_id, case_number = mail_insert_support_case(cur, username, "Business account registration", case_body)
+            cur.execute("""
+                INSERT INTO mail_support_requests
+                    (request_number, username, request_type, status,
+                     company_name, company_address, company_phone, custom_domain)
+                VALUES (?, ?, 'business_account', 'pending', ?, ?, ?, ?)
+            """, (case_number, username, company_name, company_address, company_phone, custom_domain))
+            request_id = cur.lastrowid
+            mail_log_support_event(cur, request_id, "submitted", username, "user",
+                                    new_status="pending", note="Business account registration submitted.")
+            mail_send_support_case_confirmation(
+                cur, username, case_number, "business account registration",
+                extra_body="Our support team will review your company details shortly. "
+                           "You'll receive an email here once your business account is approved "
+                           "or if we need more information."
+            )
 
         conn.commit()
         conn.close()
+        if account_type == "business":
+            return jsonify({"success": True, "message": "Account created. Your business account is pending verification — check your inbox for a case confirmation."})
         return jsonify({"success": True, "message": "Account created."})
     except sqlite3.IntegrityError:
         return jsonify({"success": False, "message": "That email address is already taken."}), 400
@@ -2812,7 +2923,8 @@ def hkmail_login_api():
     cur  = conn.cursor()
     cur.execute("""
         SELECT password_hash, full_name, is_admin, is_verified, is_employee,
-               is_disabled, scheduled_deletion_at
+               is_disabled, scheduled_deletion_at, account_type, business_status,
+               is_verified_business
         FROM mail_users WHERE username=?
     """, (username,))
     row = cur.fetchone()
@@ -2824,7 +2936,9 @@ def hkmail_login_api():
         session["mail_is_admin"]  = bool(row[2])
         session["mail_is_employee"] = bool(row[4])
         payload = {"success": True, "username": username, "fullName": row[1],
-                   "isAdmin": bool(row[2]), "isVerified": bool(row[3])}
+                   "isAdmin": bool(row[2]), "isVerified": bool(row[3]),
+                   "accountType": row[7], "businessStatus": row[8],
+                   "isVerifiedBusiness": bool(row[9])}
         # A disabled account can still sign in — it's in its recovery window,
         # not gone yet — but the inbox flags it so the UI can show the
         # recovery banner instead of pretending everything's normal.
@@ -2866,7 +2980,8 @@ def hkmail_current_user():
         conn = sqlite3.connect(MAIL_DATABASE)
         cur  = conn.cursor()
         cur.execute("""
-            SELECT full_name, is_admin, is_verified, is_employee, is_disabled, scheduled_deletion_at
+            SELECT full_name, is_admin, is_verified, is_employee, is_disabled, scheduled_deletion_at,
+                   account_type, business_status, is_verified_business, company_name, custom_domain
             FROM mail_users WHERE username=?
         """, (u,))
         row = cur.fetchone()
@@ -2877,7 +2992,10 @@ def hkmail_current_user():
                        "isSupportStaff": bool(row[1]) or bool(row[3]),
                        "isPremium": is_premium,
                        "premiumLabel": badge_label,
-                       "premiumTier": badge_tier}
+                       "premiumTier": badge_tier,
+                       "accountType": row[6], "businessStatus": row[7],
+                       "isVerifiedBusiness": bool(row[8]),
+                       "companyName": row[9], "customDomain": row[10]}
             if row[4]:
                 payload["disabled"] = True
                 payload["scheduledDeletionAt"] = row[5]
@@ -3349,7 +3467,8 @@ def hkmail_my_support_requests():
     cur.execute("""
         SELECT id, request_number, username, request_type, status, message, verified,
                verified_at, decided_by, decided_at, created_at,
-               reinstatement_requested_at, reinstatement_seen_at
+               reinstatement_requested_at, reinstatement_seen_at,
+               company_name, company_address, company_phone, custom_domain
         FROM mail_support_requests WHERE username=? ORDER BY created_at DESC LIMIT 20
     """, (u,))
     rows = cur.fetchall()
@@ -3388,7 +3507,8 @@ def hkmail_admin_list_support_requests():
     query  = """
         SELECT id, request_number, username, request_type, status, message, verified,
                verified_at, decided_by, decided_at, created_at,
-               reinstatement_requested_at, reinstatement_seen_at
+               reinstatement_requested_at, reinstatement_seen_at,
+               company_name, company_address, company_phone, custom_domain
         FROM mail_support_requests
     """
     clauses, params = [], []
@@ -3432,7 +3552,8 @@ def hkmail_admin_get_support_request(request_id):
     cur.execute("""
         SELECT id, request_number, username, request_type, status, message, verified,
                verified_at, decided_by, decided_at, created_at,
-               reinstatement_requested_at, reinstatement_seen_at
+               reinstatement_requested_at, reinstatement_seen_at,
+               company_name, company_address, company_phone, custom_domain
         FROM mail_support_requests WHERE id=?
     """, (request_id,))
     row = cur.fetchone()
@@ -3526,6 +3647,30 @@ def hkmail_admin_approve_support_request(request_id):
             conn.commit()
             return jsonify({"success": True, "message": f"{username}'s account has been disabled and scheduled for deletion on {scheduled_deletion_at}."})
 
+        elif req_type == "business_account":
+            cur.execute("""
+                UPDATE mail_users SET is_verified_business=1, business_status='approved'
+                WHERE username=?
+            """, (username,))
+            cur.execute("""
+                UPDATE mail_support_requests
+                SET status='approved', decided_by=?, decided_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (actor_username, request_id))
+            mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
+                                    old_status="pending", new_status="approved",
+                                    note="Business account approved. \"Verified Business\" badge granted.")
+
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (NOREPLY_MAIL_USERNAME, username, "Your business account has been verified",
+                 "Good news — your business account has been reviewed and approved.\n\n"
+                 "Your account now carries a \"Verified Business\" badge, visible to anyone "
+                 "you email.\n\n— HKMail Support")
+            )
+            conn.commit()
+            return jsonify({"success": True, "message": f"{username}'s business account has been verified."})
+
         else:
             return jsonify({"success": False, "message": "Unknown request type."}), 400
     finally:
@@ -3560,6 +3705,9 @@ def hkmail_admin_reject_support_request(request_id):
         """, (actor_username, request_id))
         mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
                                 old_status="pending", new_status="rejected", note=note)
+
+        if req_type == "business_account":
+            cur.execute("UPDATE mail_users SET business_status='rejected' WHERE username=?", (username,))
 
         type_label = MAIL_SUPPORT_REQUEST_TYPE_LABELS.get(req_type, req_type)
         cur.execute(
@@ -3868,7 +4016,8 @@ def hkmail_inbox_api():
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id)
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id),
+               mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.recipient=? AND e.deleted_by_recipient=0
@@ -3884,7 +4033,8 @@ def hkmail_inbox_api():
                         "from_is_premium": is_premium,
                         "from_premium_label": badge_label,
                         "from_premium_tier": badge_tier,
-                        "attachment_count": r[7]})
+                        "attachment_count": r[7],
+                        "from_is_verified_business": bool(r[8])})
     return jsonify({"success": True, "emails": emails})
 
 
@@ -3922,7 +4072,8 @@ def hkmail_trash_api():
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
                e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id)
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id),
+               mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE (e.sender=? AND e.deleted_by_sender=1)
@@ -3941,7 +4092,8 @@ def hkmail_trash_api():
             "from_is_premium": is_premium,
             "from_premium_label": badge_label,
             "from_premium_tier": badge_tier,
-            "attachment_count": r[9]
+            "attachment_count": r[9],
+            "from_is_verified_business": bool(r[10])
         })
     return jsonify({"success": True, "emails": emails})
 
@@ -3958,7 +4110,7 @@ def hkmail_read_email(email_id):
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.body, e.sent_at, e.read,
-               mu.is_admin, mu.is_verified
+               mu.is_admin, mu.is_verified, mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.id=?
@@ -3998,6 +4150,7 @@ def hkmail_read_email(email_id):
             "from_is_premium": is_premium,
             "from_premium_label": badge_label,
             "from_premium_tier": badge_tier,
+            "from_is_verified_business": bool(row[9]),
             "attachments": attachments
         }
     })
@@ -4188,7 +4341,8 @@ def hkmail_admin_users():
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, username, full_name, is_admin, is_verified, is_employee, created_at,
-               is_disabled, disabled_at, scheduled_deletion_at
+               is_disabled, disabled_at, scheduled_deletion_at,
+               account_type, business_status, is_verified_business, company_name, custom_domain
         FROM mail_users ORDER BY created_at
     """)
     rows = cur.fetchall()
@@ -4214,6 +4368,9 @@ def hkmail_admin_users():
                        "is_employee": bool(r[5]), "created_at": r[6],
                        "is_disabled": bool(r[7]), "disabled_at": r[8],
                        "scheduled_deletion_at": r[9],
+                       "account_type": r[10], "business_status": r[11],
+                       "is_verified_business": bool(r[12]),
+                       "company_name": r[13], "custom_domain": r[14],
                        "subscriptions": subs})
     return jsonify({"success": True, "users": users})
 

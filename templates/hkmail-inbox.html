@@ -151,6 +151,42 @@
 
         .badge-verified svg, .badge-admin svg, .badge-premium svg { width: 9px; height: 9px; }
 
+        .badge-business {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            background: #ECFDF5;
+            color: #047857;
+            font-size: 0.66rem;
+            font-weight: 800;
+            letter-spacing: 0.2px;
+            text-transform: uppercase;
+            padding: 1px 6px;
+            border-radius: 4px;
+            vertical-align: middle;
+            border: 1px solid #A7F3D0;
+        }
+        .badge-business svg { width: 9px; height: 9px; }
+
+        .topbar-badge-business {
+            background: #047857;
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+
+        .biz-pending-banner {
+            background: #FFF8E6;
+            border-bottom: 1px solid #F5D98A;
+            color: #7A5A00;
+            font-size: 0.85rem;
+            padding: 10px 24px;
+            display: none;
+        }
+
         .topbar-badge-admin {
             background: var(--red);
             color: #fff;
@@ -1046,6 +1082,7 @@
         <span class="topbar-email" id="topbar-email">—</span>
         <span class="topbar-badge-admin" id="topbar-admin-badge" style="display:none;">Admin</span>
         <span class="topbar-badge-support" id="topbar-support-badge" style="display:none;">Support</span>
+        <span class="topbar-badge-business" id="topbar-business-badge" style="display:none;">Verified Business</span>
         <span class="badge-premium" id="topbar-premium-badge" style="display:none; cursor:pointer;" onclick="openStorageModal()" title="Manage your Premium subscription">★ Premium</span>
         <button class="btn-compose" onclick="openCompose()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
@@ -1062,6 +1099,10 @@
 <div class="recovery-banner" id="recovery-banner">
     <div class="recovery-banner-text" id="recovery-banner-text"></div>
     <button type="button" class="recovery-banner-btn" id="recovery-reinstate-btn" onclick="requestReinstatement()">Request reinstatement</button>
+</div>
+
+<div class="biz-pending-banner" id="biz-pending-banner">
+    Your business account is pending verification. A support member is reviewing your company details — you'll get an email once it's decided.
 </div>
 
 <!-- ── Main layout ── -->
@@ -1354,6 +1395,7 @@
                     <option value="">All types</option>
                     <option value="password_reset">Password reset</option>
                     <option value="account_deletion">Account deletion</option>
+                    <option value="business_account">Business account</option>
                 </select>
                 <select class="c-input" id="req-filter-status" onchange="loadSupportRequests()">
                     <option value="">All statuses</option>
@@ -1497,6 +1539,11 @@
         if (iAmSupportStaff) {
             refreshSupportRequestNotifications();
         }
+        if (data.isVerifiedBusiness) {
+            document.getElementById('topbar-business-badge').style.display = 'inline-block';
+        } else if (data.accountType === 'business' && data.businessStatus === 'pending') {
+            document.getElementById('biz-pending-banner').style.display = 'block';
+        }
         if (data.isPremium) {
             const topbarBadge = document.getElementById('topbar-premium-badge');
             const tierName = data.premiumTier ? data.premiumTier.charAt(0).toUpperCase() + data.premiumTier.slice(1) : 'Premium';
@@ -1518,7 +1565,7 @@
     })();
 
     // ── Sender badges ──────────────────────────────────────────────────────────
-    function senderBadges(isAdmin, isVerified, isPremium, premiumLabel, premiumTier) {
+    function senderBadges(isAdmin, isVerified, isPremium, premiumLabel, premiumTier, isVerifiedBusiness) {
         let html = '';
         if (isAdmin) {
             html += `<span class="badge-admin" title="HKMail administrative account">
@@ -1529,6 +1576,11 @@
             html += `<span class="badge-verified" title="Verified official account">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 Verified</span>`;
+        }
+        if (isVerifiedBusiness) {
+            html += `<span class="badge-business" title="Verified business account">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="1"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Business</span>`;
         }
         if (isPremium) {
             const tierClass = premiumTier ? `tier-${premiumTier}` : '';
@@ -1585,7 +1637,7 @@
             const displayName = currentFolder === 'sent' ? (e.to || '') : (e.from || '');
             const label = currentFolder === 'sent' ? `To: ${displayName}` : displayName;
             const dateStr = formatDate(e.date);
-            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier);
+            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier, e.from_is_verified_business);
             const clip = e.attachment_count > 0
                 ? `<span class="email-subject-clip" title="${e.attachment_count} attachment${e.attachment_count !== 1 ? 's' : ''}">
                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
@@ -1660,7 +1712,7 @@
         document.getElementById('email-view-header').innerHTML = `
             <div class="email-view-subject">${escHtml(e.subject)}</div>
             <div class="email-view-meta">
-                <span><strong>From:</strong> ${escHtml(e.from)} ${senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier)}</span>
+                <span><strong>From:</strong> ${escHtml(e.from)} ${senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier, e.from_is_verified_business)}</span>
                 <span><strong>To:</strong> ${escHtml(e.to)}</span>
                 <span><strong>Date:</strong> ${formatDate(e.date, true)}</span>
             </div>
@@ -2285,9 +2337,18 @@
                 meta += ` · Deletes ${escHtml(formatDate(r.scheduled_deletion_at, true))}`;
             }
             document.getElementById('req-detail-meta').innerHTML = meta;
-            document.getElementById('req-detail-message').innerHTML = r.message
+            let messageHtml = r.message
                 ? `<strong>Note:</strong> ${escHtml(r.message)}`
                 : (r.request_type === 'password_reset' ? '<span style="color:var(--muted);">No additional message.</span>' : '');
+            if (r.request_type === 'business_account') {
+                messageHtml += `<div style="margin-top:8px;">
+                    <div><strong>Company:</strong> ${escHtml(r.company_name || '—')}</div>
+                    <div><strong>Address:</strong> ${escHtml(r.company_address || '—')}</div>
+                    <div><strong>Phone:</strong> ${escHtml(r.company_phone || '—')}</div>
+                    <div><strong>Custom domain:</strong> ${r.custom_domain ? escHtml(r.custom_domain) : '<span style="color:var(--muted);">None — using @hkmail.cn</span>'}</div>
+                </div>`;
+            }
+            document.getElementById('req-detail-message').innerHTML = messageHtml;
 
             const actions = document.getElementById('req-detail-actions');
             actions.innerHTML = '';
@@ -2295,6 +2356,17 @@
                 const approveBtn = document.createElement('button');
                 approveBtn.className = 'req-action-btn req-approve-btn';
                 approveBtn.textContent = 'Approve deletion (30-day window)';
+                approveBtn.onclick = () => approveSupportRequest(requestId);
+                actions.appendChild(approveBtn);
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'req-action-btn req-reject-btn';
+                rejectBtn.textContent = 'Reject';
+                rejectBtn.onclick = () => rejectSupportRequest(requestId);
+                actions.appendChild(rejectBtn);
+            } else if (r.status === 'pending' && r.request_type === 'business_account') {
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'req-action-btn req-approve-btn';
+                approveBtn.textContent = 'Approve — grant Verified Business badge';
                 approveBtn.onclick = () => approveSupportRequest(requestId);
                 actions.appendChild(approveBtn);
                 const rejectBtn = document.createElement('button');
@@ -2331,7 +2403,11 @@
     }
 
     async function approveSupportRequest(requestId) {
-        if (!confirm('Approve account deletion? The account will be disabled for 30 days before permanent deletion.')) return;
+        const req = supportRequestsCache.find(r => r.id === requestId);
+        const confirmMsg = req && req.request_type === 'business_account'
+            ? 'Approve this business account? It will be granted a "Verified Business" badge.'
+            : 'Approve account deletion? The account will be disabled for 30 days before permanent deletion.';
+        if (!confirm(confirmMsg)) return;
         const msg = document.getElementById('req-detail-msg');
         try {
             const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}/approve`, {
@@ -2414,10 +2490,11 @@
         const tbody = document.getElementById('admin-user-table-body');
         if (!adminUsersCache.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);">No users yet.</td></tr>'; return; }
         tbody.innerHTML = adminUsersCache.map(u => {
-            const statusBadges = (senderBadges(u.is_admin, u.is_verified) || '')
+            const statusBadges = (senderBadges(u.is_admin, u.is_verified, false, '', '', u.is_verified_business) || '')
                 + (u.is_employee && !u.is_admin ? '<span class="badge-verified" style="margin-left:4px;">Support</span>' : '')
+                + (u.account_type === 'business' && u.business_status === 'pending' ? '<span class="badge-disabled" style="margin-left:4px;">Business pending</span>' : '')
                 + (u.is_disabled ? '<span class="badge-disabled">Disabled</span>' : '')
-                + (!u.is_admin && !u.is_verified && !u.is_employee && !u.is_disabled ? '<span style="color:var(--muted);">User</span>' : '');
+                + (!u.is_admin && !u.is_verified && !u.is_employee && !u.is_disabled && !u.is_verified_business ? '<span style="color:var(--muted);">User</span>' : '');
             return `
             <tr>
                 <td>${escHtml(u.username)}</td>
