@@ -6,38 +6,96 @@
     <title>HKS Bank - Dashboard</title>
     <style>
         /* ── Reset & Base ── */
+        :root {
+            --blue: #0052cc;
+            --blue-dark: #003d99;
+            --navy: #0b1a33;
+            --bg: #f4f6f8;
+            --panel: #eef2f6;
+            --border: #e2e8f0;
+            --border-strong: #cbd5e1;
+            --muted: #64748b;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #f4f6f8; color: #333; display: flex; flex-direction: column; min-height: 100vh; }
+        html { scroll-behavior: smooth; }
+        body { background-color: #fff; color: var(--navy); display: flex; flex-direction: column; min-height: 100vh; }
+        a { color: inherit; }
+        button { font-family: inherit; }
+        :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-        /* ── Top Banner ── */
-        .top-banner { background: #fff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        .brand { font-size: 1.3rem; font-weight: 700; color: #0052cc; text-decoration: none; }
-        .user-controls { display: flex; align-items: center; gap: 20px; font-weight: 500; }
+        /* ── Utility bar ── */
+        .utility-bar { background: var(--panel); border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+        .utility-bar-inner { max-width: 1400px; margin: 0 auto; padding: 0 30px; display: flex; align-items: center; justify-content: space-between; }
+        .utility-tabs { display: flex; }
+        .utility-tab { padding: 14px 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--muted); text-decoration: none; border-top: 3px solid transparent; cursor: pointer; }
+        .utility-tab.active { color: var(--navy); border-top-color: var(--blue); background: #fff; }
+        .utility-tab:not(.active):hover { color: var(--navy); }
+        .utility-actions { display: flex; align-items: center; gap: 22px; }
+        .utility-link { display: flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-weight: 600; cursor: pointer; white-space: nowrap; background: none; border: none; padding: 14px 0; border-top: 3px solid transparent; }
+        .utility-link:hover { color: var(--navy); }
+        .utility-link.active { color: var(--navy); border-top-color: var(--blue); }
+        .utility-link svg { flex-shrink: 0; }
+        .logout-pill { display: flex; align-items: center; gap: 8px; background: #fff; color: #ef4444; border: 1.5px solid #fca5a5; padding: 8px 18px; border-radius: 30px; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.15s; }
+        .logout-pill:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+
+        /* ── Main nav ── */
+        .main-nav { border-bottom: 1px solid var(--border); }
+        .main-nav-inner { max-width: 1400px; margin: 0 auto; padding: 16px 30px; display: flex; align-items: center; gap: 46px; }
+        .brand-mark { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+        .brand-badge { width: 38px; height: 38px; border-radius: 50%; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.05rem; }
+        .brand-wordmark { font-size: 1.25rem; font-weight: 800; color: var(--navy); }
+        .nav-items { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; }
+        .nav-item-btn { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 10px 12px; font-size: 0.98rem; font-weight: 600; color: var(--navy); cursor: pointer; border-radius: 6px; }
+        .nav-item-btn:hover { background: var(--panel); }
+        .nav-welcome { margin-left: auto; font-size: 0.9rem; color: var(--muted); white-space: nowrap; }
+        .nav-welcome strong { color: var(--navy); }
+
+        /* ── Top Banner (legacy alias, unused but kept for safety) ── */
+        .brand { font-size: 1.3rem; font-weight: 700; color: var(--blue); text-decoration: none; }
         .admin-badge { background: #ef4444; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 6px; text-transform: uppercase; }
         .logout-btn { background: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .logout-btn:hover { background: #ef4444; color: #fff; }
+        .customer-service-link { display: flex; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+        .customer-service-link:hover { color: var(--blue); }
 
         /* ── Layout ── */
-        main { flex: 1; max-width: 1400px; width: 100%; margin: 40px auto; padding: 0 20px; }
+        main { flex: 1; max-width: 1400px; width: 100%; margin: 0 auto; padding: 40px 30px 60px; }
+        section + section { margin-top: 46px; }
+        .section-heading { font-size: 1.4rem; font-weight: 700; color: var(--navy); margin-bottom: 18px; padding-top: 26px; border-top: 1px solid var(--border); }
+        main > .accounts-grid.section-heading-attached, main > div:first-of-type .section-heading { padding-top: 0; border-top: none; }
 
         /* ── Hero Banner ── */
-        .news-headline { background: linear-gradient(135deg, #0052cc 0%, #002244 100%); color: #fff; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center; }
-        .news-headline h2 { font-size: 1.6rem; font-weight: 600; }
+        .hero-panel { display: grid; grid-template-columns: 1.15fr 1fr; border-radius: 4px; overflow: hidden; margin-bottom: 40px; min-height: 220px; }
+        .hero-panel-text { background: var(--panel); display: flex; flex-direction: column; justify-content: center; padding: 44px 50px; gap: 16px; }
+        .hero-eyebrow { font-size: 0.78rem; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--blue); }
+        .hero-panel-text h2 { font-size: 1.9rem; font-weight: 700; color: var(--navy); line-height: 1.2; }
+        .hero-panel-text p { font-size: 1rem; color: #3a4a5e; line-height: 1.55; max-width: 460px; }
+        .hero-panel-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+        .hero-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--blue); color: #fff; border: none; padding: 13px 26px; border-radius: 30px; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
+        .hero-btn-primary:hover { background: var(--blue-dark); }
+        .hero-btn-secondary { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: var(--blue); border: 1.5px solid var(--blue); padding: 12px 24px; border-radius: 30px; font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.15s; }
+        .hero-btn-secondary:hover { background: var(--blue); color: #fff; }
+        .hero-visual { position: relative; overflow: hidden; background: linear-gradient(135deg, #0052cc 0%, #002244 100%); display: flex; align-items: center; justify-content: center; }
+        .hero-visual::before, .hero-visual::after { content: ''; position: absolute; border-radius: 50%; filter: blur(40px); opacity: 0.35; }
+        .hero-visual::before { width: 220px; height: 220px; background: #7fb3ff; top: -50px; right: -30px; }
+        .hero-visual::after { width: 180px; height: 180px; background: #ffffff; bottom: -60px; left: -20px; opacity: 0.15; }
+        .hero-visual svg { position: relative; z-index: 1; width: 130px; height: 130px; }
+        .news-headline { display: none; } /* superseded by .hero-panel; kept selector so nothing errors if referenced */
 
         /* ── Accounts Grid ── */
-        .accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 30px; }
+        .accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 40px; }
 
         /* ── Account Card ── */
-        .account-card { background: #fff; border-radius: 10px; border: 1px solid #cbd5e1; padding: 22px 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); display: flex; justify-content: space-between; align-items: center; }
-        .account-card.primary { border-left: 4px solid #0052cc; }
+        .account-card { background: #fff; border-radius: 10px; border: 1px solid var(--border-strong); padding: 22px 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.01); display: flex; justify-content: space-between; align-items: center; }
+        .account-card.primary { border-left: 4px solid var(--blue); }
         .account-card.secondary { border-left: 4px solid #7c3aed; }
         .account-info { display: flex; flex-direction: column; gap: 5px; }
-        .account-title { font-size: 0.85rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-        .balance-heading { font-size: 2rem; font-weight: 700; color: #1a1a1a; }
-        .tx-btn { background: #f1f5f9; color: #0052cc; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .account-title { font-size: 0.85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .balance-heading { font-size: 2rem; font-weight: 700; color: var(--navy); }
+        .tx-btn { background: #f1f5f9; color: var(--blue); border: 1px solid var(--border-strong); padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .tx-btn:hover { background: #e2e8f0; border-color: #94a3b8; }
-        .tx-btn.send-btn { background: #0052cc; color: #fff; border-color: #0052cc; }
-        .tx-btn.send-btn:hover { background: #003d99; border-color: #003d99; }
+        .tx-btn.send-btn { background: var(--blue); color: #fff; border-color: var(--blue); }
+        .tx-btn.send-btn:hover { background: var(--blue-dark); border-color: var(--blue-dark); }
 
         /* ── Modals (shared) ── */
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
@@ -46,9 +104,6 @@
         .close-btn:hover { color: #ef4444; }
         .modal-title { font-size: 1.4rem; color: #1a1a1a; margin-bottom: 20px; font-weight: 600; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
 
-        /* ── Support button ── */
-        .support-fab { position: fixed; bottom: 24px; right: 24px; background: #0052cc; color: #fff; border: none; padding: 13px 22px; border-radius: 50px; font-weight: 600; font-size: 0.9rem; cursor: pointer; box-shadow: 0 4px 14px rgba(0,82,204,0.35); z-index: 900; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-        .support-fab:hover { background: #003d99; box-shadow: 0 6px 18px rgba(0,82,204,0.45); transform: translateY(-2px); }
 
         /* ── Transactions ── */
         .empty-text { color: #94a3b8; font-style: italic; font-size: 0.95rem; text-align: center; padding: 20px 0; }
@@ -204,42 +259,104 @@
         .case-audit-log { display: flex; flex-direction: column; gap: 8px; max-height: 180px; overflow-y: auto; }
         .case-audit-entry { font-size: 0.82rem; color: #475569; padding: 8px 10px; background: #f8fafc; border-radius: 6px; border-left: 3px solid #cbd5e1; }
         .case-audit-entry b { color: #1e293b; }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .hero-panel { grid-template-columns: 1fr; }
+            .hero-visual { min-height: 160px; order: -1; }
+            .hero-panel-text { padding: 34px 28px; }
+            .main-nav-inner { flex-wrap: wrap; gap: 14px; row-gap: 10px; }
+            .nav-welcome { margin-left: 0; width: 100%; order: 3; }
+        }
+        @media (max-width: 640px) {
+            .utility-bar-inner { flex-wrap: wrap; padding: 10px 16px; row-gap: 8px; }
+            .utility-tabs { order: 2; width: 100%; overflow-x: auto; }
+            .utility-actions { order: 1; width: 100%; justify-content: flex-end; gap: 14px; }
+            .utility-link span { display: none; }
+            main { padding: 30px 18px 50px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            * { transition-duration: 0.01ms !important; }
+        }
     </style>
 </head>
 <body>
 
-<header class="top-banner">
-    <a href="#" class="brand">HKS Bank</a>
-    <div class="user-controls">
-        <span>Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span><span id="employee-indicator" style="display:none;" class="employee-badge">Employee</span></span>
-        <button onclick="executeLogout()" class="logout-btn">Log Out</button>
+<!-- ── Utility bar ── -->
+<div class="utility-bar">
+    <div class="utility-bar-inner">
+        <div class="utility-tabs">
+            <a href="/hks-bank.html" class="utility-tab">Personal Customers</a>
+            <span class="utility-tab">Business Customers</span>
+            <span class="utility-tab">About HKS Bank</span>
+        </div>
+        <div class="utility-actions">
+            <a href="/hks-bank-support.html" class="utility-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                <span>Customer Service</span>
+            </a>
+            <button onclick="executeLogout()" class="logout-pill">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Log Out
+            </button>
+        </div>
     </div>
-</header>
+</div>
+
+<!-- ── Main nav ── -->
+<nav class="main-nav">
+    <div class="main-nav-inner">
+        <a href="#" class="brand-mark" onclick="return false;">
+            <span class="brand-badge">H</span>
+            <span class="brand-wordmark">HKS Bank</span>
+        </a>
+        <div class="nav-items">
+            <button class="nav-item-btn" onclick="scrollToSection('accounts-grid')">Accounts</button>
+            <button class="nav-item-btn" onclick="scrollToSection('cards-panel')">Cards</button>
+            <button class="nav-item-btn" onclick="openSendModal()">Send Money</button>
+            <button class="nav-item-btn" onclick="openMoveModal()">Transfer Money</button>
+        </div>
+        <span class="nav-welcome">Welcome, <strong id="user-display">User</strong><span id="admin-indicator" style="display:none;" class="admin-badge">Admin</span><span id="employee-indicator" style="display:none;" class="employee-badge">Employee</span></span>
+    </div>
+</nav>
 
 <main>
-    <div class="news-headline">
-        <h2>Welcome to HKS Bank</h2>
-    </div>
-
-    <!-- Quick actions bar -->
-    <div style="margin-bottom:24px;display:flex;gap:12px;flex-wrap:wrap;">
-        <button onclick="openSendModal()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:#0052cc;color:#fff;border:none;border-radius:8px;font-size:0.97rem;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(0,82,204,0.2);" onmouseover="this.style.background='#003d99'" onmouseout="this.style.background='#0052cc'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            Send Money
-        </button>
-        <button onclick="openMoveModal()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:0.97rem;font-weight:600;cursor:pointer;box-shadow:0 2px 6px rgba(124,58,237,0.2);" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            Transfer Money
-        </button>
+    <div class="hero-panel">
+        <div class="hero-panel-text">
+            <span class="hero-eyebrow">Dashboard</span>
+            <h2>Welcome to HKS Bank</h2>
+            <p>Check your balances, review recent activity, and move money in a few clicks.</p>
+            <div class="hero-panel-actions">
+                <button class="hero-btn-primary" onclick="openSendModal()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    Send Money
+                </button>
+                <button class="hero-btn-secondary" onclick="openMoveModal()">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                    Transfer Money
+                </button>
+            </div>
+        </div>
+        <div class="hero-visual">
+            <svg viewBox="0 0 120 120" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="18" y="34" width="84" height="58" rx="6" stroke-opacity="0.9"/>
+                <line x1="18" y1="50" x2="102" y2="50" stroke-opacity="0.9"/>
+                <circle cx="34" cy="70" r="6" fill="#fff" stroke="none" fill-opacity="0.85"/>
+                <line x1="50" y1="70" x2="86" y2="70" stroke-opacity="0.6"/>
+                <line x1="50" y1="80" x2="74" y2="80" stroke-opacity="0.4"/>
+            </svg>
+        </div>
     </div>
 
     <!-- Accounts grid: primary + any additional accounts -->
+    <h3 class="section-heading" style="border-top:none;padding-top:0;">My Accounts</h3>
     <div class="accounts-grid" id="accounts-grid">
         <!-- Primary account card always rendered first by JS -->
     </div>
 
     <div class="cards-panel" id="cards-panel" style="display:none;">
-        <h3>My Cards</h3>
+        <h3 class="section-heading">My Cards</h3>
         <div class="cards-grid" id="cards-grid">
             <p class="cards-empty">Loading…</p>
         </div>
@@ -567,26 +684,6 @@
     </div>
 </div>
 
-<!-- Support -->
-<button class="support-fab" id="support-fab-btn" onclick="openSupportModal()">💬 Support</button>
-
-<div id="supportModal" class="modal-overlay">
-    <div class="modal-content" style="max-width:460px;">
-        <button class="close-btn" onclick="closeSupportModal()">&times;</button>
-        <div class="modal-title">Contact HKS Bank Support</div>
-        <p style="color:#64748b;font-size:0.9rem;margin-top:-10px;margin-bottom:15px;line-height:1.5;">
-            Describe your issue below. We'll email a confirmation with your case number to the HKMail address linked to your account.
-        </p>
-        <textarea id="support-message" rows="6" placeholder="Describe your issue..."
-            style="width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.95rem;font-family:inherit;resize:vertical;outline:none;"></textarea>
-        <div id="support-status" style="font-size:0.85rem;margin-top:10px;min-height:1.2em;"></div>
-        <div style="display:flex;gap:10px;margin-top:10px;">
-            <button class="tx-btn" onclick="closeSupportModal()" style="flex:1;">Cancel</button>
-            <button class="tx-btn send-btn" onclick="submitSupportRequest()" id="support-send-btn" style="flex:1;">Send</button>
-        </div>
-    </div>
-</div>
-
 <script>
     // ── State ──────────────────────────────────────────────
     let _me = null;
@@ -633,48 +730,9 @@
         return r.json();
     }
 
-    // ── Support ──────────────────────────────────────────────
-    function openSupportModal() {
-        document.getElementById('support-message').value = '';
-        document.getElementById('support-status').innerHTML = '';
-        document.getElementById('supportModal').style.display = 'flex';
-    }
-
-    function closeSupportModal() {
-        document.getElementById('supportModal').style.display = 'none';
-    }
-
-    async function submitSupportRequest() {
-        const msg = document.getElementById('support-message').value.trim();
-        const statusEl = document.getElementById('support-status');
-        const btn = document.getElementById('support-send-btn');
-
-        if (!msg) {
-            statusEl.innerHTML = '<span style="color:#ef4444;">Please describe your issue.</span>';
-            return;
-        }
-
-        btn.disabled = true;
-        btn.innerText = 'Sending…';
-        try {
-            const data = await apiFetch('/api/bank/support', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ message: msg })
-            });
-            if (data.success) {
-                statusEl.innerHTML = `<span style="color:#10b981;">${data.message}</span>`;
-                document.getElementById('support-message').value = '';
-                setTimeout(closeSupportModal, 2500);
-            } else {
-                statusEl.innerHTML = `<span style="color:#ef4444;">${data.message}</span>`;
-            }
-        } catch {
-            statusEl.innerHTML = '<span style="color:#ef4444;">Request failed. Please try again.</span>';
-        } finally {
-            btn.disabled = false;
-            btn.innerText = 'Send';
-        }
+    function scrollToSection(id) {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // ── Accounts grid on main screen ───────────────────────
@@ -892,7 +950,6 @@
 
     document.getElementById('txModal').addEventListener('click', e => { if (e.target.id==='txModal') closeTxModal(); });
     document.getElementById('editUserModal').addEventListener('click', e => { if (e.target.id==='editUserModal') closeEditModal(); });
-    document.getElementById('supportModal').addEventListener('click', e => { if (e.target.id==='supportModal') closeSupportModal(); });
 
     // ── Edit modal: helpers ────────────────────────────────
     function setMsg(id, text, ok) {
