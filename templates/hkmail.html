@@ -381,19 +381,9 @@
 
             <div id="signin-msg" class="msg"></div>
 
-            <div class="field" id="si-email-field">
+            <div class="field">
                 <label for="si-email">Email address</label>
-                <div class="email-wrap">
-                    <input type="text" id="si-email" placeholder="yourname" autocomplete="username">
-                    <span class="email-suffix">@hkmail.cn</span>
-                </div>
-                <div class="field-hint">Business with a custom domain? <a href="#" class="biz-link" style="font-size:inherit;" onclick="toggleCustomDomainSignin(); return false;">Sign in with your full email address</a></div>
-            </div>
-
-            <div class="field" id="si-email-full-field" style="display:none;">
-                <label for="si-email-full">Email address</label>
-                <input type="text" id="si-email-full" placeholder="you@yourcompany.com" autocomplete="username">
-                <div class="field-hint"><a href="#" class="biz-link" style="font-size:inherit;" onclick="toggleCustomDomainSignin(); return false;">Use an @hkmail.cn address instead</a></div>
+                <input type="text" id="si-email" placeholder="yourname@hkmail.cn" autocomplete="username">
             </div>
 
             <div class="field">
@@ -411,7 +401,7 @@
         <!-- ── Register ── -->
         <div class="panel" id="panel-register">
             <h2>Create an account</h2>
-            <p class="sub">Pick your @hkmail.cn address and get started.</p>
+            <p class="sub">Enter your email address and get started.</p>
 
             <div id="register-msg" class="msg"></div>
 
@@ -427,12 +417,8 @@
             </div>
 
             <div class="field">
-                <label for="reg-email">Choose your address</label>
-                <div class="email-wrap">
-                    <input type="text" id="reg-email" placeholder="yourname" autocomplete="off"
-                           oninput="sanitizeUsername(this)">
-                    <span class="email-suffix">@hkmail.cn</span>
-                </div>
+                <label for="reg-email">Email address</label>
+                <input type="text" id="reg-email" placeholder="yourname@hkmail.cn" autocomplete="off">
             </div>
 
             <div class="field">
@@ -491,18 +477,9 @@
             </div>
 
             <div class="field">
-                <label for="biz-domain">Custom email domain <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
-                <input type="text" id="biz-domain" placeholder="yourcompany.com" oninput="updateBizEmailSuffix()">
-                <div class="field-hint">Leave blank to use a normal @hkmail.cn address. Domain ownership isn't verified while HKMail is in preview.</div>
-            </div>
-
-            <div class="field">
-                <label for="biz-email">Choose your address</label>
-                <div class="email-wrap">
-                    <input type="text" id="biz-email" placeholder="yourname" autocomplete="off"
-                           oninput="sanitizeUsername(this)">
-                    <span class="email-suffix" id="biz-email-suffix">@hkmail.cn</span>
-                </div>
+                <label for="biz-email">Work email address</label>
+                <input type="text" id="biz-email" placeholder="yourname@yourcompany.com or yourname@hkmail.cn" autocomplete="off">
+                <div class="field-hint">Use your company's domain if you have one, or a normal @hkmail.cn address. Domain ownership isn't verified while HKMail is in preview.</div>
             </div>
 
             <div class="field">
@@ -556,30 +533,14 @@
             el.className = 'msg ' + type;
         }
 
-        // Allow only valid username chars
-        function sanitizeUsername(input) {
-            input.value = input.value.replace(/[^a-z0-9._\-]/gi, '').toLowerCase();
-        }
-
         // ── Sign In ────────────────────────────────────────────────────────────
-        function toggleCustomDomainSignin() {
-            const usingFull = document.getElementById('si-email-full-field').style.display !== 'none';
-            document.getElementById('si-email-field').style.display = usingFull ? '' : 'none';
-            document.getElementById('si-email-full-field').style.display = usingFull ? 'none' : '';
-            clearMsgs();
-        }
-
         async function doSignIn() {
-            const usingFull = document.getElementById('si-email-full-field').style.display !== 'none';
-            const username  = usingFull
-                ? document.getElementById('si-email-full').value.trim().toLowerCase()
-                : document.getElementById('si-email').value.trim().toLowerCase() + '@hkmail.cn';
-            const password  = document.getElementById('si-password').value;
-            const btn       = document.getElementById('signin-btn');
+            const username = document.getElementById('si-email').value.trim().toLowerCase();
+            const password = document.getElementById('si-password').value;
+            const btn      = document.getElementById('signin-btn');
 
-            if (usingFull && !username.includes('@')) { showMsg('signin-msg', 'Please enter your full email address, e.g. you@yourcompany.com.', 'error'); return; }
-            if (!usingFull && !document.getElementById('si-email').value.trim()) { showMsg('signin-msg', 'Please enter your email address.', 'error'); return; }
-            if (!password)  { showMsg('signin-msg', 'Please enter your password.', 'error'); return; }
+            if (!username) { showMsg('signin-msg', 'Please enter your email address.', 'error'); return; }
+            if (!password) { showMsg('signin-msg', 'Please enter your password.', 'error'); return; }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Signing in…';
@@ -611,19 +572,19 @@
         async function doRegister() {
             const firstName = document.getElementById('reg-first').value.trim();
             const lastName  = document.getElementById('reg-last').value.trim();
-            const emailPart = document.getElementById('reg-email').value.trim().toLowerCase();
+            const username  = document.getElementById('reg-email').value.trim().toLowerCase();
             const password  = document.getElementById('reg-password').value;
             const confirm   = document.getElementById('reg-confirm').value;
             const btn       = document.getElementById('register-btn');
 
             if (!firstName || !lastName) { showMsg('register-msg', 'Please enter your first and last name.', 'error'); return; }
-            if (!emailPart)              { showMsg('register-msg', 'Please choose an email address.', 'error'); return; }
-            if (emailPart.length < 3)    { showMsg('register-msg', 'Address must be at least 3 characters.', 'error'); return; }
+            if (!username)                { showMsg('register-msg', 'Please enter your email address.', 'error'); return; }
+            if (!username.includes('@') || username.indexOf('@') < 1 || username.endsWith('@')) {
+                showMsg('register-msg', 'Please enter a valid email address.', 'error'); return;
+            }
             if (!password)               { showMsg('register-msg', 'Please set a password.', 'error'); return; }
             if (password.length < 8)     { showMsg('register-msg', 'Password must be at least 8 characters.', 'error'); return; }
             if (password !== confirm)    { showMsg('register-msg', 'Passwords do not match.', 'error'); return; }
-
-            const username = emailPart + '@hkmail.cn';
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Creating account…';
@@ -642,7 +603,7 @@
                     btn.disabled = false;
                     // Pre-fill sign-in and switch after a moment
                     setTimeout(() => {
-                        document.getElementById('si-email').value = emailPart;
+                        document.getElementById('si-email').value = username;
                         switchTab('signin');
                         showMsg('signin-msg', `Welcome, ${firstName}! Sign in to continue.`, 'success');
                     }, 1800);
@@ -659,19 +620,13 @@
         }
 
         // ── Business Register ──────────────────────────────────────────────────
-        function updateBizEmailSuffix() {
-            const domain = document.getElementById('biz-domain').value.trim().toLowerCase().replace(/^@/, '');
-            document.getElementById('biz-email-suffix').textContent = '@' + (domain || 'hkmail.cn');
-        }
-
         async function doBusinessRegister() {
             const firstName   = document.getElementById('biz-first').value.trim();
             const lastName    = document.getElementById('biz-last').value.trim();
             const companyName = document.getElementById('biz-company').value.trim();
             const address     = document.getElementById('biz-address').value.trim();
             const phone       = document.getElementById('biz-phone').value.trim();
-            const domain      = document.getElementById('biz-domain').value.trim().toLowerCase().replace(/^@/, '');
-            const emailPart   = document.getElementById('biz-email').value.trim().toLowerCase();
+            const username    = document.getElementById('biz-email').value.trim().toLowerCase();
             const password    = document.getElementById('biz-password').value;
             const confirm     = document.getElementById('biz-confirm').value;
             const btn         = document.getElementById('business-btn');
@@ -680,13 +635,18 @@
             if (!companyName)            { showMsg('business-msg', 'Please enter your company name.', 'error'); return; }
             if (!address)                { showMsg('business-msg', 'Please enter your company address.', 'error'); return; }
             if (!phone)                  { showMsg('business-msg', 'Please enter a contact phone number.', 'error'); return; }
-            if (!emailPart)              { showMsg('business-msg', 'Please choose an email address.', 'error'); return; }
-            if (emailPart.length < 3)    { showMsg('business-msg', 'Address must be at least 3 characters.', 'error'); return; }
+            if (!username)               { showMsg('business-msg', 'Please enter your work email address.', 'error'); return; }
+            if (!username.includes('@') || username.indexOf('@') < 1 || username.endsWith('@')) {
+                showMsg('business-msg', 'Please enter a valid email address.', 'error'); return;
+            }
             if (!password)               { showMsg('business-msg', 'Please set a password.', 'error'); return; }
             if (password.length < 8)     { showMsg('business-msg', 'Password must be at least 8 characters.', 'error'); return; }
             if (password !== confirm)    { showMsg('business-msg', 'Passwords do not match.', 'error'); return; }
 
-            const username = emailPart + '@' + (domain || 'hkmail.cn');
+            // A custom domain is simply whatever comes after the "@" when it
+            // isn't hkmail.cn — no separate field needed, the address says it all.
+            const emailDomain = username.slice(username.indexOf('@') + 1);
+            const domain = emailDomain && emailDomain !== 'hkmail.cn' ? emailDomain : '';
 
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>Submitting…';
@@ -711,13 +671,7 @@
                     btn.textContent = 'Submit for verification';
                     btn.disabled = false;
                     setTimeout(() => {
-                        if (domain) {
-                            document.getElementById('si-email-field').style.display = 'none';
-                            document.getElementById('si-email-full-field').style.display = '';
-                            document.getElementById('si-email-full').value = username;
-                        } else {
-                            document.getElementById('si-email').value = emailPart;
-                        }
+                        document.getElementById('si-email').value = username;
                         switchTab('signin');
                         showMsg('signin-msg', `Welcome, ${firstName}! Sign in to continue — your business account is pending verification.`, 'success');
                     }, 2200);
