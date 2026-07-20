@@ -53,6 +53,8 @@
         /* ── Top Banner (legacy alias, unused but kept for safety) ── */
         .brand { font-size: 1.3rem; font-weight: 700; color: var(--blue); text-decoration: none; }
         .admin-badge { background: #ef4444; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; margin-left: 6px; text-transform: uppercase; }
+        .customer-type-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 10px; border-radius: 12px; background: #eef2f6; color: #64748b; }
+        .customer-type-badge.business { background: #eff6ff; color: #0052cc; }
         .logout-btn { background: transparent; color: #ef4444; border: 1px solid #fca5a5; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
         .logout-btn:hover { background: #ef4444; color: #fff; }
         .customer-service-link { display: flex; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
@@ -287,9 +289,7 @@
 <div class="utility-bar">
     <div class="utility-bar-inner">
         <div class="utility-tabs">
-            <a href="/hks-bank.html" class="utility-tab">Personal Customers</a>
-            <span class="utility-tab">Business Customers</span>
-            <span class="utility-tab">About HKS Bank</span>
+            <span class="utility-tab active" id="customer-type-tab">Personal Customer</span>
         </div>
         <div class="utility-actions">
             <a href="/hks-bank-support.html" class="utility-link">
@@ -374,6 +374,7 @@
                     <th>Username</th>
                     <th>Full Name</th>
                     <th>Role</th>
+                    <th>Customer Type</th>
                     <th>Primary Balance</th>
                     <th>Joined</th>
                     <th>Actions</th>
@@ -700,6 +701,8 @@
             if (!data.loggedIn) { redirect(); return; }
             _me = data.username;
             document.getElementById('user-display').innerText = data.fullName || data.username;
+            document.getElementById('customer-type-tab').innerText =
+                data.customerType === 'business' ? 'Business Customer' : 'Personal Customer';
 
             // Render accounts grid (primary first, then additional)
             await renderAccountsGrid(data.balance);
@@ -890,6 +893,7 @@
                     <td><strong>${u.username}</strong></td>
                     <td>${u.full_name || '—'}</td>
                     <td><span id="role-lbl-${u.username}">${u.is_admin ? 'Admin' : u.is_employee ? 'Employee' : 'User'}</span></td>
+                    <td><span class="customer-type-badge ${u.customer_type}">${u.customer_type === 'business' ? 'Business' : 'Personal'}</span></td>
                     <td id="bal-lbl-${u.username}">$${fmt(u.balance)}</td>
                     <td>${formatCaseDate(u.created_at)}</td>
                     <td><button class="edit-user-btn" onclick="openEditModal('${u.username}', ${u.is_admin}, ${u.is_employee})">Edit</button></td>`;

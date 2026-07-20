@@ -26,7 +26,7 @@
     .utility-bar { background: var(--panel); border-bottom: 1px solid var(--border); font-size: 0.82rem; }
     .utility-bar-inner { max-width: 1400px; margin: 0 auto; padding: 0 30px; display: flex; align-items: center; justify-content: space-between; }
     .utility-tabs { display: flex; }
-    .utility-tab { padding: 14px 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--muted); text-decoration: none; border-top: 3px solid transparent; cursor: pointer; }
+    .utility-tab { padding: 14px 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--muted); text-decoration: none; border: none; border-top: 3px solid transparent; cursor: pointer; background: none; font-size: 0.82rem; font-family: inherit; }
     .utility-tab.active { color: var(--navy); border-top-color: var(--blue); background: #fff; }
     .utility-tab:not(.active):hover { color: var(--navy); }
     .utility-actions { display: flex; align-items: center; gap: 22px; }
@@ -144,8 +144,8 @@
 <div class="utility-bar">
     <div class="utility-bar-inner">
         <div class="utility-tabs">
-            <span class="utility-tab active">Personal Customers</span>
-            <span class="utility-tab">Business Customers</span>
+            <button class="utility-tab active" id="tab-personal" onclick="setCustomerContext('personal')">Personal Customers</button>
+            <button class="utility-tab" id="tab-business" onclick="setCustomerContext('business')">Business Customers</button>
             <span class="utility-tab">About HKS Bank</span>
         </div>
         <div class="utility-actions">
@@ -321,7 +321,11 @@
 <div id="registerModal" class="modal-overlay">
     <div class="modal-content">
         <span class="close-btn" onclick="closeRegisterModal()">&times;</span>
-        <h2>Register</h2>
+        <h2 id="reg-modal-title">Register</h2>
+        <p id="reg-context-note" style="display:none;font-size:0.85rem;color:#64748b;margin-top:-18px;margin-bottom:20px;">
+            Registering as a <strong>business customer</strong>. Not a business?
+            <a href="#" onclick="setCustomerContext('personal'); return false;" style="color:var(--blue);font-weight:600;">Switch to personal &rarr;</a>
+        </p>
         <div class="input-group">
             <label for="reg-firstname">First Name</label>
             <input type="text" id="reg-firstname" placeholder="First name">
@@ -339,7 +343,7 @@
             <input type="password" id="reg-password" placeholder="New password">
         </div>
         <div class="input-group">
-            <label for="reg-email">HKMail Address</label>
+            <label for="reg-email" id="reg-email-label">HKMail Address</label>
             <input type="text" id="reg-email" placeholder="you@hkmail.cn" onblur="checkHkmailAddress()">
             <p id="reg-email-hint" style="font-size:0.8rem;color:#64748b;margin-top:5px;">A sign-up code will be emailed to this address.</p>
         </div>
@@ -347,6 +351,10 @@
         <p id="reg-needs-hkmail" style="display:none;font-size:0.85rem;margin-top:-10px;margin-bottom:15px;">
             No HKMail account found for this address.
             <a href="/hkmail.html" target="_blank" style="color:#0052cc;font-weight:600;">Create one on HKMail &rarr;</a>
+        </p>
+        <p id="reg-needs-business-hkmail" style="display:none;font-size:0.85rem;margin-top:-10px;margin-bottom:15px;color:#b45309;">
+            That HKMail address is a personal account. Business customers need a business HKMail address.
+            <a href="/hkmail.html" target="_blank" style="color:#0052cc;font-weight:600;">Register a business account on HKMail &rarr;</a>
         </p>
         <button onclick="registerAccount()" class="primary-btn">Create Account</button>
     </div>
@@ -380,6 +388,27 @@
     const regError = document.getElementById('reg-error');
     const confirmError = document.getElementById('confirm-error');
 
+    // ── Customer context (Personal / Business) ──────────────
+    let customerContext = 'personal';
+
+    function setCustomerContext(type) {
+        customerContext = (type === 'business') ? 'business' : 'personal';
+        document.getElementById('tab-personal').classList.toggle('active', customerContext === 'personal');
+        document.getElementById('tab-business').classList.toggle('active', customerContext === 'business');
+        applyRegisterContext();
+    }
+
+    function applyRegisterContext() {
+        const isBusiness = customerContext === 'business';
+        document.getElementById('reg-modal-title').innerText = isBusiness ? 'Register a Business Account' : 'Register';
+        document.getElementById('reg-context-note').style.display = isBusiness ? 'block' : 'none';
+        document.getElementById('reg-email-label').innerText = isBusiness ? 'Business HKMail Address' : 'HKMail Address';
+        document.getElementById('reg-email').placeholder = isBusiness ? 'you@yourcompany.com or you@hkmail.cn' : 'you@hkmail.cn';
+        document.getElementById('reg-needs-business-hkmail').style.display = 'none';
+        // Re-validate whatever's already in the email field against the new context.
+        if (document.getElementById('reg-email').value.trim()) checkHkmailAddress();
+    }
+
     // ── Modal open/close ──────────────────────────────────
     function openLoginModal() {
         loginModal.style.display = 'flex';
@@ -394,9 +423,11 @@
         registerModal.style.display = 'flex';
         regError.style.display = 'none';
         document.getElementById('reg-needs-hkmail').style.display = 'none';
+        document.getElementById('reg-needs-business-hkmail').style.display = 'none';
         document.getElementById('reg-email-hint').innerText = 'A sign-up code will be emailed to this address.';
         document.getElementById('reg-email-hint').style.color = '#64748b';
         hkmailAddressConfirmed = false;
+        applyRegisterContext();
     }
 
     function closeRegisterModal() {
@@ -414,8 +445,10 @@
     async function checkHkmailAddress() {
         const hint = document.getElementById('reg-email-hint');
         const needsHkmail = document.getElementById('reg-needs-hkmail');
+        const needsBusinessHkmail = document.getElementById('reg-needs-business-hkmail');
         let email = document.getElementById('reg-email').value.trim().toLowerCase();
         needsHkmail.style.display = 'none';
+        needsBusinessHkmail.style.display = 'none';
 
         if (!email) return;
         if (!email.includes('@')) email = email + '@hkmail.cn';
@@ -425,6 +458,14 @@
             const data = await response.json();
 
             if (data.success && data.exists) {
+                if (customerContext === 'business' && data.accountType !== 'business') {
+                    // Exists, but it's a personal HKMail address — doesn't qualify for a business signup.
+                    hkmailAddressConfirmed = false;
+                    hint.innerText = "A sign-up code will be emailed to this address.";
+                    hint.style.color = '#64748b';
+                    needsBusinessHkmail.style.display = 'block';
+                    return;
+                }
                 hkmailAddressConfirmed = true;
                 hint.innerText = `Sign-up code will be sent to ${data.email}.`;
                 hint.style.color = '#10b981';
@@ -449,8 +490,10 @@
         const pass = document.getElementById('reg-password').value.trim();
         const email = document.getElementById('reg-email').value.trim();
         const needsHkmail = document.getElementById('reg-needs-hkmail');
+        const needsBusinessHkmail = document.getElementById('reg-needs-business-hkmail');
 
         needsHkmail.style.display = 'none';
+        needsBusinessHkmail.style.display = 'none';
 
         if (!firstName || !lastName || !user || !pass || !email) {
             regError.innerText = "Please fill out all fields.";
@@ -462,7 +505,7 @@
             const response = await fetch('/api/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ first_name: firstName, last_name: lastName, username: user, password: pass, email: email })
+                body: JSON.stringify({ first_name: firstName, last_name: lastName, username: user, password: pass, email: email, customer_type: customerContext })
             });
 
             const data = await response.json();
