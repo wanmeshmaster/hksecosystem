@@ -184,7 +184,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 16px;
-            padding: 14px 22px;
+            padding: 6px 18px;
             background: var(--glass-bg);
             backdrop-filter: blur(18px) saturate(140%);
             -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -196,38 +196,26 @@
 
         .topbar-left {
             display: flex;
-            align-items: baseline;
-            gap: 10px;
+            align-items: center;
             min-width: 0;
         }
 
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 9px;
+        .topbar-logo {
+            display: block;
+            height: 19px;
+            width: auto;
+            max-width: 140px;
+            object-fit: contain;
         }
 
-        .brand-dot {
+        .topbar-logo-fallback {
+            display: none;
             width: 9px;
             height: 9px;
             border-radius: 50%;
             background: var(--accent);
             box-shadow: 0 0 0 3px rgba(38, 201, 171, 0.18);
             flex-shrink: 0;
-        }
-
-        .brand-name {
-            font-size: 0.98rem;
-            font-weight: 700;
-            letter-spacing: -0.01em;
-            white-space: nowrap;
-        }
-
-        .brand-version {
-            font-size: 0.72rem;
-            color: var(--text-tertiary);
-            font-weight: 600;
-            letter-spacing: 0.02em;
         }
 
         .topbar-right {
@@ -237,7 +225,7 @@
         }
 
         .clock {
-            font-size: 0.82rem;
+            font-size: 0.72rem;
             color: var(--text-secondary);
             font-weight: 600;
             letter-spacing: 0.01em;
@@ -248,17 +236,17 @@
         .tray {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 3px;
         }
 
         .tray-btn {
             position: relative;
-            width: 34px;
-            height: 34px;
+            width: 26px;
+            height: 26px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 10px;
+            border-radius: 8px;
             border: 1px solid transparent;
             background: transparent;
             color: var(--text-secondary);
@@ -272,14 +260,14 @@
             color: var(--text-primary);
         }
 
-        .tray-btn svg { width: 17px; height: 17px; }
+        .tray-btn svg { width: 14px; height: 14px; }
 
         .tray-dot {
             position: absolute;
-            top: 6px;
-            right: 6px;
-            width: 7px;
-            height: 7px;
+            top: 4px;
+            right: 4px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
             background: var(--accent-amber);
             border: 1.5px solid rgba(13, 18, 24, 0.9);
@@ -382,22 +370,6 @@
             flex-direction: column;
             align-items: center;
             gap: 46px;
-        }
-
-        .hero-logo {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            max-width: 320px;
-        }
-
-        .hero-logo-img {
-            display: block;
-            width: auto;
-            height: auto;
-            max-width: 100%;
-            max-height: 92px;
         }
 
         /* ── Widget ──────────────────────────────────────────────────── */
@@ -621,6 +593,29 @@
             font-weight: 800;
         }
 
+        .modal-links {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 20px;
+            padding-bottom: 18px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .modal-link {
+            display: block;
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: var(--accent);
+            padding: 9px 10px;
+            border-radius: 10px;
+            transition: background 0.15s ease;
+        }
+
+        .modal-link:hover {
+            background: rgba(255, 255, 255, 0.07);
+        }
+
         .role-group { margin-bottom: 18px; }
 
         .role-group h3 {
@@ -656,14 +651,23 @@
             font-weight: 600;
         }
 
+        .modal-version {
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--glass-border);
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: var(--text-tertiary);
+        }
+
         /* ── Responsive ──────────────────────────────────────────────── */
 
         @media (max-width: 560px) {
-            .topbar { padding: 12px 16px; }
-            .brand-version { display: none; }
-            .clock { font-size: 0.76rem; }
+            .topbar { padding: 5px 14px; }
+            .clock { font-size: 0.68rem; }
             .desktop { padding: 32px 16px 60px; gap: 36px; }
-            .hero-logo-img { max-height: 68px; }
+            .topbar-logo { height: 18px; }
             .icon-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 24px 12px; }
             .icon-tile { width: 72px; height: 72px; border-radius: 18px; }
             .panel { right: 12px; left: 12px; width: auto; }
@@ -729,11 +733,8 @@
 
     <header class="topbar">
         <div class="topbar-left">
-            <div class="brand">
-                <span class="brand-dot"></span>
-                <span class="brand-name font-display">Hong Kong Solutions</span>
-            </div>
-            <span class="brand-version">v0.7.2</span>
+            <img src="/source/logo.png" alt="Hong Kong Solutions" class="topbar-logo" id="topbarLogo">
+            <span class="topbar-logo-fallback" id="topbarBrandFallback"></span>
         </div>
 
         <div class="topbar-right">
@@ -784,10 +785,6 @@
     </div>
 
     <main class="desktop">
-        <div class="hero-logo">
-            <img src="/source/logo.png" alt="Hong Kong Solutions" class="hero-logo-img">
-        </div>
-
         <section class="widget" id="fundWidget" aria-label="Ecosystem fund progress">
             <div class="widget-header">
                 <span class="widget-title font-display">Ecosystem Fund</span>
@@ -829,6 +826,11 @@
             <span id="closeCreditsBtn" class="close-btn">&times;</span>
             <h2 class="font-display">Project Credits</h2>
 
+            <div class="modal-links">
+                <a href="/about-us.html" class="modal-link">About Us</a>
+                <a href="/terms.html" class="modal-link">Terms &amp; Conditions</a>
+            </div>
+
             <div class="role-group">
                 <h3>Project Manager</h3>
 
@@ -857,10 +859,24 @@
                     <span class="credit-name">James Sterling (Plantcode Ltd.)</span>
                 </div>
             </div>
+
+            <div class="modal-version">v0.7.3</div>
         </div>
     </div>
 
     <script>
+        // ── Topbar logo fallback ────────────────────────────────────
+        // Mirrors the boot screen's fallback: if no logo has been placed
+        // at /source/logo.png yet, fall back to the dot + wordmark.
+        (function () {
+            var topbarLogo = document.getElementById("topbarLogo");
+            var fallback = document.getElementById("topbarBrandFallback");
+            topbarLogo.onerror = function () {
+                topbarLogo.style.display = "none";
+                fallback.style.display = "block";
+            };
+        })();
+
         // ── Credits modal ────────────────────────────────────────────
         const modal = document.getElementById("creditsModal");
         const creditsBtn = document.getElementById("openCreditsBtn");

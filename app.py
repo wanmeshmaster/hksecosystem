@@ -538,6 +538,14 @@ def bank_checkout():
 def bank_support_page():
     return render_template('hks-bank-support.html')
 
+@app.route('/about-us.html')
+def about_us():
+    return render_template('about-us.html')
+
+@app.route('/terms.html')
+def os_terms():
+    return render_template('terms.html')
+
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
