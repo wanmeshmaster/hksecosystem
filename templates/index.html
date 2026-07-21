@@ -4,20 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hong Kong Solutions Ecosystem</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* Base Reset & Typography */
+        :root {
+            --ink: #070b10;
+            --glass-bg: rgba(15, 21, 28, 0.55);
+            --glass-bg-strong: rgba(13, 18, 24, 0.78);
+            --glass-border: rgba(255, 255, 255, 0.14);
+            --text-primary: #f2f6f9;
+            --text-secondary: #a8b4c0;
+            --text-tertiary: #77828d;
+            --accent: #26c9ab;
+            --accent-strong: #1aa88f;
+            --accent-amber: #e3b24d;
+            --radius-lg: 22px;
+            --radius-md: 14px;
+            --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+        }
+
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .font-display {
+            font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        html, body {
+            height: 100%;
         }
 
         body {
             display: flex;
             flex-direction: column;
             min-height: 100vh;
-            color: #333;
+            color: var(--text-primary);
 
             background-image: url('/source/main_bg.png');
             background-size: cover;
@@ -26,241 +55,610 @@
             background-attachment: fixed;
 
             position: relative;
+            overflow-x: hidden;
         }
 
         body::before {
             content: "";
             position: fixed;
             inset: 0;
-            background: rgba(255, 255, 255, 0.1);
+            background:
+                radial-gradient(1100px 560px at 15% -10%, rgba(38, 201, 171, 0.14), transparent 60%),
+                linear-gradient(180deg, rgba(5, 9, 13, 0.66) 0%, rgba(5, 9, 13, 0.4) 42%, rgba(5, 9, 13, 0.7) 100%);
             z-index: -1;
         }
 
-        header {
-            padding: 40px 20px;
-            text-align: center;
+        a { color: inherit; text-decoration: none; }
+        button { font-family: inherit; }
+
+        /* ── Top status bar ─────────────────────────────────────────── */
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 14px 22px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            border-bottom: 1px solid var(--glass-border);
+            position: sticky;
+            top: 0;
+            z-index: 200;
         }
 
-        header h1 {
-            font-size: 2rem;
+        .topbar-left {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .brand-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 0 3px rgba(38, 201, 171, 0.18);
+            flex-shrink: 0;
+        }
+
+        .brand-name {
+            font-size: 0.98rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            white-space: nowrap;
+        }
+
+        .brand-version {
+            font-size: 0.72rem;
+            color: var(--text-tertiary);
             font-weight: 600;
-            color: #ffffff;
-            letter-spacing: -0.5px;
+            letter-spacing: 0.02em;
         }
 
-        main {
-            flex: 1;
+        .topbar-right {
             display: flex;
-            align-content: flex-start;
-            justify-content: center;
-            padding: 40px 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-            width: 100%;
+            align-items: center;
+            gap: 14px;
         }
 
-        .app-grid {
+        .clock {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .tray {
             display: flex;
-            flex-wrap: wrap;
-            gap: 30px;
-            width: 100%;
-            justify-content: flex-start;
+            align-items: center;
+            gap: 6px;
         }
 
-        .app-slot {
+        .tray-btn {
+            position: relative;
+            width: 34px;
+            height: 34px;
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 280px;
-            height: 140px;
-            background-color: #ffffff;
-            border: 2px dashed #cbd5e1;
-            border-radius: 12px;
-            text-decoration: none;
-            color: #64748b;
-            font-size: 1.1rem;
-            font-weight: 500;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-            position: relative;
-            overflow: hidden;
-            text-align: center;
-            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         }
 
-        .app-slot:hover {
-            border-color: #3b82f6;
-            color: #3b82f6;
-            background-color: #fdfefe;
-            transform: translateY(-4px);
-            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.05);
+        .tray-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--glass-border);
+            color: var(--text-primary);
         }
 
-        /* Styling modifier for when a background image is present */
-        .app-slot.has-bg {
-            border: none;
-            color: #ffffff;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        .tray-btn svg { width: 17px; height: 17px; }
+
+        .tray-dot {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent-amber);
+            border: 1.5px solid rgba(13, 18, 24, 0.9);
         }
 
-        .app-slot.has-bg:hover {
-            color: #ffffff;
-            border: none;
-            box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
-        }
+        /* ── Floating panels (notifications) ────────────────────────── */
 
-        footer {
-            padding: 20px;
-            text-align: center;
-            color: #94a3b8;
-            font-size: 0.9rem;
-            font-weight: 500;
-            letter-spacing: 1px;
-        }
-
-        .credits-btn {
+        .panel {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-            color: #64748b;
-            padding: 8px 16px;
-            border-radius: 50px;
+            top: 62px;
+            right: 22px;
+            width: 300px;
+            background: var(--glass-bg-strong);
+            backdrop-filter: blur(20px) saturate(150%);
+            -webkit-backdrop-filter: blur(20px) saturate(150%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-soft);
+            z-index: 210;
+            overflow: hidden;
+            animation: panel-in 0.16s ease;
+        }
+
+        .panel[hidden] { display: none; }
+
+        @keyframes panel-in {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .panel-header {
+            padding: 13px 16px 10px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-tertiary);
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .notif-item {
+            display: flex;
+            gap: 11px;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .notif-item:last-of-type { border-bottom: none; }
+
+        .notif-icon {
+            width: 30px;
+            height: 30px;
+            flex-shrink: 0;
+            border-radius: 9px;
+            background: rgba(38, 201, 171, 0.16);
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notif-icon svg { width: 15px; height: 15px; }
+
+        .notif-title {
             font-size: 0.85rem;
             font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            transition: all 0.2s ease;
-            z-index: 100;
+            margin-bottom: 2px;
         }
 
-        .credits-btn:hover {
-            background-color: #f8fafc;
-            color: #3b82f6;
-            border-color: #cbd5e1;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        .notif-body {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
         }
+
+        .panel-footer-hint {
+            padding: 10px 16px 14px;
+            font-size: 0.74rem;
+            color: var(--text-tertiary);
+            text-align: center;
+        }
+
+        /* ── Desktop ─────────────────────────────────────────────────── */
+
+        .desktop {
+            flex: 1;
+            width: 100%;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 44px 24px 70px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 46px;
+        }
+
+        .hero-copy {
+            text-align: center;
+            max-width: 560px;
+        }
+
+        .hero-copy h1 {
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+
+        .hero-copy p {
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* ── Widget ──────────────────────────────────────────────────── */
+
+        .widget {
+            width: 100%;
+            max-width: 420px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 20px 22px 22px;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .widget-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+
+        .widget-title {
+            font-size: 0.92rem;
+            font-weight: 700;
+        }
+
+        .widget-sub {
+            font-size: 0.72rem;
+            color: var(--text-tertiary);
+        }
+
+        .fund-amounts {
+            display: flex;
+            align-items: baseline;
+            gap: 7px;
+            margin-bottom: 10px;
+        }
+
+        #fundCurrent {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+        }
+
+        .fund-goal {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+
+        .fund-bar-track {
+            width: 100%;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+
+        .fund-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-strong), var(--accent));
+            transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .widget-note {
+            margin-top: 10px;
+            font-size: 0.72rem;
+            color: var(--text-tertiary);
+        }
+
+        /* ── Icon grid ───────────────────────────────────────────────── */
+
+        .icon-grid {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+            gap: 30px 18px;
+            justify-items: center;
+        }
+
+        .app-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 9px;
+            width: 100%;
+            max-width: 118px;
+            padding: 4px;
+            border-radius: 16px;
+        }
+
+        .app-icon:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 4px;
+        }
+
+        .icon-tile {
+            width: 84px;
+            height: 84px;
+            border-radius: 21px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-size: cover;
+            background-position: center;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35), 0 2px 5px rgba(0, 0, 0, 0.25);
+            transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease;
+        }
+
+        .app-icon:hover .icon-tile,
+        .app-icon:focus-visible .icon-tile {
+            transform: translateY(-5px) scale(1.045);
+            box-shadow: 0 18px 30px rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.28);
+        }
+
+        .icon-tile:not([style*="background-image"]) {
+            background: linear-gradient(150deg, #1c8f7c, #123a37);
+        }
+
+        .app-icon:nth-of-type(3n+2) .icon-tile:not([style*="background-image"]) {
+            background: linear-gradient(150deg, #2b6f9c, #10222f);
+        }
+
+        .app-icon:nth-of-type(3n+3) .icon-tile:not([style*="background-image"]) {
+            background: linear-gradient(150deg, #a9772f, #2c2013);
+        }
+
+        .icon-glyph {
+            font-family: "Manrope", sans-serif;
+            font-size: 1.7rem;
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.92);
+        }
+
+        .icon-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+            line-height: 1.25;
+        }
+
+        /* Placeholder / future-app tiles */
+
+        .app-icon--placeholder {
+            cursor: default;
+        }
+
+        .icon-tile--placeholder {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border: 1.5px dashed rgba(255, 255, 255, 0.22);
+            box-shadow: none;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .app-icon--placeholder:hover .icon-tile--placeholder {
+            transform: none;
+            border-color: rgba(255, 255, 255, 0.34);
+            background: rgba(255, 255, 255, 0.06) !important;
+        }
+
+        .icon-tile--placeholder svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .app-icon--placeholder .icon-label {
+            color: var(--text-tertiary);
+            text-shadow: none;
+        }
+
+        /* ── Credits modal ───────────────────────────────────────────── */
 
         .modal-overlay {
-            display: none; /* Hidden by default */
+            display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.4);
+            inset: 0;
+            background-color: rgba(4, 6, 9, 0.55);
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            backdrop-filter: blur(2px);
+            backdrop-filter: blur(3px);
         }
 
         .modal-content {
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 12px;
+            background: var(--glass-bg-strong);
+            backdrop-filter: blur(22px) saturate(150%);
+            -webkit-backdrop-filter: blur(22px) saturate(150%);
+            border: 1px solid var(--glass-border);
+            padding: 36px;
+            border-radius: var(--radius-lg);
             width: 90%;
             max-width: 400px;
             position: relative;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            box-shadow: var(--shadow-soft);
             text-align: center;
+            color: var(--text-primary);
         }
 
         .close-btn {
             position: absolute;
-            top: 15px;
-            right: 20px;
-            font-size: 1.5rem;
-            color: #94a3b8;
+            top: 14px;
+            right: 18px;
+            font-size: 1.4rem;
+            color: var(--text-tertiary);
             cursor: pointer;
             transition: color 0.2s;
+            line-height: 1;
         }
 
-        .close-btn:hover {
-            color: #ef4444;
-        }
+        .close-btn:hover { color: #ef4444; }
 
         .modal-content h2 {
-            margin-bottom: 25px;
-            color: #1a1a1a;
-            font-size: 1.5rem;
+            margin-bottom: 24px;
+            font-size: 1.3rem;
+            font-weight: 800;
         }
 
-        .role-group {
-            margin-bottom: 20px;
-        }
+        .role-group { margin-bottom: 18px; }
 
         .role-group h3 {
-            font-size: 0.9rem;
+            font-size: 0.72rem;
             text-transform: uppercase;
-            color: #64748b;
-            letter-spacing: 1px;
-            margin-bottom: 5px;
+            color: var(--text-tertiary);
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+            font-weight: 700;
         }
 
-        .role-group p {
-            font-size: 1.1rem;
-            color: #333;
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
         .credit-person {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 12px;
-            margin: 10px 0;
+            margin: 8px 0;
         }
 
         .credit-avatar {
-            width: 40px;
-            height: 40px;
-            min-width: 40px;
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #e2e8f0;
+            border: 2px solid var(--glass-border);
             display: block;
         }
 
         .credit-name {
-            font-size: 1rem;
-            color: #333;
-            font-weight: 500;
+            font-size: 0.94rem;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* ── Responsive ──────────────────────────────────────────────── */
+
+        @media (max-width: 560px) {
+            .topbar { padding: 12px 16px; }
+            .brand-version { display: none; }
+            .clock { font-size: 0.76rem; }
+            .desktop { padding: 32px 16px 60px; gap: 36px; }
+            .hero-copy h1 { font-size: 1.4rem; }
+            .icon-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 24px 12px; }
+            .icon-tile { width: 72px; height: 72px; border-radius: 18px; }
+            .panel { right: 12px; left: 12px; width: auto; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                transition-duration: 0.001ms !important;
+            }
         }
     </style>
 </head>
 <body>
 
-    <header>
-        <h1>Hong Kong Solutions Ecosystem</h1>
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="brand">
+                <span class="brand-dot"></span>
+                <span class="brand-name font-display">Hong Kong Solutions</span>
+            </div>
+            <span class="brand-version">v0.7.0</span>
+        </div>
+
+        <div class="topbar-right">
+            <time id="clock" class="clock"></time>
+            <div class="tray">
+                <button id="notifBtn" class="tray-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="notifPanel" title="Notifications">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+                    <span class="tray-dot" id="notifDot"></span>
+                </button>
+                <button id="openCreditsBtn" class="tray-btn" type="button" title="About this ecosystem">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></svg>
+                </button>
+            </div>
+        </div>
     </header>
 
-    <main>
-        <div class="app-grid">
+    <div id="notifPanel" class="panel" hidden role="menu" aria-label="Notifications">
+        <div class="panel-header">Notifications</div>
+        <div class="notif-item">
+            <span class="notif-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </span>
+            <div>
+                <div class="notif-title">Welcome to the Ecosystem</div>
+                <div class="notif-body">HKS Bank and HKMail are live. More apps are on the way.</div>
+            </div>
+        </div>
+        <div class="notif-item">
+            <span class="notif-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M4.9 4.9l4.2 4.2M14.9 14.9l4.2 4.2M2 12h6M16 12h6M4.9 19.1l4.2-4.2M14.9 9.1l4.2-4.2"/></svg>
+            </span>
+            <div>
+                <div class="notif-title">Building toward launch</div>
+                <div class="notif-body">Track the community fund below — every app here helps it grow.</div>
+            </div>
+        </div>
+        <div class="panel-footer-hint">You're all caught up</div>
+    </div>
+
+    <main class="desktop">
+        <div class="hero-copy">
+            <h1 class="font-display">Your desktop for Hong Kong services</h1>
+            <p>Open an app below to get started. This ecosystem is designed to grow — new apps, widgets, and tools will appear here over time.</p>
+        </div>
+
+        <section class="widget" id="fundWidget" aria-label="Ecosystem fund progress">
+            <div class="widget-header">
+                <span class="widget-title font-display">Ecosystem Fund</span>
+                <span class="widget-sub">Community contributions</span>
+            </div>
+            <div class="fund-amounts">
+                <span id="fundCurrent">$0</span>
+                <span class="fund-goal">of $<span id="fundGoal">5,000</span> goal</span>
+            </div>
+            <div class="fund-bar-track">
+                <div class="fund-bar-fill" id="fundBarFill"></div>
+            </div>
+            <div class="widget-note" id="fundNote">Loading fund status…</div>
+        </section>
+
+        <section class="icon-grid" aria-label="Applications">
             {% for app in apps %}
-                <a href="{{ app.url }}" 
-                   class="app-slot {% if app.bg_image %}has-bg{% endif %}" 
-                   title="{{ app.title }}"
-                   {% if app.bg_image %}
-                   style="background-image: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.6)), url('/source/{{ app.bg_image }}'); background-size: cover; background-position: center;"
-                   {% endif %}>
-                    {{ app.title }}
+                {% set display_name = app.title or (app.id.replace('-', ' ') | title) %}
+                <a href="{{ app.url }}" class="app-icon" title="{{ display_name }}" aria-label="Open {{ display_name }}">
+                    <span class="icon-tile" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
+                        {% if not app.bg_image %}<span class="icon-glyph">{{ display_name[0] | upper }}</span>{% endif %}
+                    </span>
+                    <span class="icon-label">{{ display_name }}</span>
                 </a>
             {% endfor %}
-        </div>
+            {% for i in range(5) %}
+                <div class="app-icon app-icon--placeholder" aria-hidden="true">
+                    <span class="icon-tile icon-tile--placeholder">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    </span>
+                    <span class="icon-label">Coming Soon</span>
+                </div>
+            {% endfor %}
+        </section>
     </main>
-
-    <footer>
-        v0.6.1
-    </footer>
-
-    <button id="openCreditsBtn" class="credits-btn">Credits</button>
 
     <div id="creditsModal" class="modal-overlay">
         <div class="modal-content">
             <span id="closeCreditsBtn" class="close-btn">&times;</span>
-            <h2>Project Credits</h2>
+            <h2 class="font-display">Project Credits</h2>
 
             <div class="role-group">
                 <h3>Project Manager</h3>
@@ -294,26 +692,85 @@
     </div>
 
     <script>
+        // ── Credits modal ────────────────────────────────────────────
         const modal = document.getElementById("creditsModal");
-        const btn = document.getElementById("openCreditsBtn");
-        const span = document.getElementById("closeCreditsBtn");
+        const creditsBtn = document.getElementById("openCreditsBtn");
+        const closeCreditsBtn = document.getElementById("closeCreditsBtn");
 
-        // Open modal when button is clicked
-        btn.onclick = function() {
+        creditsBtn.onclick = function () {
             modal.style.display = "flex";
-        }
-
-        // Close modal when 'x' is clicked
-        span.onclick = function() {
+        };
+        closeCreditsBtn.onclick = function () {
             modal.style.display = "none";
-        }
+        };
 
-        // Close modal when clicking anywhere outside of the white box
-        window.onclick = function(event) {
+        // ── Notifications panel ─────────────────────────────────────
+        const notifBtn = document.getElementById("notifBtn");
+        const notifPanel = document.getElementById("notifPanel");
+        const notifDot = document.getElementById("notifDot");
+
+        notifBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            const isHidden = notifPanel.hasAttribute("hidden");
+            if (isHidden) {
+                notifPanel.removeAttribute("hidden");
+                notifBtn.setAttribute("aria-expanded", "true");
+                notifDot.style.display = "none";
+            } else {
+                notifPanel.setAttribute("hidden", "");
+                notifBtn.setAttribute("aria-expanded", "false");
+            }
+        });
+
+        window.addEventListener("click", function (event) {
             if (event.target === modal) {
                 modal.style.display = "none";
             }
+            if (!notifPanel.hasAttribute("hidden") &&
+                !notifPanel.contains(event.target) &&
+                event.target !== notifBtn && !notifBtn.contains(event.target)) {
+                notifPanel.setAttribute("hidden", "");
+                notifBtn.setAttribute("aria-expanded", "false");
+            }
+        });
+
+        // ── Clock ────────────────────────────────────────────────────
+        function updateClock() {
+            const el = document.getElementById("clock");
+            const now = new Date();
+            const datePart = now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+            const timePart = now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+            el.textContent = `${datePart} · ${timePart}`;
         }
+        updateClock();
+        setInterval(updateClock, 15000);
+
+        // ── Ecosystem Fund widget ──────────────────────────────────────
+        function formatUSD(n) {
+            return "$" + Math.round(n).toLocaleString();
+        }
+
+        fetch("/api/contribution-status")
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data || !data.success) throw new Error("bad payload");
+                const total = data.total || 0;
+                const goal = data.goal || 5000;
+                const pct = Math.max(0, Math.min(100, (total / goal) * 100));
+
+                document.getElementById("fundCurrent").textContent = formatUSD(total);
+                document.getElementById("fundGoal").textContent = Math.round(goal).toLocaleString();
+                document.getElementById("fundBarFill").style.width = pct.toFixed(1) + "%";
+
+                const note = document.getElementById("fundNote");
+                note.textContent = pct >= 100
+                    ? "Goal reached — thank you!"
+                    : pct.toFixed(0) + "% of the way to launch funding.";
+            })
+            .catch(function () {
+                const widget = document.getElementById("fundWidget");
+                if (widget) widget.style.display = "none";
+            });
     </script>
 
 </body>
