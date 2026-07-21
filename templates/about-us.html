@@ -140,18 +140,131 @@
             font-size: 0.92rem;
             line-height: 1.65;
             color: var(--text-secondary);
-            margin-bottom: 6px;
+            margin-bottom: 16px;
         }
 
-        .placeholder-note {
-            font-size: 0.78rem;
+        /* ── Team Hierarchy Layout Styles ────────────────────────────── */
+
+        .team-hierarchy {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px 0 28px;
+        }
+
+        .team-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .team-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.22);
+        }
+
+        .team-card--lead {
+            width: 100%;
+            max-width: 460px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            position: relative;
+            border-color: rgba(38, 201, 171, 0.35);
+            background: rgba(38, 201, 171, 0.05);
+        }
+
+        .role-badge {
+            position: absolute;
+            top: 12px;
+            right: 14px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            background: rgba(38, 201, 171, 0.12);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(38, 201, 171, 0.25);
+        }
+
+        .hierarchy-connector {
+            width: 2px;
+            height: 24px;
+            background: linear-gradient(180deg, var(--accent) 0%, var(--glass-border) 100%);
+            opacity: 0.7;
+        }
+
+        .team-reports {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+            width: 100%;
+        }
+
+        .team-reports .team-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+
+        .team-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--glass-border);
+            flex-shrink: 0;
+        }
+
+        .team-avatar--lead {
+            width: 58px;
+            height: 58px;
+            border-color: var(--accent);
+        }
+
+        .team-info h3 {
+            font-size: 0.98rem;
+            font-weight: 700;
+            margin-bottom: 2px;
+            color: var(--text-primary);
+        }
+
+        .role-title {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 2px;
+        }
+
+        .team-card--lead .role-title {
+            color: var(--text-secondary);
+        }
+
+        .team-note {
+            font-size: 0.76rem;
             color: var(--text-tertiary);
+            line-height: 1.35;
+            margin-top: 4px;
             font-style: italic;
+        }
+
+        .contact-link {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .contact-link:hover {
+            text-decoration: underline;
         }
 
         @media (max-width: 560px) {
             .page-card { padding: 30px 22px 36px; }
             .page-wrap { padding: 32px 16px 70px; }
+            .team-reports { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -168,21 +281,55 @@
     <main class="page-wrap">
         <div class="page-card">
             <h1 class="font-display">About Hong Kong Solutions</h1>
-            <p class="page-sub">Who we are and what this ecosystem is about.</p>
+            <p class="page-sub">Building an independent, secure ecosystem for seamless digital access.</p>
 
             <h2 class="font-display">Our Story</h2>
-            <p>A short history of the ecosystem — how it started, and what problem it set out to solve.</p>
+            <p>Established as a pioneering technology startup in 1986, Hong Kong Solutions has a rich history of delivering premier technical infrastructure across the region. In our formative years, we collaborated closely with the local government to demonstrate the transformative capabilities of early computing systems. This foundational partnership was instrumental in accelerating the region's digital infrastructure, helping Hong Kong establish a significant technological advantage over mainland China.</p>
+            <p>Today, our mission has evolved to address the demands of a modern digital landscape. We are developing an independent operating system designed to provide users with intuitive, unified access to their native applications. Recognizing that approximately 96% of Hong Kong residents rely on essential services such as HKSBank and HKMail, migrating these critical platforms into a dedicated, highly optimized native application environment was the logical next step in our commitment to user accessibility and security.</p>
 
             <h2 class="font-display">What We Do</h2>
-            <p>An overview of the apps in the ecosystem (HKS Bank, HKMail, and what's coming next) and how they fit together.</p>
+            <p>Hong Kong Solutions specializes in delivering comprehensive, enterprise-grade technical solutions. We partner with a diverse clientele—ranging from individual consumers to large-scale enterprises—to provide bespoke software development, business process automation, and robust digital infrastructure tailored to the unique economic landscape of Hong Kong.</p>
 
-            <h2 class="font-display">Our Team</h2>
-            <p>A brief introduction to the people behind the project. See the Credits panel for the full list.</p>
+            <h2 class="font-display">Project Team</h2>
+            
+            <div class="team-hierarchy">
+                <!-- Management Level -->
+                <div class="team-card team-card--lead">
+                    <span class="role-badge">Lead</span>
+                    <img src="https://github.com/susanbeaver.png" alt="Susan Beaver" class="team-avatar team-avatar--lead">
+                    <div class="team-info">
+                        <h3>Susan Beaver</h3>
+                        <p class="role-title">Project Manager</p>
+                    </div>
+                </div>
+
+                <!-- Organizational Connector Line -->
+                <div class="hierarchy-connector"></div>
+
+                <!-- Direct Reports / Developer Level -->
+                <div class="team-reports">
+                    <div class="team-card">
+                        <img src="https://github.com/wanmeshmaster.png" alt="Gary Davis" class="team-avatar">
+                        <div class="team-info">
+                            <h3>Gary Davis</h3>
+                            <p class="role-title">Developer</p>
+                        </div>
+                    </div>
+
+                    <div class="team-card">
+                        <img src="https://github.com/jsterling02.png" alt="James Sterling" class="team-avatar">
+                        <div class="team-info">
+                            <h3>James Sterling</h3>
+                            <p class="role-title">Developer (Plantcode Ltd.)</p>
+                            <p class="team-note">Currently transitioning to Hong Kong Solutions Ltd. while maintaining ongoing tenure at Plantcode Ltd.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <h2 class="font-display">Contact</h2>
-            <p>How to get in touch — support channels, feedback, or general enquiries.</p>
-
-            <p class="placeholder-note">This page is a placeholder outline — content to be filled in.</p>
+            <p>We welcome inquiries from our users, prospective partners, and the broader community. Please feel free to reach out to our dedicated support team at <a href="mailto:contact@hkmail.cn" class="contact-link">contact@hkmail.cn</a> for any questions, feedback, or assistance.</p>
+            <p><strong>Office Address:</strong><br>8號 To Wah Rd, Yau Ma Tei, Hong Kong</p>
         </div>
     </main>
 

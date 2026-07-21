@@ -140,13 +140,38 @@
             font-size: 0.92rem;
             line-height: 1.65;
             color: var(--text-secondary);
+            margin-bottom: 14px;
+        }
+
+        .page-card ul {
+            margin: 10px 0 16px 20px;
+            color: var(--text-secondary);
+            font-size: 0.92rem;
+            line-height: 1.65;
+        }
+
+        .page-card li {
             margin-bottom: 6px;
         }
 
-        .placeholder-note {
-            font-size: 0.78rem;
-            color: var(--text-tertiary);
-            font-style: italic;
+        .contact-link {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .contact-link:hover {
+            text-decoration: underline;
+        }
+
+        .legal-disclaimer {
+            font-size: 0.85rem !important;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: var(--text-tertiary) !important;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 14px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         @media (max-width: 560px) {
@@ -167,34 +192,51 @@
 
     <main class="page-wrap">
         <div class="page-card">
-            <h1 class="font-display">Terms &amp; Conditions (of the OS)</h1>
-            <p class="page-sub">These terms cover the Hong Kong Solutions desktop/ecosystem itself, separate from any individual app's own terms (e.g. HKMail's).</p>
+            <h1 class="font-display">Ecosystem Terms of Service</h1>
+            <p class="page-sub">Last updated: July 2026 • These terms govern your access to and use of the Hong Kong Solutions desktop operating environment, launcher, and integrated services.</p>
 
-            <h2 class="font-display">1. Acceptance of Terms</h2>
-            <p>By using the Hong Kong Solutions desktop and its ecosystem of apps, you agree to these terms.</p>
+            <h2 class="font-display">1. Acceptance of Agreement</h2>
+            <p>By installing, accessing, or utilizing the Hong Kong Solutions operating environment, software interface, or ecosystem services (collectively, the "Ecosystem"), you enter into a legally binding contract with Hong Kong Solutions Ltd. ("Company", "we", "us", or "our"). If you do not agree to these Terms of Service, you are strictly prohibited from accessing or using the Ecosystem.</p>
 
-            <h2 class="font-display">2. Use of the Ecosystem</h2>
-            <p>What's permitted and not permitted when using the desktop, launcher, and shared account across apps.</p>
+            <h2 class="font-display">2. License &amp; Scope of Use</h2>
+            <p>Subject to continuous compliance with these Terms, Hong Kong Solutions grants you a personal, non-exclusive, non-transferable, revocable, limited license to access and operate the Ecosystem environment and its accompanying application launcher. Under this license, you expressly agree not to:</p>
+            <ul>
+                <li>Modify, reverse engineer, decompile, or attempt to extract the underlying source code or system binaries of the Ecosystem.</li>
+                <li>Bypass, disable, or tamper with any security measures, access controls, or digital rights management protocols integrated within the operating system.</li>
+                <li>Rent, lease, sublicense, redistribute, or commercially exploit the platform without explicit written authorization from Hong Kong Solutions Ltd.</li>
+            </ul>
 
-            <h2 class="font-display">3. Accounts</h2>
-            <p>How a single account works across the ecosystem's apps, and each app's own responsibilities.</p>
+            <h2 class="font-display">3. User Accounts &amp; Ecosystem Authentication</h2>
+            <p>Access to core platforms—including HKSBank and HKMail—requires unified ecosystem authentication. You are solely responsible for safeguarding your account credentials and maintaining the security of your device. Any activity originating from your registered account shall be deemed your personal responsibility. You agree to notify us immediately at <a href="mailto:contact@hkmail.cn" class="contact-link">contact@hkmail.cn</a> upon suspecting any unauthorized access or security compromise.</p>
 
-            <h2 class="font-display">4. The Ecosystem Fund</h2>
-            <p>How community contributions toward unlocking future apps are handled.</p>
+            <h2 class="font-display">4. Community Ecosystem Fund</h2>
+            <p>Contributions made toward the Ecosystem Fund represent voluntary community financing intended solely to accelerate the research, development, and deployment of future native applications within the Hong Kong Solutions desktop infrastructure.</p>
+            <p>Contributions do not constitute equity, debt instruments, securities, or financial investments in Hong Kong Solutions Ltd., nor do they grant voting rights or guaranteed software release dates. All contributions are final and non-refundable to the maximum extent permitted by applicable law.</p>
 
-            <h2 class="font-display">5. Prohibited Use</h2>
-            <p>Activity that isn't allowed on the platform.</p>
+            <h2 class="font-display">5. Prohibited Conduct</h2>
+            <p>You agree to utilize the Ecosystem exclusively for lawful purposes. You shall not engage in, facilitate, or promote any of the following prohibited activities:</p>
+            <ul>
+                <li>Distributing malware, spyware, viruses, or malicious scripts designed to damage or intercept operational data.</li>
+                <li>Conducting unauthorized network scanning, probing, or vulnerability exploitation against ecosystem servers or third-party users.</li>
+                <li>Engaging in fraudulent transactions, identity misrepresentation, or illicit financial activities within native applications.</li>
+                <li>Utilizing automated bots, web scrapers, or data harvesting scripts within the platform interface without prior consent.</li>
+            </ul>
 
-            <h2 class="font-display">6. Liability</h2>
-            <p>Limitations on liability for the OS and the apps within it.</p>
+            <h2 class="font-display">6. Disclaimer of Warranties</h2>
+            <p class="legal-disclaimer">THE HONG KONG SOLUTIONS ECOSYSTEM, INCLUDING ALL LAUNCHERS, SYSTEM UTILITIES, AND NATIVE APPLICATIONS, IS PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS. TO THE FULLEST EXTENT PERMISSIBLE BY APPLICABLE LAW, HONG KONG SOLUTIONS LTD. EXPRESSLY DISCLAIMS ALL WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, SYSTEM INTEGRATION, OR NON-INFRINGEMENT.</p>
 
-            <h2 class="font-display">7. Changes to These Terms</h2>
-            <p>How and when these terms may be updated.</p>
+            <h2 class="font-display">7. Limitation of Liability</h2>
+            <p>In no event shall Hong Kong Solutions Ltd., its subsidiaries, directors, employees, or software partners be liable for any direct, indirect, incidental, special, consequential, or punitive damages—including loss of data, lost profits, system outages, or financial losses—arising out of or related to your use of, or inability to use, the Ecosystem or its hosted applications.</p>
 
-            <h2 class="font-display">8. Contact</h2>
-            <p>How to reach out with questions about these terms.</p>
+            <h2 class="font-display">8. Modifications &amp; Service Continuity</h2>
+            <p>We reserve the right to modify, suspend, or discontinue any feature, application access, or service within the Ecosystem at any time without prior notice. Continued use of the Ecosystem following any updates to these Terms constitutes full acceptance of such revised Terms.</p>
 
-            <p class="placeholder-note">This page is a placeholder outline — content to be filled in.</p>
+            <h2 class="font-display">9. Governing Law &amp; Jurisdiction</h2>
+            <p>These Terms shall be governed by, construed, and enforced in accordance with the laws of the Hong Kong Special Administrative Region. Any legal dispute or claim arising under these Terms shall be subject to the exclusive jurisdiction of the courts of Hong Kong SAR.</p>
+
+            <h2 class="font-display">10. Legal Contact &amp; Inquiries</h2>
+            <p>For questions regarding these Terms, service notifications, or legal inquiries, please contact our legal department via email at <a href="mailto:legal@hkmail.cn" class="contact-link">legal@hkmail.cn</a> or by mail at:</p>
+            <p><strong>Hong Kong Solutions Ltd.</strong><br>8號 To Wah Rd, Yau Ma Tei, Hong Kong</p>
         </div>
     </main>
 
