@@ -208,6 +208,20 @@ SUPPORT_MAIL_DEFAULT_PASSWORD = "SupportQueue321!"
 BANK_SUPPORT_MAIL_USERNAME = "hksbank.support@hkmail.cn"
 BANK_SUPPORT_MAIL_DEFAULT_PASSWORD = "HksBankSupport852!"
 
+# General-inquiries mailbox, listed publicly as HKMail's contact address.
+# Carries the same Support-staff tier as support@hkmail.cn (is_employee=1)
+# so whoever mans it can be recognised as staff, and is seeded as an
+# official/verified account like the other service mailboxes.
+CONTACT_MAIL_USERNAME = "contact@hkmail.cn"
+CONTACT_MAIL_DEFAULT_PASSWORD = "ContactDesk742!"
+
+# Legal/compliance mailbox (takedown notices, terms questions, regulatory
+# correspondence). Seeded as a verified/official account like the other
+# service mailboxes, but not Support-staff — it doesn't work the support
+# request queue.
+LEGAL_MAIL_USERNAME = "legal@hkmail.cn"
+LEGAL_MAIL_DEFAULT_PASSWORD = "LegalDept963!"
+
 
 # ── HKMail: account-service support requests (password reset / deletion) ──────
 
@@ -2383,6 +2397,29 @@ def init_mail_db():
         cur.execute(
             "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
             (BANK_SUPPORT_MAIL_USERNAME, bank_support_password_hash, "HKS Bank Support")
+        )
+
+    # Ensure the contact@hkmail.cn mailbox exists — HKMail's general public
+    # inquiries address. Verified/official like the other service mailboxes,
+    # and carries the Support-staff tier (is_employee=1) so it's tagged the
+    # same way support@hkmail.cn is.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (CONTACT_MAIL_USERNAME,))
+    if not cur.fetchone():
+        contact_password_hash = generate_password_hash(CONTACT_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified, is_employee) VALUES (?, ?, ?, 0, 1, 1)",
+            (CONTACT_MAIL_USERNAME, contact_password_hash, "HKMail Contact")
+        )
+
+    # Ensure the legal@hkmail.cn mailbox exists — HKMail's legal/compliance
+    # address. Verified/official from the start, same as the other service
+    # mailboxes, but not tagged as Support staff.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (LEGAL_MAIL_USERNAME,))
+    if not cur.fetchone():
+        legal_password_hash = generate_password_hash(LEGAL_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
+            (LEGAL_MAIL_USERNAME, legal_password_hash, "HKMail Legal")
         )
 
     conn.commit()
