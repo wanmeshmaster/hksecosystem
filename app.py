@@ -609,6 +609,10 @@ def snackshop_home():
 def snackshop_browse():
     return render_template('snackshop-shop.html')
 
+@app.route('/snackshop-about.html')
+def snackshop_about():
+    return render_template('snackshop-about.html')
+
 @app.route('/about-us.html')
 def about_us():
     return render_template('about-us.html')
