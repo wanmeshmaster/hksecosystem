@@ -4923,6 +4923,22 @@ def init_shop_db():
         )
     """)
 
+    # Safe migrations for existing databases — product photos (stored as
+    # raw bytes, same base64-decode-then-store approach HKMail uses for
+    # attachments) and custom Offer of the Day copy, editable independently
+    # of the product's regular catalogue name/description.
+    for stmt in [
+        "ALTER TABLE shop_products ADD COLUMN image_mime TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE shop_products ADD COLUMN image_blob BLOB",
+        "ALTER TABLE shop_products ADD COLUMN offer_title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE shop_products ADD COLUMN offer_tagline TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE shop_products ADD COLUMN offer_badge_label TEXT NOT NULL DEFAULT ''",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
+
     conn.commit()
 
     # Seed a small starter catalogue the first time the table is empty, so
@@ -4950,6 +4966,36 @@ def init_shop_db():
         conn.commit()
 
     conn.close()
+
+
+# Per-image cap for product photos — generous for a product shot, same
+# decode-then-check-real-size approach as HKMail attachments.
+MAX_PRODUCT_IMAGE_SIZE_MB = 5
+MAX_PRODUCT_IMAGE_SIZE_BYTES = MAX_PRODUCT_IMAGE_SIZE_MB * 1024 * 1024
+ALLOWED_PRODUCT_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+def shop_decode_image(image_field):
+    """Decode a {"mime_type": ..., "data": <base64>} payload into
+    (mime_type, raw_bytes). Returns (None, None) if no image was sent.
+    Raises ValueError with a user-facing message on invalid input."""
+    if not image_field:
+        return None, None
+    if not isinstance(image_field, dict):
+        raise ValueError("Invalid image data.")
+    mime_type = (image_field.get("mime_type") or "").strip().lower()
+    b64data = image_field.get("data") or ""
+    if mime_type not in ALLOWED_PRODUCT_IMAGE_MIME_TYPES:
+        raise ValueError("Images must be JPEG, PNG, WEBP or GIF.")
+    try:
+        raw = base64.b64decode(b64data, validate=True)
+    except Exception:
+        raise ValueError("Image could not be read — please re-upload it.")
+    if len(raw) == 0:
+        raise ValueError("Image file is empty.")
+    if len(raw) > MAX_PRODUCT_IMAGE_SIZE_BYTES:
+        raise ValueError(f"Images must be {MAX_PRODUCT_IMAGE_SIZE_MB}MB or smaller.")
+    return mime_type, raw
 
 
 def shop_current_user():
@@ -4999,20 +5045,36 @@ def shop_can_manage():
 
 def shop_product_row_to_dict(row):
     (pid, name, description, category, emoji, price, quantity,
-     discount_percent, is_offer_of_day, created_at) = row
+     discount_percent, is_offer_of_day, created_at, image_mime, has_image,
+     offer_title, offer_tagline, offer_badge_label) = row
     final_price = round(price * (1 - (discount_percent or 0) / 100.0), 2)
     return {
         "id": pid, "name": name, "description": description, "category": category,
         "emoji": emoji, "price": price, "quantity": quantity,
         "discountPercent": discount_percent, "finalPrice": final_price,
         "isOfferOfDay": bool(is_offer_of_day), "inStock": quantity > 0,
+        "imageUrl": f"/api/snackshop/products/{pid}/image" if has_image else None,
+        # Custom Offer of the Day copy — falls back to the product's own
+        # name/description/default badge when left blank by an admin.
+        "offerTitle": offer_title or name,
+        "offerTagline": offer_tagline or description,
+        "offerBadgeLabel": offer_badge_label or "Today's Offer",
+        "offerTitleRaw": offer_title, "offerTaglineRaw": offer_tagline, "offerBadgeLabelRaw": offer_badge_label,
     }
 
 
+# Shared column list for every "list of products" style query, so the
+# tuple shape always matches what shop_product_row_to_dict expects.
+SHOP_PRODUCT_SELECT_COLUMNS = """
+    id, name, description, category, emoji, price, quantity,
+    discount_percent, is_offer_of_day, created_at, image_mime,
+    (image_blob IS NOT NULL) AS has_image,
+    offer_title, offer_tagline, offer_badge_label
+"""
+
+
 def shop_get_product(cur, product_id):
-    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
-                           discount_percent, is_offer_of_day, created_at
-                    FROM shop_products WHERE id=?""", (product_id,))
+    cur.execute(f"SELECT {SHOP_PRODUCT_SELECT_COLUMNS} FROM shop_products WHERE id=?", (product_id,))
     return cur.fetchone()
 
 
@@ -5127,9 +5189,7 @@ def snackshop_logout():
 def snackshop_list_products():
     conn = sqlite3.connect(SHOP_DATABASE)
     cur = conn.cursor()
-    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
-                           discount_percent, is_offer_of_day, created_at
-                    FROM shop_products ORDER BY name""")
+    cur.execute(f"SELECT {SHOP_PRODUCT_SELECT_COLUMNS} FROM shop_products ORDER BY name")
     rows = cur.fetchall()
     conn.close()
     return jsonify({"success": True, "products": [shop_product_row_to_dict(r) for r in rows]})
@@ -5139,9 +5199,7 @@ def snackshop_list_products():
 def snackshop_offer_of_day():
     conn = sqlite3.connect(SHOP_DATABASE)
     cur = conn.cursor()
-    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
-                           discount_percent, is_offer_of_day, created_at
-                    FROM shop_products WHERE is_offer_of_day=1 LIMIT 1""")
+    cur.execute(f"SELECT {SHOP_PRODUCT_SELECT_COLUMNS} FROM shop_products WHERE is_offer_of_day=1 LIMIT 1")
     row = cur.fetchone()
     conn.close()
     return jsonify({"success": True, "offer": shop_product_row_to_dict(row) if row else None})
@@ -5152,13 +5210,26 @@ def snackshop_deals():
     """The multi-slot deals bar: every currently-discounted product."""
     conn = sqlite3.connect(SHOP_DATABASE)
     cur = conn.cursor()
-    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
-                           discount_percent, is_offer_of_day, created_at
-                    FROM shop_products WHERE discount_percent > 0
+    cur.execute(f"""SELECT {SHOP_PRODUCT_SELECT_COLUMNS} FROM shop_products
+                    WHERE discount_percent > 0
                     ORDER BY discount_percent DESC, name""")
     rows = cur.fetchall()
     conn.close()
     return jsonify({"success": True, "deals": [shop_product_row_to_dict(r) for r in rows]})
+
+
+@app.route('/api/snackshop/products/<int:product_id>/image')
+def snackshop_product_image(product_id):
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT image_mime, image_blob FROM shop_products WHERE id=?", (product_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row or not row[1]:
+        return jsonify({"success": False, "message": "No image for this product."}), 404
+    mime_type, blob = row
+    return Response(blob, mimetype=mime_type or "application/octet-stream",
+                     headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.route('/api/snackshop/products', methods=['POST'])
@@ -5184,12 +5255,23 @@ def snackshop_create_product():
     description = (data.get("description", "") or "").strip()
     category = (data.get("category", "") or "Snacks").strip()
     emoji = (data.get("emoji", "") or "🍪").strip()
+    offer_title = (data.get("offer_title", "") or "").strip()
+    offer_tagline = (data.get("offer_tagline", "") or "").strip()
+    offer_badge_label = (data.get("offer_badge_label", "") or "").strip()
+
+    try:
+        image_mime, image_blob = shop_decode_image(data.get("image"))
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
 
     conn = sqlite3.connect(SHOP_DATABASE)
     cur = conn.cursor()
-    cur.execute("""INSERT INTO shop_products (name, description, category, emoji, price, quantity, discount_percent)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (name, description, category, emoji, price, quantity, discount_percent))
+    cur.execute("""INSERT INTO shop_products
+                    (name, description, category, emoji, price, quantity, discount_percent,
+                     image_mime, image_blob, offer_title, offer_tagline, offer_badge_label)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (name, description, category, emoji, price, quantity, discount_percent,
+                 image_mime or "", image_blob, offer_title, offer_tagline, offer_badge_label))
     product_id = cur.lastrowid
     cur.execute("""INSERT INTO shop_product_events (product_id, action, note, actor_username, actor_role)
                     VALUES (?, 'created', ?, ?, ?)""",
@@ -5216,7 +5298,11 @@ def snackshop_update_product(product_id):
         return jsonify({"success": False, "message": "Product not found."}), 404
 
     fields = {"name": row[1], "description": row[2], "category": row[3], "emoji": row[4],
-              "price": row[5], "quantity": row[6], "discount_percent": row[7]}
+              "price": row[5], "quantity": row[6], "discount_percent": row[7],
+              "image_mime": row[10], "offer_title": row[12], "offer_tagline": row[13],
+              "offer_badge_label": row[14]}
+    image_blob = None
+    image_blob_changed = False
 
     if "name" in data:
         name = (data.get("name") or "").strip()
@@ -5230,6 +5316,15 @@ def snackshop_update_product(product_id):
         fields["category"] = (data.get("category") or "").strip() or fields["category"]
     if "emoji" in data:
         fields["emoji"] = (data.get("emoji") or "").strip() or fields["emoji"]
+    # Offer of the Day copy — independent of the regular catalogue text,
+    # so admins can write custom marketing copy without touching the
+    # product's normal name/description shown while browsing.
+    if "offer_title" in data:
+        fields["offer_title"] = (data.get("offer_title") or "").strip()
+    if "offer_tagline" in data:
+        fields["offer_tagline"] = (data.get("offer_tagline") or "").strip()
+    if "offer_badge_label" in data:
+        fields["offer_badge_label"] = (data.get("offer_badge_label") or "").strip()
     try:
         if "price" in data:
             fields["price"] = float(data.get("price"))
@@ -5245,11 +5340,41 @@ def snackshop_update_product(product_id):
         conn.close()
         return jsonify({"success": False, "message": "Price/quantity must be ≥ 0 and discount between 0-95%."}), 400
 
-    cur.execute("""UPDATE shop_products SET name=?, description=?, category=?, emoji=?,
-                                             price=?, quantity=?, discount_percent=?
-                    WHERE id=?""",
-                (fields["name"], fields["description"], fields["category"], fields["emoji"],
-                 fields["price"], fields["quantity"], fields["discount_percent"], product_id))
+    # New image upload takes priority; otherwise an explicit remove_image
+    # flag clears the existing photo (falling back to the emoji); if
+    # neither is present, the existing image is left untouched.
+    if data.get("image"):
+        try:
+            new_mime, new_blob = shop_decode_image(data.get("image"))
+        except ValueError as e:
+            conn.close()
+            return jsonify({"success": False, "message": str(e)}), 400
+        fields["image_mime"] = new_mime
+        image_blob = new_blob
+        image_blob_changed = True
+    elif data.get("remove_image"):
+        fields["image_mime"] = ""
+        image_blob = None
+        image_blob_changed = True
+
+    if image_blob_changed:
+        cur.execute("""UPDATE shop_products SET name=?, description=?, category=?, emoji=?,
+                                                 price=?, quantity=?, discount_percent=?,
+                                                 image_mime=?, image_blob=?,
+                                                 offer_title=?, offer_tagline=?, offer_badge_label=?
+                        WHERE id=?""",
+                    (fields["name"], fields["description"], fields["category"], fields["emoji"],
+                     fields["price"], fields["quantity"], fields["discount_percent"],
+                     fields["image_mime"], image_blob,
+                     fields["offer_title"], fields["offer_tagline"], fields["offer_badge_label"], product_id))
+    else:
+        cur.execute("""UPDATE shop_products SET name=?, description=?, category=?, emoji=?,
+                                                 price=?, quantity=?, discount_percent=?,
+                                                 offer_title=?, offer_tagline=?, offer_badge_label=?
+                        WHERE id=?""",
+                    (fields["name"], fields["description"], fields["category"], fields["emoji"],
+                     fields["price"], fields["quantity"], fields["discount_percent"],
+                     fields["offer_title"], fields["offer_tagline"], fields["offer_badge_label"], product_id))
     cur.execute("""INSERT INTO shop_product_events (product_id, action, note, actor_username, actor_role)
                     VALUES (?, 'updated', ?, ?, ?)""",
                 (product_id, f"Updated '{fields['name']}' (price ${fields['price']:.2f}, "
