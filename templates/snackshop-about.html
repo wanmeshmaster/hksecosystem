@@ -213,6 +213,54 @@
         line-height: 1.5;
     }
 
+    /* ── Story timeline ─────────────────────────────────── */
+    .story-lede {
+        font-size: 1.02rem;
+        color: var(--text-secondary);
+        line-height: 1.7;
+        margin-bottom: 28px;
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-style: italic;
+    }
+
+    .timeline { position: relative; display: flex; flex-direction: column; gap: 26px; }
+    .timeline::before {
+        content: ""; position: absolute; left: 19px; top: 6px; bottom: 6px; width: 2px;
+        background: linear-gradient(to bottom, var(--amber), var(--accent));
+        opacity: 0.35;
+    }
+    .timeline-item { position: relative; display: flex; gap: 20px; }
+    .timeline-year {
+        flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%;
+        background: linear-gradient(135deg, var(--amber), var(--amber-strong));
+        color: #1d1204; display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 1.05rem; z-index: 1; box-shadow: 0 6px 16px rgba(227,178,77,0.25);
+    }
+    .timeline-item.milestone .timeline-year {
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        box-shadow: 0 6px 16px rgba(38,201,171,0.28);
+    }
+    .timeline-body { padding-top: 4px; }
+    .timeline-title { font-weight: 700; font-size: 0.98rem; color: var(--text-primary); margin-bottom: 5px; }
+    .timeline-title .badge {
+        display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 999px; font-size: 0.62rem;
+        font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+        background: rgba(38, 201, 171, 0.16); color: var(--accent); vertical-align: middle;
+    }
+    .timeline-text { font-size: 0.88rem; color: var(--text-tertiary); line-height: 1.6; }
+
+    .signoff {
+        display: flex; align-items: center; gap: 14px; margin-top: 6px; padding-top: 22px;
+        border-top: 1px dashed var(--glass-border);
+    }
+    .signoff-mark {
+        width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; font-size: 1.3rem;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(227, 178, 77, 0.12); border: 1px solid rgba(227, 178, 77, 0.3);
+    }
+    .signoff-text { font-size: 0.85rem; color: var(--text-tertiary); line-height: 1.55; font-style: italic; }
+
     footer { text-align: center; padding: 30px 22px 50px; color: var(--text-tertiary); font-size: 0.78rem; }
 
     /* ── Modal (auth) ───────────────────────────────────── */
@@ -312,50 +360,98 @@
 </header>
 
 <main>
-    <span class="hero-tag"><span class="dot"></span> HK Solutions Ecosystem</span>
-
     <section class="hero-card">
-        <h1 class="hero-title">About SnackShop</h1>
+        <h1 class="hero-title">A little shop that grew up</h1>
         <p class="hero-subtitle">
-            Fueling the Hong Kong Solutions Ecosystem with curated snacks, workplace essentials, and local delights.
+            SnackShop started life as a corner-shop idea in the UK — somewhere friendly to duck into for a snack and a chat. Fifteen years on, that same warmth now reaches customers right around the world.
         </p>
     </section>
 
-    <!-- Business Details & Story -->
+    <!-- Our Story -->
     <section class="section-card">
-        <h2 class="section-title">How SnackShop Started</h2>
-        <p class="section-text">
-            SnackShop was created as part of the Hong Kong Solutions Ecosystem initiative. What began as a simple internal convenience pop-up for project developers and team members has grown into a fully integrated digital marketplace.
+        <h2 class="section-title">🧺 Our Story</h2>
+        <p class="story-lede">
+            "We wanted SnackShop to feel less like a checkout, and more like popping round to a shop that knows you."
         </p>
-        <p class="section-text">
-            Recognizing the need for a streamlined, centralized way to order refreshments and everyday goods across connected hub platforms, our engineering and management teams collaborated to launch SnackShop as a flagship application.
-        </p>
+
+        <div class="timeline">
+            <div class="timeline-item">
+                <div class="timeline-year">'11</div>
+                <div class="timeline-body">
+                    <div class="timeline-title">A small shop, a simple idea</div>
+                    <div class="timeline-text">
+                        SnackShop opened its doors in 2011 as a modest convenience snack shop in the UK, stocking everyday treats and local favourites for a community of regulars. From the very start, the goal was simple: good snacks, fair prices, and a friendly face behind the counter.
+                    </div>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-year">'15</div>
+                <div class="timeline-body">
+                    <div class="timeline-title">Finding our footing</div>
+                    <div class="timeline-text">
+                        Word of mouth turned a single shop into a small but loyal following. We leaned into what made us different — proper care over product choices, and treating every customer like they'd been coming in for years.
+                    </div>
+                </div>
+            </div>
+            <div class="timeline-item milestone">
+                <div class="timeline-year">'19</div>
+                <div class="timeline-body">
+                    <div class="timeline-title">Taking the leap online <span class="badge">Growth</span></div>
+                    <div class="timeline-text">
+                        With demand growing beyond our four walls, SnackShop moved online — bringing the same hand-picked selection and homely service to customers who couldn't just pop in.
+                    </div>
+                </div>
+            </div>
+            <div class="timeline-item milestone">
+                <div class="timeline-year">'26</div>
+                <div class="timeline-body">
+                    <div class="timeline-title">Hello, Hong Kong <span class="badge">Worldwide</span></div>
+                    <div class="timeline-text">
+                        In 2026, SnackShop was introduced to customers in Hong Kong — our first proper step onto the world stage, and a moment we're enormously proud of. Same cosy shop, new neighbours.
+                    </div>
+                </div>
+            </div>
+            <div class="timeline-item milestone">
+                <div class="timeline-year">🏆</div>
+                <div class="timeline-body">
+                    <div class="timeline-title">Our biggest milestone yet <span class="badge">2026</span></div>
+                    <div class="timeline-text">
+                        That same year, SnackShop was welcomed on as a native app on the operating system itself — built right in, rather than just bolted on. It's the achievement we're proudest of to date, and one that still feels a little surreal for a shop that started with a single till and a stack of crisps.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="signoff">
+            <span class="signoff-mark">🍪</span>
+            <span class="signoff-text">From one shop in the UK to a native app used by customers across the world — thank you for growing with us. Here's to the next chapter.</span>
+        </div>
     </section>
 
     <section class="section-card">
-        <h2 class="section-title">What We Do</h2>
+        <h2 class="section-title">🍡 What We Do</h2>
         <p class="section-text">
-            SnackShop operates an open digital storefront serving developers, partners, and community members within our ecosystem. We source high-quality snacks, specialty beverages, and quick-bite meals directly to support active workspaces and community events.
+            We source high-quality snacks, specialty beverages, and quick-bite treats — a little local, a little international, always chosen with care rather than just stacked on a shelf.
         </p>
 
         <div class="value-grid">
             <div class="value-item">
                 <div class="value-heading">⚡ Instant Access</div>
-                <div class="value-desc">Seamless integration across all ecosystem hubs using unified authentication.</div>
+                <div class="value-desc">Order in seconds, wherever you're logged in — now built right into the OS itself.</div>
             </div>
             <div class="value-item">
                 <div class="value-heading">🍱 Local &amp; Imported</div>
-                <div class="value-desc">A curated selection featuring regional Hong Kong favorites alongside international snacks.</div>
+                <div class="value-desc">From British classics to Hong Kong favourites, our shelves reflect every place we now call home.</div>
             </div>
             <div class="value-item">
-                <div class="value-heading">🌱 Community Driven</div>
-                <div class="value-desc">Portions of proceeds help fund community projects across the HK Solutions network.</div>
+                <div class="value-heading">🏡 Still Homely</div>
+                <div class="value-desc">Bigger now, but built on the same corner-shop care we started with back in 2011.</div>
             </div>
         </div>
     </section>
 </main>
 
-<footer>&copy; 2026 SnackShop Co. All rights reserved.</footer>
+<footer>&copy; 2026 SnackShop Co. All rights reserved. Serving snack-lovers since 2011.</footer>
 
 <!-- Auth modal -->
 <div class="modal-overlay" id="authModal">
