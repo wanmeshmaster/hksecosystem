@@ -129,6 +129,9 @@
     .offer-pin { position: absolute; top: 12px; right: 12px; font-size: 0.65rem; font-weight: 800; color: var(--amber); background: rgba(227,178,77,0.14); padding: 3px 8px; border-radius: 999px; }
     .discount-pin { position: absolute; top: 12px; left: 12px; font-size: 0.65rem; font-weight: 800; color: #fff; background: var(--danger); padding: 3px 8px; border-radius: 999px; }
     .product-emoji { font-size: 2.4rem; }
+    .product-image {
+        width: 100%; height: 120px; object-fit: cover; border-radius: 12px; margin-bottom: 2px;
+    }
     .product-name { font-weight: 700; font-size: 1rem; }
     .product-cat { color: var(--text-tertiary); font-size: 0.74rem; }
     .product-desc { color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4; min-height: 2.5em; }
@@ -149,6 +152,21 @@
     }
     .manage-row label { font-size: 0.65rem; color: var(--text-tertiary); display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.03em; }
     .manage-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .manage-divider { border-top: 1px dashed var(--glass-border); margin: 2px 0; padding-top: 8px; }
+    .manage-label { font-size: 0.65rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.03em; font-weight: 700; }
+    .manage-row input[type="text"] { width: 100%; }
+    .image-upload-row { display: flex; align-items: center; gap: 8px; }
+    .image-preview {
+        width: 40px; height: 40px; border-radius: 9px; object-fit: cover; border: 1px solid var(--glass-border);
+        flex-shrink: 0; background: rgba(255,255,255,0.04);
+    }
+    .file-input-label {
+        flex: 1; padding: 7px 9px; border-radius: 8px; border: 1px dashed var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-secondary); font-size: 0.72rem; text-align: center;
+        cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .file-input-label:hover { color: var(--text-primary); border-color: rgba(227,178,77,0.4); }
+    .manage-row input[type="file"] { display: none; }
 
     .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-tertiary); }
 
@@ -194,6 +212,7 @@
     .cart-empty { color: var(--text-tertiary); text-align: center; padding: 60px 20px; font-size: 0.9rem; }
     .cart-item { display: flex; gap: 12px; align-items: center; }
     .cart-item-emoji { font-size: 1.7rem; width: 40px; text-align: center; }
+    .cart-item-image { width: 40px; height: 40px; object-fit: cover; border-radius: 9px; flex-shrink: 0; }
     .cart-item-name { font-weight: 700; font-size: 0.88rem; }
     .cart-item-price { color: var(--text-tertiary); font-size: 0.76rem; }
     .qty-stepper { display: flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -269,6 +288,17 @@
                 <div class="field"><label>Discount (%)</label><input id="newDiscount" type="number" min="0" max="95" placeholder="0"></div>
             </div>
             <div class="field"><label>Description</label><input id="newDescription" type="text" placeholder="Short description shown to customers"></div>
+            <div class="field">
+                <label>Product photo (optional — falls back to the emoji)</label>
+                <label class="file-input-label" for="newImage" id="newImageLabel">Choose an image…</label>
+                <input id="newImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+            </div>
+            <p class="page-sub" style="margin: 14px 0 10px;">Custom Offer of the Day copy (optional — used only while this product is featured; falls back to its name/description/"Today's Offer" badge)</p>
+            <div class="add-product-grid">
+                <div class="field"><label>Offer title</label><input id="newOfferTitle" type="text" placeholder="Defaults to product name"></div>
+                <div class="field"><label>Offer tagline</label><input id="newOfferTagline" type="text" placeholder="Defaults to description"></div>
+                <div class="field"><label>Offer badge label</label><input id="newOfferBadgeLabel" type="text" placeholder="Today's Offer"></div>
+            </div>
             <div class="form-msg" id="newProductMsg"></div>
             <button class="btn btn-primary" id="newProductBtn">Add product</button>
         </div>
@@ -470,7 +500,9 @@ async function refreshCartDrawer() {
     } else {
         container.innerHTML = data.items.map(it => `
             <div class="cart-item">
-                <span class="cart-item-emoji">${it.product.emoji}</span>
+                ${it.product.imageUrl
+                    ? `<img class="cart-item-image" src="${it.product.imageUrl}" alt="${it.product.name}">`
+                    : `<span class="cart-item-emoji">${it.product.emoji}</span>`}
                 <div>
                     <div class="cart-item-name">${it.product.name}</div>
                     <div class="cart-item-price">${money(it.product.finalPrice)} each</div>
@@ -558,7 +590,9 @@ function renderProducts() {
         <div class="product-card ${p.isOfferOfDay ? "is-offer" : ""}">
             ${p.isOfferOfDay ? `<span class="offer-pin">★ Offer</span>` : ""}
             ${p.discountPercent > 0 ? `<span class="discount-pin">-${Math.round(p.discountPercent)}%</span>` : ""}
-            <span class="product-emoji">${p.emoji}</span>
+            ${p.imageUrl
+                ? `<img class="product-image" src="${p.imageUrl}" alt="${p.name}">`
+                : `<span class="product-emoji">${p.emoji}</span>`}
             <span class="product-name">${p.name}</span>
             <span class="product-cat">${p.category}</span>
             <p class="product-desc">${p.description || ""}</p>
@@ -579,6 +613,27 @@ function renderProducts() {
                     <div style="flex:1;"><label>Qty</label><input type="number" min="0" value="${p.quantity}" data-field="quantity" data-id="${p.id}"></div>
                     <div style="flex:1;"><label>Disc %</label><input type="number" min="0" max="95" value="${p.discountPercent}" data-field="discount_percent" data-id="${p.id}"></div>
                 </div>
+                <div class="manage-divider">
+                    <span class="manage-label">Offer of the Day copy</span>
+                </div>
+                <div class="manage-row">
+                    <div style="flex:1;"><label>Title</label><input type="text" value="${p.offerTitleRaw || ""}" placeholder="${p.name}" data-field="offer_title" data-id="${p.id}"></div>
+                </div>
+                <div class="manage-row">
+                    <div style="flex:1;"><label>Tagline</label><input type="text" value="${p.offerTaglineRaw || ""}" placeholder="${(p.description || "").slice(0, 48)}" data-field="offer_tagline" data-id="${p.id}"></div>
+                </div>
+                <div class="manage-row">
+                    <div style="flex:1;"><label>Badge label</label><input type="text" value="${p.offerBadgeLabelRaw || ""}" placeholder="Today's Offer" data-field="offer_badge_label" data-id="${p.id}"></div>
+                </div>
+                <div class="manage-divider">
+                    <span class="manage-label">Photo</span>
+                </div>
+                <div class="manage-row image-upload-row">
+                    ${p.imageUrl ? `<img class="image-preview" src="${p.imageUrl}" alt="">` : `<span class="image-preview" style="display:flex;align-items:center;justify-content:center;font-size:1.1rem;">${p.emoji}</span>`}
+                    <label class="file-input-label" for="imgInput-${p.id}" id="imgInputLabel-${p.id}">Change photo…</label>
+                    <input type="file" id="imgInput-${p.id}" accept="image/jpeg,image/png,image/webp,image/gif" data-image-id="${p.id}">
+                    ${p.imageUrl ? `<button class="btn btn-ghost btn-sm" data-remove-image="${p.id}">Remove</button>` : ""}
+                </div>
                 <div class="manage-actions">
                     <button class="btn btn-ghost btn-sm" data-save="${p.id}">Save</button>
                     <button class="btn btn-ghost btn-sm" data-offer="${p.id}">Set Offer of Day</button>
@@ -593,20 +648,68 @@ function renderProducts() {
         grid.querySelectorAll("[data-save]").forEach(btn => btn.onclick = () => saveProduct(Number(btn.dataset.save)));
         grid.querySelectorAll("[data-offer]").forEach(btn => btn.onclick = () => setOfferOfDay(Number(btn.dataset.offer)));
         grid.querySelectorAll("[data-delete]").forEach(btn => btn.onclick = () => deleteProduct(Number(btn.dataset.delete)));
+        grid.querySelectorAll("[data-image-id]").forEach(input => {
+            input.onchange = () => handleImageSelect(Number(input.dataset.imageId), input);
+        });
+        grid.querySelectorAll("[data-remove-image]").forEach(btn => {
+            btn.onclick = () => removeProductImage(Number(btn.dataset.removeImage));
+        });
     }
+}
+
+// Staged image uploads, keyed by product id, waiting for "Save" — as
+// {mime_type, data} base64 payloads matching what the backend expects.
+const PENDING_IMAGES = {};
+
+function fileToImagePayload(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ mime_type: file.type, data: reader.result.split(",")[1] });
+        reader.onerror = () => reject(new Error("Could not read image file."));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handleImageSelect(id, input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+        PENDING_IMAGES[id] = await fileToImagePayload(file);
+        const label = $(`imgInputLabel-${id}`);
+        if (label) label.textContent = file.name;
+        showToast("Photo staged — click Save to apply it.");
+    } catch (err) {
+        showToast(err.message);
+    }
+}
+
+async function removeProductImage(id) {
+    const res = await fetch(`/api/snackshop/products/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remove_image: true })
+    });
+    const data = await res.json();
+    showToast(data.message);
+    delete PENDING_IMAGES[id];
+    if (data.success) loadProducts();
 }
 
 async function saveProduct(id) {
     const price = document.querySelector(`[data-field="price"][data-id="${id}"]`).value;
     const quantity = document.querySelector(`[data-field="quantity"][data-id="${id}"]`).value;
     const discount_percent = document.querySelector(`[data-field="discount_percent"][data-id="${id}"]`).value;
+    const offer_title = document.querySelector(`[data-field="offer_title"][data-id="${id}"]`).value;
+    const offer_tagline = document.querySelector(`[data-field="offer_tagline"][data-id="${id}"]`).value;
+    const offer_badge_label = document.querySelector(`[data-field="offer_badge_label"][data-id="${id}"]`).value;
+    const payload = { price, quantity, discount_percent, offer_title, offer_tagline, offer_badge_label };
+    if (PENDING_IMAGES[id]) payload.image = PENDING_IMAGES[id];
     const res = await fetch(`/api/snackshop/products/${id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ price, quantity, discount_percent })
+        body: JSON.stringify(payload)
     });
     const data = await res.json();
     showToast(data.message);
-    if (data.success) loadProducts();
+    if (data.success) { delete PENDING_IMAGES[id]; loadProducts(); }
 }
 
 async function setOfferOfDay(id) {
@@ -631,14 +734,27 @@ $("newProductBtn").onclick = async () => {
         emoji: $("newEmoji").value || "🍪", price: $("newPrice").value || 0,
         quantity: $("newQuantity").value || 0, discount_percent: $("newDiscount").value || 0,
         description: $("newDescription").value,
+        offer_title: $("newOfferTitle").value, offer_tagline: $("newOfferTagline").value,
+        offer_badge_label: $("newOfferBadgeLabel").value,
     };
+    const imageFile = $("newImage").files && $("newImage").files[0];
+    if (imageFile) {
+        try {
+            payload.image = await fileToImagePayload(imageFile);
+        } catch (err) {
+            msg.textContent = err.message; msg.classList.add("error"); return;
+        }
+    }
     const res = await fetch("/api/snackshop/products", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
     msg.textContent = data.message; msg.classList.add("success");
-    ["newName","newCategory","newEmoji","newPrice","newQuantity","newDiscount","newDescription"].forEach(id => $(id).value = "");
+    ["newName","newCategory","newEmoji","newPrice","newQuantity","newDiscount","newDescription",
+     "newOfferTitle","newOfferTagline","newOfferBadgeLabel"].forEach(id => $(id).value = "");
+    $("newImage").value = "";
+    $("newImageLabel").textContent = "Choose an image…";
     loadProducts();
 };
 
@@ -654,6 +770,10 @@ $("toggleEmployeeBtn").onclick = async () => {
 };
 
 $("searchInput").addEventListener("input", renderProducts);
+$("newImage").addEventListener("change", () => {
+    const file = $("newImage").files && $("newImage").files[0];
+    $("newImageLabel").textContent = file ? file.name : "Choose an image…";
+});
 
 refreshSession();
 loadProducts();
