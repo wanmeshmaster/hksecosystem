@@ -554,7 +554,23 @@ async function updateCartQty(productId, qty) {
 $("cartBtn").onclick = () => { $("cartOverlay").classList.add("open"); refreshCartDrawer(); };
 $("cartClose").onclick = () => $("cartOverlay").classList.remove("open");
 $("cartOverlay").addEventListener("click", (e) => { if (e.target === $("cartOverlay")) $("cartOverlay").classList.remove("open"); });
-$("cartCheckoutBtn").onclick = () => showToast("Checkout isn't wired up yet — this is a demo cart.");
+$("cartCheckoutBtn").onclick = async () => {
+    try {
+        const res = await fetch("/api/snackshop/checkout/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ return_url: window.location.pathname + "?ordered=1" })
+        });
+        const data = await res.json();
+        if (data.checkout_url) {
+            window.location.href = data.checkout_url;
+        } else {
+            showToast(data.message || "Failed to initiate checkout.");
+        }
+    } catch (err) {
+        showToast("Error connecting to checkout server.");
+    }
+};
 
 // ── Page data: offer of the day + deals belt ──────────────────
 async function loadOffer() {
@@ -630,9 +646,21 @@ async function loadDeals() {
     });
 }
 
+// return from checkout
+function checkOrderReturn() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ordered") === "1") {
+        showToast("🎉 Order placed successfully! Thank you for your purchase.");
+        refreshCartDrawer();
+        // Clean up the URL parameter without triggering a page reload
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+}
+
 refreshSession();
 loadOffer();
 loadDeals();
+checkOrderReturn();
 </script>
 </body>
 </html>
