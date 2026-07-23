@@ -761,6 +761,180 @@ async function loadDeals() {
     });
 }
 
+// ── Admin: user directory ───────────────────────────────────
+let DIRECTORY_USERS = [];
+let DIRECTORY_TARGET_EMAIL = "";
+
+function renderDirectoryRows() {
+    const q = ($("dirSearchInput").value || "").trim().toLowerCase();
+    const rows = DIRECTORY_USERS.filter(u =>
+        !q || u.email.toLowerCase().includes(q) || (u.fullName || "").toLowerCase().includes(q)
+    );
+
+    const body = $("dirTableBody");
+    if (!rows.length) {
+        body.innerHTML = `<tr><td colspan="5" class="dir-empty">No users found.</td></tr>`;
+        return;
+    }
+
+    body.innerHTML = rows.map(u => {
+        let badges = "";
+        if (u.isAdmin) badges += `<span class="role-tag role-tag--admin">Admin</span> `;
+        if (u.isEmployee) badges += `<span class="role-tag role-tag--employee">Employee</span>`;
+        if (!badges) badges = `<span style="color:var(--text-secondary);">Customer</span>`;
+
+        const status = u.isRestricted
+            ? `<span style="color:var(--danger); font-weight:700;" title="${u.restrictionReason || ""}">Restricted until ${u.restrictedUntilFriendly}</span>`
+            : `<span style="color:var(--accent); font-weight:700;">Active</span>`;
+
+        const joined = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—";
+
+        return `
+            <tr>
+                <td>
+                    <div style="font-weight:700;">${u.fullName || u.email}</div>
+                    <div style="font-size:0.78rem; color:var(--text-secondary);">${u.email}</div>
+                </td>
+                <td>${badges}</td>
+                <td>${status}</td>
+                <td>${joined}</td>
+                <td>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="btn btn-ghost btn-sm" data-dir-action="edit" data-email="${u.email}">Edit</button>
+                        <button class="btn btn-ghost btn-sm" data-dir-action="toggle-employee" data-email="${u.email}">${u.isEmployee ? "Remove Employee" : "Make Employee"}</button>
+                        <button class="btn btn-ghost btn-sm" data-dir-action="toggle-admin" data-email="${u.email}">${u.isAdmin ? "Remove Admin" : "Make Admin"}</button>
+                        ${u.isRestricted
+                            ? `<button class="btn btn-ghost btn-sm" data-dir-action="unrestrict" data-email="${u.email}">Unrestrict</button>`
+                            : `<button class="btn btn-ghost btn-sm" data-dir-action="restrict" data-email="${u.email}">Restrict</button>`}
+                        <button class="btn btn-danger btn-sm" data-dir-action="delete" data-email="${u.email}">Delete</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join("");
+
+    body.querySelectorAll("[data-dir-action]").forEach(btn => {
+        btn.onclick = () => handleDirectoryAction(btn.dataset.dirAction, btn.dataset.email);
+    });
+}
+
+async function loadDirectory() {
+    const body = $("dirTableBody");
+    body.innerHTML = `<tr><td colspan="5" class="dir-empty">Loading users…</td></tr>`;
+    const res = await fetch("/api/snackshop/users");
+    const data = await res.json();
+    if (!data.success) {
+        body.innerHTML = `<tr><td colspan="5" class="dir-empty">${data.message || "Couldn't load users."}</td></tr>`;
+        return;
+    }
+    DIRECTORY_USERS = data.users;
+    renderDirectoryRows();
+}
+
+async function handleDirectoryAction(action, email) {
+    DIRECTORY_TARGET_EMAIL = email;
+    const user = DIRECTORY_USERS.find(u => u.email === email);
+
+    if (action === "edit") {
+        $("dirEditEmailLabel").textContent = email;
+        $("dirEditName").value = (user && user.fullName) || "";
+        $("dirEditMsg").textContent = "";
+        $("dirEditModal").classList.add("open");
+        return;
+    }
+
+    if (action === "restrict") {
+        $("dirRestrictEmailLabel").textContent = email;
+        $("dirRestrictDays").value = "";
+        $("dirRestrictReason").value = "";
+        $("dirRestrictMsg").textContent = "";
+        $("dirRestrictModal").classList.add("open");
+        return;
+    }
+
+    if (action === "unrestrict") {
+        const res = await fetch("/api/snackshop/users/unrestrict", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        showToast(data.message);
+        if (data.success) loadDirectory();
+        return;
+    }
+
+    if (action === "toggle-employee") {
+        const res = await fetch("/api/snackshop/employees/toggle", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        showToast(data.message);
+        if (data.success) loadDirectory();
+        return;
+    }
+
+    if (action === "toggle-admin") {
+        const res = await fetch("/api/snackshop/users/admin/toggle", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        showToast(data.message);
+        if (data.success) loadDirectory();
+        return;
+    }
+
+    if (action === "delete") {
+        if (!confirm(`Permanently delete ${email}'s SnackShop account?`)) return;
+        const res = await fetch("/api/snackshop/users/delete", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        showToast(data.message);
+        if (data.success) loadDirectory();
+        return;
+    }
+}
+
+$("dirRefreshBtn").onclick = loadDirectory;
+$("dirSearchInput").addEventListener("input", renderDirectoryRows);
+
+$("dirEditClose").onclick = () => $("dirEditModal").classList.remove("open");
+$("dirEditModal").addEventListener("click", (e) => { if (e.target === $("dirEditModal")) $("dirEditModal").classList.remove("open"); });
+$("dirEditSaveBtn").onclick = async () => {
+    const msg = $("dirEditMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/users/update", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: DIRECTORY_TARGET_EMAIL, full_name: $("dirEditName").value })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    $("dirEditModal").classList.remove("open");
+    showToast(data.message);
+    loadDirectory();
+};
+
+$("dirRestrictClose").onclick = () => $("dirRestrictModal").classList.remove("open");
+$("dirRestrictModal").addEventListener("click", (e) => { if (e.target === $("dirRestrictModal")) $("dirRestrictModal").classList.remove("open"); });
+$("dirRestrictSaveBtn").onclick = async () => {
+    const msg = $("dirRestrictMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/users/restrict", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            email: DIRECTORY_TARGET_EMAIL,
+            days: $("dirRestrictDays").value,
+            reason: $("dirRestrictReason").value
+        })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    $("dirRestrictModal").classList.remove("open");
+    showToast(data.message);
+    loadDirectory();
+};
+
 // return from checkout
 function checkOrderReturn() {
     const params = new URLSearchParams(window.location.search);
