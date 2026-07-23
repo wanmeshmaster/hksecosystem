@@ -87,7 +87,7 @@ def init_db():
             expiry_year     INTEGER NOT NULL,
             cardholder_name TEXT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'active',   -- active | frozen | cancelled
-            card_type       TEXT NOT NULL DEFAULT 'regular',  -- regular | hkmail
+            card_type       TEXT NOT NULL DEFAULT 'regular',  -- regular | hkmail | snackshop
             issued_by       TEXT NOT NULL DEFAULT '',
             created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (account_id) REFERENCES accounts(id)
@@ -463,6 +463,51 @@ def credit_hkmail_revenue(cur, amount, description):
     return True
 
 
+def get_snackshop_card(cur):
+    """Return the raw row for the ecosystem's current usable SnackShop merchant
+    card (card_type='snackshop', not cancelled, not expired), or None. There can
+    only ever be one such card system-wide. Uses the caller's cursor so this
+    can be included in an existing transaction."""
+    cur.execute("""
+        SELECT id, username, account_id, account_label, card_number, cvv,
+               expiry_month, expiry_year, cardholder_name, status, issued_by, created_at, card_type
+        FROM cards WHERE card_type = 'snackshop'
+        ORDER BY created_at DESC
+    """)
+    for row in cur.fetchall():
+        status, expiry_month, expiry_year = row[9], row[6], row[7]
+        if status != 'cancelled' and not is_card_expired(expiry_month, expiry_year):
+            return row
+    return None
+
+
+def credit_snackshop_revenue(cur, amount, description):
+    """Route SnackShop purchase revenue into the account backing the
+    ecosystem's SnackShop merchant card, if one currently exists and is usable.
+    Returns True if credited, False if there's currently no valid SnackShop
+    card — the payer's card is still charged either way; the revenue just
+    has nowhere to land until an admin opens one."""
+    card = get_snackshop_card(cur)
+    if not card:
+        return False
+
+    username, account_id, account_label = card[1], card[2], card[3]
+    if account_id:
+        cur.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, account_id))
+        cur.execute(
+            "INSERT INTO account_transactions (account_id, username, title, amount) VALUES (?, ?, ?, ?)",
+            (account_id, username, description, amount)
+        )
+    else:
+        cur.execute("UPDATE users SET balance = balance + ? WHERE username = ?", (amount, username))
+
+    cur.execute(
+        "INSERT INTO transactions (username, title, amount, account_label) VALUES (?, ?, ?, ?)",
+        (username, description, amount, account_label)
+    )
+    return True
+
+
 def bank_account_snapshot_text(cur, username):
     """Plain-text snapshot of a customer's HKS Bank account for support
     tickets: profile info, every account, every card (masked). Deliberately
@@ -505,7 +550,10 @@ def bank_account_snapshot_text(cur, username):
     lines.append("Cards:" if cards else "Cards: none")
     for card_number, card_type, status, exp_m, exp_y, acct_label in cards:
         disp_status = 'expired' if (status != 'cancelled' and is_card_expired(exp_m, exp_y)) else status
-        type_note = " [HKMail merchant card]" if card_type == 'hkmail' else ""
+        type_note = (
+            " [HKMail merchant card]" if card_type == 'hkmail' else
+            " [SnackShop merchant card]" if card_type == 'snackshop' else ""
+        )
         lines.append(
             f"  - {mask_card_number(card_number)} ({acct_label}) — {disp_status}{type_note}, "
             f"exp {exp_m:02d}/{str(exp_y)[-2:]}"
@@ -1256,7 +1304,7 @@ def admin_create_card():
 
     if not username:
         return jsonify({"success": False, "message": "Username is required."}), 400
-    if card_type not in ("regular", "hkmail"):
+    if card_type not in ("regular", "hkmail", "snackshop"):
         return jsonify({"success": False, "message": "Invalid card type."}), 400
 
     conn = sqlite3.connect(DATABASE)
@@ -1277,6 +1325,16 @@ def admin_create_card():
             return jsonify({
                 "success": False,
                 "message": f"An HKMail card already exists (held by {existing[1]}). "
+                           f"Cancel it or wait for it to expire before opening another."
+            }), 400
+
+    if card_type == "snackshop":
+        existing = get_snackshop_card(cur)
+        if existing:
+            conn.close()
+            return jsonify({
+                "success": False,
+                "message": f"A SnackShop card already exists (held by {existing[1]}). "
                            f"Cancel it or wait for it to expire before opening another."
             }), 400
 
@@ -1317,11 +1375,16 @@ def admin_create_card():
         type_note = (
             "This is the ecosystem's HKMail merchant card — HKMail Premium subscription "
             "revenue will be deposited onto it automatically.\n\n"
-            if card_type == "hkmail" else ""
+            if card_type == "hkmail" else
+            "This is the ecosystem's SnackShop merchant card — revenue from every SnackShop "
+            "purchase will be deposited onto it automatically.\n\n"
+            if card_type == "snackshop" else ""
         )
         send_system_mail(
             email,
-            "Your New HKMail Merchant Card" if card_type == "hkmail" else "Your New HKS Bank Card",
+            "Your New HKMail Merchant Card" if card_type == "hkmail" else
+            "Your New SnackShop Merchant Card" if card_type == "snackshop" else
+            "Your New HKS Bank Card",
             f"Hi {full_name or username},\n\n"
             f"A new HKS Bank card has been opened for your {account_label} (username: {username}).\n\n"
             f"{type_note}"
@@ -2013,12 +2076,17 @@ def checkout_pay_with_card():
 
     if meta.startswith("hkmail_premium:"):
         credit_hkmail_revenue(cur, amount, description)
+    if meta.startswith("snackshop_order:"):
+        credit_snackshop_revenue(cur, amount, description)
 
     conn.commit()
     conn.close()
 
     if meta.startswith("hkmail_premium:"):
         _activate_mail_premium(session.get("mail_username"), meta.split(":", 1)[1], card[0])
+    if meta.startswith("snackshop_order:"):
+        session["shop_cart"] = {}
+        session.modified = True
 
     return jsonify({"success": True, "message": message})
 
@@ -2073,12 +2141,17 @@ def checkout_pay_with_session_card():
 
     if meta.startswith("hkmail_premium:"):
         credit_hkmail_revenue(cur, amount, description)
+    if meta.startswith("snackshop_order:"):
+        credit_snackshop_revenue(cur, amount, description)
 
     conn.commit()
     conn.close()
 
     if meta.startswith("hkmail_premium:"):
         _activate_mail_premium(session.get("mail_username"), meta.split(":", 1)[1], card[0])
+    if meta.startswith("snackshop_order:"):
+        session["shop_cart"] = {}
+        session.modified = True
 
     # Same shared-cookie hazard as /api/logout: clear only the bank-owned
     # session keys so an HKMail login in the same browser session survives.
@@ -5537,6 +5610,28 @@ def snackshop_cart_clear():
     return jsonify({"success": True, **shop_cart_summary()})
 
 
+@app.route('/api/snackshop/checkout/start', methods=['POST'])
+def snackshop_checkout_start():
+    """Kick off a cart purchase. Recomputes the total server-side from the
+    session cart (never trusts a client-supplied amount) and returns a URL to
+    HKS Bank's shared checkout page — the frontend redirects the browser
+    there to complete payment, same pattern as HKMail Premium subscriptions."""
+    cart = shop_cart_summary()
+    if not cart["itemCount"] or cart["subtotal"] <= 0:
+        return jsonify({"success": False, "message": "Your cart is empty."}), 400
+
+    from urllib.parse import quote
+    item_word = "item" if cart["itemCount"] == 1 else "items"
+    desc = f"SnackShop Order ({cart['itemCount']} {item_word})"
+    meta = "snackshop_order:cart"
+    return_url = "/snackshop-shop.html?ordered=1"
+    checkout_url = (
+        f"/hks-bank-checkout.html?amount={cart['subtotal']}"
+        f"&desc={quote(desc)}&return_url={quote(return_url)}&meta={quote(meta)}"
+    )
+    return jsonify({"success": True, "checkout_url": checkout_url})
+
+
 def check_hkmail_card_on_startup():
     """Warn on the console if there's no usable HKMail merchant card — until
     one exists, HKMail Premium subscription revenue has nowhere to land."""
@@ -5554,9 +5649,27 @@ def check_hkmail_card_on_startup():
         print("=" * 78)
 
 
+def check_snackshop_card_on_startup():
+    """Warn on the console if there's no usable SnackShop merchant card —
+    until one exists, SnackShop purchase revenue has nowhere to land."""
+    conn = sqlite3.connect(DATABASE)
+    cur  = conn.cursor()
+    card = get_snackshop_card(cur)
+    conn.close()
+    if not card:
+        print("=" * 78)
+        print("    WARNING: No active SnackShop merchant card exists.")
+        print("    SnackShop purchases will be charged to the customer but the revenue")
+        print("    will NOT be deposited anywhere until an admin opens a SnackShop-type")
+        print("    card for some account (HKS Bank dashboard → edit user → Issue New")
+        print("    Card → Card Type: SnackShop).")
+        print("=" * 78)
+
+
 if __name__ == '__main__':
     init_db()
     init_mail_db()
     init_shop_db()
     check_hkmail_card_on_startup()
+    check_snackshop_card_on_startup()
     app.run(host='0.0.0.0', port=5001, debug=True)

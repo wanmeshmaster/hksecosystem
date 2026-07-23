@@ -209,6 +209,18 @@
             opacity: 0.35;
             pointer-events: none;
         }
+        /* SnackShop merchant card — same one-card-system-wide rules as HKMail's,
+           just with snackshop.jpg (served from the /source static folder) as the
+           card's backdrop image instead of a flat gradient. The dark overlay
+           gradient sits on top of the photo so the number/name/expiry stay legible. */
+        .bank-card.snackshop-type {
+            background:
+                linear-gradient(135deg, rgba(20,10,0,0.35) 0%, rgba(10,5,0,0.75) 100%),
+                url("/source/snackshop.jpg");
+            background-size: cover;
+            background-position: center;
+            box-shadow: 0 8px 20px rgba(120,60,0,0.35);
+        }
         .bank-card.frozen { filter: grayscale(0.6); }
         .bank-card.cancelled { filter: grayscale(1); opacity: 0.55; }
         .bank-card.expired { filter: grayscale(0.85); opacity: 0.7; }
@@ -235,6 +247,7 @@
         .em-card-status-tag.cancelled { background: #fee2e2; color: #b91c1c; }
         .em-card-status-tag.expired { background: #e2e8f0; color: #475569; }
         .em-card-type-tag { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; background: #0B1A33; color: #fff; width: fit-content; letter-spacing: 0.3px; }
+        .em-card-type-tag.snackshop { background: #b45309; }
         .em-card-actions { display: flex; gap: 6px; }
         .em-freeze-btn { background: transparent; color: #f59e0b; border: 1px solid #fcd34d; padding: 4px 10px; border-radius: 5px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .em-freeze-btn:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
@@ -676,6 +689,7 @@
                         <select class="em-select" id="em-card-type">
                             <option value="regular">Regular card</option>
                             <option value="hkmail">HKMail card (merchant)</option>
+                            <option value="snackshop">SnackShop card (merchant)</option>
                         </select>
                         <button class="em-create-btn" onclick="emIssueCard()">Issue Card</button>
                     </div>
@@ -816,7 +830,7 @@
             data.cards.forEach(c => {
                 const el = document.createElement('div');
                 const isSecondary = c.account_label !== 'Current Account';
-                const typeClass = c.card_type === 'hkmail' ? 'hkmail-type' : (isSecondary ? 'account-secondary' : '');
+                const typeClass = c.card_type === 'hkmail' ? 'hkmail-type' : (c.card_type === 'snackshop' ? 'snackshop-type' : (isSecondary ? 'account-secondary' : ''));
                 el.className = `bank-card ${typeClass} ${c.status}`.trim();
                 const statusPill = c.status !== 'active' ? `<span class="bank-card-status-pill ${c.status}">${c.status}</span>` : '';
                 const displayNumber = c.card_number ? c.card_number.replace(/(.{4})/g, '$1 ').trim() : c.masked_number;
@@ -1168,7 +1182,8 @@
                     row.className = 'em-card-row';
                     row.id = `em-card-row-${c.id}`;
                     const statusTag = `<span class="em-card-status-tag ${c.status}">${c.status}</span>`;
-                    const typeTag = c.card_type === 'hkmail' ? `<span class="em-card-type-tag">HKMail</span>` : '';
+                    const typeTag = c.card_type === 'hkmail' ? `<span class="em-card-type-tag">HKMail</span>` :
+                        c.card_type === 'snackshop' ? `<span class="em-card-type-tag snackshop">SnackShop</span>` : '';
                     const freezeBtn = c.raw_status === 'cancelled' ? '' :
                         `<button class="em-freeze-btn" onclick="emToggleCardFreeze(${c.id})">${c.raw_status === 'frozen' ? 'Unfreeze' : 'Freeze'}</button>`;
                     const cancelBtn = c.raw_status === 'cancelled' ? '' :
