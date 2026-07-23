@@ -4973,6 +4973,18 @@ def init_shop_db():
         )
     """)
 
+    # Safe migrations for existing databases — account restriction (a
+    # temporary login lock an admin can apply for N days, with a reason
+    # shown back to the user on their next login attempt).
+    for stmt in [
+        "ALTER TABLE shop_users ADD COLUMN restricted_until DATETIME",
+        "ALTER TABLE shop_users ADD COLUMN restriction_reason TEXT NOT NULL DEFAULT ''",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS shop_products (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5100,6 +5112,31 @@ def shop_get_user(username):
     row = cur.fetchone()
     conn.close()
     return row
+
+
+SHOP_RESTRICTION_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def shop_format_restriction_date(restricted_until):
+    """Turn a stored 'YYYY-MM-DD HH:MM:SS' restriction deadline into a
+    friendly date like 'August 5, 2026' for display to the restricted user."""
+    try:
+        dt = datetime.strptime(restricted_until, SHOP_RESTRICTION_TS_FORMAT)
+    except (TypeError, ValueError):
+        return restricted_until
+    return dt.strftime("%B %-d, %Y") if os.name != "nt" else dt.strftime("%B %#d, %Y")
+
+
+def shop_active_restriction(restricted_until):
+    """Return the parsed datetime if the restriction is still in effect
+    (i.e. in the future), otherwise None."""
+    if not restricted_until:
+        return None
+    try:
+        dt = datetime.strptime(restricted_until, SHOP_RESTRICTION_TS_FORMAT)
+    except (TypeError, ValueError):
+        return None
+    return dt if dt > datetime.now() else None
 
 
 def shop_is_employee():
@@ -5242,12 +5279,28 @@ def snackshop_login():
 
     conn = sqlite3.connect(SHOP_DATABASE)
     cur = conn.cursor()
-    cur.execute("SELECT password_hash, full_name, is_employee FROM shop_users WHERE username=?", (email,))
+    cur.execute(
+        "SELECT password_hash, full_name, is_employee, restricted_until, restriction_reason "
+        "FROM shop_users WHERE username=?", (email,)
+    )
     row = cur.fetchone()
     conn.close()
 
     if not row or not check_password_hash(row[0], password):
         return jsonify({"success": False, "message": "Incorrect email or password."}), 401
+
+    restricted_dt = shop_active_restriction(row[3])
+    if restricted_dt:
+        friendly_date = shop_format_restriction_date(row[3])
+        reason = row[4] or "No reason was given."
+        return jsonify({
+            "success": False,
+            "restricted": True,
+            "restrictedUntil": row[3],
+            "restrictedUntilFriendly": friendly_date,
+            "reason": reason,
+            "message": f"Your SnackShop account is temporarily restricted until {friendly_date}. Reason: {reason}"
+        }), 403
 
     session["shop_username"] = email
     return jsonify({
@@ -5531,6 +5584,216 @@ def snackshop_toggle_employee():
     conn.close()
     action = "promoted to Employee" if new_val else "demoted from Employee"
     return jsonify({"success": True, "message": f"{email} has been {action}.", "isEmployee": bool(new_val)})
+
+
+# ── SnackShop: admin — user directory ───────────────────────────────────────
+# Lets an admin see everyone who has registered a SnackShop account, edit
+# their display name, promote/demote them to Employee or Admin, temporarily
+# restrict their login access for a chosen number of days (with a reason
+# shown back to the user), or delete their account outright.
+
+@app.route('/api/snackshop/users')
+def snackshop_list_users():
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT username, full_name, is_employee, created_at, restricted_until, restriction_reason
+        FROM shop_users ORDER BY created_at DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    users = []
+    for username, full_name, is_employee, created_at, restricted_until, restriction_reason in rows:
+        active_restriction = shop_active_restriction(restricted_until)
+        users.append({
+            "email": username,
+            "fullName": full_name,
+            "isEmployee": bool(is_employee),
+            "isAdmin": shop_is_hkmail_admin(username),
+            "createdAt": created_at,
+            "restrictedUntil": restricted_until if active_restriction else None,
+            "restrictedUntilFriendly": shop_format_restriction_date(restricted_until) if active_restriction else None,
+            "restrictionReason": restriction_reason if active_restriction else "",
+            "isRestricted": bool(active_restriction),
+        })
+    return jsonify({"success": True, "users": users, "currentUser": shop_current_user()})
+
+
+@app.route('/api/snackshop/users/update', methods=['POST'])
+def snackshop_update_user():
+    """Admin-only: edit a registered user's display name."""
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    full_name = (data.get("full_name", "") or "").strip()
+    if not email:
+        return jsonify({"success": False, "message": "Email required."}), 400
+    if not full_name:
+        return jsonify({"success": False, "message": "Name can't be empty."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM shop_users WHERE username=?", (email,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "That email hasn't signed up to SnackShop yet."}), 404
+
+    cur.execute("UPDATE shop_users SET full_name=? WHERE username=?", (full_name, email))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{email}'s name has been updated.", "fullName": full_name})
+
+
+@app.route('/api/snackshop/users/delete', methods=['POST'])
+def snackshop_delete_user():
+    """Admin-only: permanently remove a user's SnackShop account."""
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    if not email:
+        return jsonify({"success": False, "message": "Email required."}), 400
+    if email == shop_current_user():
+        return jsonify({"success": False, "message": "You cannot delete your own account from here."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM shop_users WHERE username=?", (email,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "That email hasn't signed up to SnackShop yet."}), 404
+
+    cur.execute("DELETE FROM shop_users WHERE username=?", (email,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{email}'s SnackShop account has been deleted."})
+
+
+@app.route('/api/snackshop/users/restrict', methods=['POST'])
+def snackshop_restrict_user():
+    """Admin-only: temporarily lock a user out of logging in for a chosen
+    number of days, with a reason that's shown back to them when they try
+    to log in while restricted."""
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    reason = (data.get("reason", "") or "").strip()
+    try:
+        days = int(data.get("days"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Enter a whole number of days."}), 400
+
+    if not email:
+        return jsonify({"success": False, "message": "Email required."}), 400
+    if days <= 0:
+        return jsonify({"success": False, "message": "Restriction length must be at least 1 day."}), 400
+    if not reason:
+        return jsonify({"success": False, "message": "A reason is required so the user knows why."}), 400
+    if email == shop_current_user():
+        return jsonify({"success": False, "message": "You cannot restrict your own account."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM shop_users WHERE username=?", (email,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "That email hasn't signed up to SnackShop yet."}), 404
+
+    restricted_until = (datetime.now() + timedelta(days=days)).strftime(SHOP_RESTRICTION_TS_FORMAT)
+    cur.execute(
+        "UPDATE shop_users SET restricted_until=?, restriction_reason=? WHERE username=?",
+        (restricted_until, reason, email)
+    )
+    conn.commit()
+    conn.close()
+    friendly = shop_format_restriction_date(restricted_until)
+    return jsonify({
+        "success": True,
+        "message": f"{email} has been restricted until {friendly}.",
+        "restrictedUntil": restricted_until,
+        "restrictedUntilFriendly": friendly,
+    })
+
+
+@app.route('/api/snackshop/users/unrestrict', methods=['POST'])
+def snackshop_unrestrict_user():
+    """Admin-only: lift a restriction early."""
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    if not email:
+        return jsonify({"success": False, "message": "Email required."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM shop_users WHERE username=?", (email,))
+    if not cur.fetchone():
+        conn.close()
+        return jsonify({"success": False, "message": "That email hasn't signed up to SnackShop yet."}), 404
+
+    cur.execute("UPDATE shop_users SET restricted_until=NULL, restriction_reason='' WHERE username=?", (email,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{email}'s restriction has been lifted."})
+
+
+@app.route('/api/snackshop/users/admin/toggle', methods=['POST'])
+def snackshop_toggle_admin():
+    """Admin-only: promote or demote a SnackShop user to Admin. SnackShop
+    doesn't store its own Admin flag — Admin status always lives on the
+    matching HKMail account (see shop_is_hkmail_admin) — so this updates
+    that account's HKMail role directly. The user must already have an
+    HKMail account under this email for this to work."""
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    if not email:
+        return jsonify({"success": False, "message": "Email required."}), 400
+    if email == shop_current_user():
+        return jsonify({"success": False, "message": "You cannot change your own role."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT is_admin FROM mail_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": f"{email} doesn't have an HKMail account yet — Admin access is granted via HKMail and requires one."
+        }), 404
+
+    new_val = 0 if row[0] else 1
+    cur.execute("UPDATE mail_users SET is_admin=? WHERE username=?", (new_val, email))
+    conn.commit()
+    conn.close()
+    action = "promoted to Admin" if new_val else "demoted from Admin"
+    return jsonify({"success": True, "message": f"{email} has been {action}.", "isAdmin": bool(new_val)})
 
 
 # ── SnackShop: cart (stored in-session, shared across every SnackShop page) ────

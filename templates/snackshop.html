@@ -266,6 +266,51 @@
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+    /* ── Admin: user directory ─────────────────────────────── */
+    .admin-section { margin-top: 60px; }
+    .admin-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .admin-card { background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 18px; padding: 22px; }
+
+    .directory-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+
+    .directory-table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--glass-border); }
+    .directory-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 720px; }
+    .directory-table th {
+        text-align: left; padding: 12px 14px; color: var(--text-tertiary); font-size: 0.68rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--glass-border);
+    }
+    .directory-table td { padding: 12px 14px; border-bottom: 1px solid var(--glass-border); vertical-align: middle; }
+    .directory-table tr:last-child td { border-bottom: none; }
+    .directory-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .dir-user-cell { display: flex; align-items: center; gap: 10px; }
+    .dir-avatar {
+        width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 800; color: #06110e; flex-shrink: 0;
+    }
+    .dir-name { font-weight: 700; }
+    .dir-email { color: var(--text-tertiary); font-size: 0.76rem; }
+    .dir-roles { display: flex; gap: 5px; flex-wrap: wrap; }
+    .status-pill {
+        font-size: 0.66rem; font-weight: 800; letter-spacing: 0.03em; padding: 3px 9px; border-radius: 999px; text-transform: uppercase;
+        display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    }
+    .status-pill--active { background: rgba(38,201,171,0.14); color: var(--accent); }
+    .status-pill--restricted { background: rgba(226,104,95,0.16); color: var(--danger); }
+    .dir-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .dir-empty { text-align: center; padding: 50px 20px; color: var(--text-tertiary); }
+    .dir-restriction-note { font-size: 0.74rem; color: var(--danger); margin-top: 3px; max-width: 30ch; }
+
+    /* Directory modal (edit / restrict) */
+    .dir-modal-card { max-width: 420px; text-align: left; }
+    .dir-modal-card .field { margin-bottom: 14px; }
+    .dir-modal-card textarea {
+        width: 100%; padding: 11px 13px; border-radius: 11px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 70px;
+    }
+    .dir-modal-card textarea:focus { outline: none; border-color: var(--amber); }
+    .dir-modal-actions { display: flex; gap: 10px; margin-top: 6px; }
+    .dir-modal-subtitle { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; }
+
     @media (max-width: 760px) {
         .offer-card { grid-template-columns: 1fr; }
         .offer-emoji { font-size: 6rem; }
@@ -341,6 +386,35 @@
         </div>
         <a href="/snackshop-shop.html" class="btn btn-primary">Browse Snacks →</a>
     </div>
+
+    <div class="admin-section" id="directory" hidden>
+        <div class="admin-section-head">
+            <div class="page-title font-display" style="font-size:1.3rem;">User Directory</div>
+        </div>
+        <div class="admin-card">
+            <p class="page-sub" style="margin-bottom:14px;">Everyone who has registered a SnackShop account. Edit their name, promote them to Employee or Admin, temporarily restrict their access, or delete their account.</p>
+            <div class="directory-toolbar">
+                <input type="text" class="search-input" id="dirSearchInput" placeholder="Search by name or email…" style="flex:1; min-width:200px; padding:11px 16px; border-radius:12px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.04); color:var(--text-primary); font-size:0.9rem;">
+                <button class="btn btn-ghost btn-sm" id="dirRefreshBtn">Refresh</button>
+            </div>
+            <div class="directory-table-wrap">
+                <table class="directory-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dirTableBody">
+                        <tr><td colspan="5" class="dir-empty">Loading users…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </main>
 
 <footer>&copy; 2026 SnackShop Co. All rights reserved.</footer>
@@ -373,6 +447,39 @@
                 <div class="form-msg" id="registerMsg"></div>
                 <button type="submit" class="btn btn-primary btn-block">Sign up</button>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Directory: edit user modal -->
+<div class="modal-overlay" id="dirEditModal">
+    <div class="modal-card dir-modal-card">
+        <button class="modal-close" id="dirEditClose">&times;</button>
+        <div class="modal-title">Edit user</div>
+        <div class="modal-sub" id="dirEditEmailLabel"></div>
+        <div class="field"><label>Full name</label><input type="text" id="dirEditName"></div>
+        <div class="form-msg" id="dirEditMsg"></div>
+        <button class="btn btn-primary btn-block" id="dirEditSaveBtn">Save changes</button>
+    </div>
+</div>
+
+<!-- Directory: restrict user modal -->
+<div class="modal-overlay" id="dirRestrictModal">
+    <div class="modal-card dir-modal-card">
+        <button class="modal-close" id="dirRestrictClose">&times;</button>
+        <div class="modal-title">Restrict access</div>
+        <div class="modal-sub" id="dirRestrictEmailLabel"></div>
+        <div class="field">
+            <label>Restrict for how many days?</label>
+            <input type="number" id="dirRestrictDays" min="1" placeholder="e.g. 7">
+        </div>
+        <div class="field">
+            <label>Reason (shown to the user)</label>
+            <textarea id="dirRestrictReason" placeholder="e.g. Violation of community guidelines"></textarea>
+        </div>
+        <div class="form-msg" id="dirRestrictMsg"></div>
+        <div class="dir-modal-actions">
+            <button class="btn btn-primary btn-block" id="dirRestrictSaveBtn">Restrict user</button>
         </div>
     </div>
 </div>
@@ -436,6 +543,13 @@ async function refreshSession() {
     SESSION = await res.json();
     renderAuthArea();
     updateCartBadge(SESSION.cartCount);
+    $("directory").hidden = !SESSION.isAdmin;
+    if (SESSION.isAdmin) {
+        loadDirectory();
+        if (window.location.hash === "#directory") {
+            $("directory").scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }
 }
 
 function openAuthModal(tab) {

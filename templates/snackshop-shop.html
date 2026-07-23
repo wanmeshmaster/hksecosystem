@@ -305,17 +305,13 @@
         </div>
     </div>
 
-    <div class="admin-section" id="adminEmployeeSection" hidden>
+    <div class="admin-section" id="adminDirectoryLinkSection" hidden>
         <div class="admin-section-head">
-            <div class="page-title" style="font-size:1.3rem;">Employees</div>
+            <div class="page-title" style="font-size:1.3rem;">Users</div>
         </div>
-        <div class="admin-card">
-            <p class="page-sub" style="margin-bottom:14px;">Promote a signed-up SnackShop user to Employee so they can manage products and discounts. This is separate from HKMail's own roles.</p>
-            <div class="inline-form">
-                <div class="field"><label>User email</label><input id="employeeEmail" type="email" placeholder="jane@hkmail.cn"></div>
-                <button class="btn btn-primary" id="toggleEmployeeBtn">Toggle Employee</button>
-            </div>
-            <div class="form-msg" id="employeeMsg"></div>
+        <div class="admin-card" style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+            <p class="page-sub" style="margin:0;">Managing Employees, Admins, and registered accounts has moved to the User Directory on the home page.</p>
+            <a href="/snackshop.html#directory" class="btn btn-primary btn-sm">Go to User Directory</a>
         </div>
     </div>
 </main>
@@ -424,7 +420,7 @@ function renderManageUI() {
         banner.innerHTML = "";
     }
     $("adminAddSection").hidden = !canManage;
-    $("adminEmployeeSection").hidden = !SESSION.isAdmin;
+    $("adminDirectoryLinkSection").hidden = !SESSION.isAdmin;
 }
 
 async function refreshSession() {
@@ -773,17 +769,6 @@ $("newProductBtn").onclick = async () => {
     $("newImage").value = "";
     $("newImageLabel").textContent = "Choose an image…";
     loadProducts();
-};
-
-$("toggleEmployeeBtn").onclick = async () => {
-    const msg = $("employeeMsg"); msg.textContent = ""; msg.className = "form-msg";
-    const email = $("employeeEmail").value.trim();
-    const res = await fetch("/api/snackshop/employees/toggle", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email })
-    });
-    const data = await res.json();
-    msg.textContent = data.message;
-    msg.classList.add(data.success ? "success" : "error");
 };
 
 $("searchInput").addEventListener("input", renderProducts);
