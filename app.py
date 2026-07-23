@@ -525,6 +525,7 @@ def home():
     apps = [
         {'id': 'hks-bank',    'title': '',       'url': '/hks-bank.html'},
         {'id': 'hkmail',      'title': '',          'url': '/hkmail.html'},
+        {'id': 'snackshop',   'title': 'SnackShop',  'url': '/snackshop.html'},
         {'id': 'coming-soon', 'title': '', 'url': '/coming-soon.html'},
     ]
     for a in apps:
@@ -551,6 +552,14 @@ def bank_checkout():
 @app.route('/hks-bank-support.html')
 def bank_support_page():
     return render_template('hks-bank-support.html')
+
+@app.route('/snackshop.html')
+def snackshop_home():
+    return render_template('snackshop.html')
+
+@app.route('/snackshop-shop.html')
+def snackshop_browse():
+    return render_template('snackshop-shop.html')
 
 @app.route('/about-us.html')
 def about_us():
@@ -4860,6 +4869,549 @@ def hkmail_admin_create_account():
     except sqlite3.IntegrityError:
         return jsonify({"success": False, "message": "That email address is already taken."}), 400
 
+# ── SnackShop ────────────────────────────────────────────────────────────────
+# A separate mini "app" in the ecosystem, in its own database (mirrors the
+# HKMail/HKS Bank split). SnackShop has its own accounts (signed up with an
+# email address + password) but does NOT run its own admin system — instead,
+# Admin privileges are sourced live from HKMail: if the email a SnackShop
+# user signed up with is an Admin over in mail_users, they're automatically
+# an Admin here too. "Employee" is a SnackShop-only tag, promoted by a
+# SnackShop admin, independent of any HKMail role.
+
+SHOP_DATABASE = "snackshop.db"
+
+
+def init_shop_db():
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS shop_users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT UNIQUE NOT NULL,   -- email address, e.g. jane@hkmail.cn
+            password_hash TEXT NOT NULL,
+            full_name     TEXT NOT NULL DEFAULT '',
+            is_employee   INTEGER NOT NULL DEFAULT 0,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS shop_products (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            name              TEXT NOT NULL,
+            description       TEXT NOT NULL DEFAULT '',
+            category          TEXT NOT NULL DEFAULT 'Snacks',
+            emoji             TEXT NOT NULL DEFAULT '🍪',
+            price             REAL NOT NULL DEFAULT 0.0,
+            quantity          INTEGER NOT NULL DEFAULT 0,
+            discount_percent  REAL NOT NULL DEFAULT 0,
+            is_offer_of_day   INTEGER NOT NULL DEFAULT 0,
+            created_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS shop_product_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id      INTEGER NOT NULL,
+            action          TEXT NOT NULL,
+            note            TEXT NOT NULL DEFAULT '',
+            actor_username  TEXT NOT NULL,
+            actor_role      TEXT NOT NULL,     -- admin | employee
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.commit()
+
+    # Seed a small starter catalogue the first time the table is empty, so
+    # the front page and browse page aren't blank on a fresh install.
+    cur.execute("SELECT COUNT(*) FROM shop_products")
+    if cur.fetchone()[0] == 0:
+        starter = [
+            ("Salted Pretzel Sticks", "Crunchy oven-baked pretzel sticks, lightly salted.",  "Savoury", "🥨", 2.49, 120, 0),
+            ("Sea Salt Kettle Chips", "Thick-cut kettle-cooked potato chips.",                "Savoury", "🥔", 3.29, 80,  15),
+            ("Choco Chip Cookies",    "Soft-baked cookies loaded with chocolate chips.",       "Sweet",   "🍪", 3.99, 60,  0),
+            ("Mixed Fruit Gummies",   "Chewy fruit-flavoured gummy sweets.",                   "Sweet",   "🍬", 2.19, 150, 10),
+            ("Roasted Almonds",       "Lightly roasted and salted whole almonds.",             "Healthy", "🥜", 4.49, 90,  0),
+            ("Sparkling Lemonade",    "Crisp sparkling lemonade, 330ml can.",                  "Drinks",  "🥤", 1.79, 200, 0),
+            ("Dark Chocolate Bar",    "70% cocoa dark chocolate bar.",                         "Sweet",   "🍫", 2.99, 70,  20),
+            ("Popcorn - Butter",      "Classic buttered microwave popcorn.",                   "Savoury", "🍿", 2.59, 100, 0),
+            ("Trail Mix",             "Nuts, seeds, and dried fruit trail mix.",               "Healthy", "🌰", 4.99, 65,  0),
+            ("Iced Green Tea",        "Unsweetened iced green tea, 500ml bottle.",             "Drinks",  "🍵", 1.99, 140, 0),
+        ]
+        cur.executemany("""
+            INSERT INTO shop_products (name, description, category, emoji, price, quantity, discount_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, starter)
+        # First item becomes today's featured "Offer of the Day".
+        cur.execute("UPDATE shop_products SET is_offer_of_day = 1, discount_percent = 25 WHERE id = 2")
+        conn.commit()
+
+    conn.close()
+
+
+def shop_current_user():
+    """Return the SnackShop username (email) from session, or None."""
+    return session.get("shop_username")
+
+
+def shop_is_hkmail_admin(email):
+    """Live lookup — SnackShop never stores its own Admin flag; it always
+    asks HKMail whether this email currently belongs to an Admin."""
+    if not email:
+        return False
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT is_admin FROM mail_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+def shop_get_user(username):
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT username, full_name, is_employee FROM shop_users WHERE username=?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def shop_is_employee():
+    username = shop_current_user()
+    if not username:
+        return False
+    row = shop_get_user(username)
+    return bool(row and row[2])
+
+
+def shop_is_admin():
+    return shop_is_hkmail_admin(shop_current_user())
+
+
+def shop_can_manage():
+    """Admins (sourced from HKMail) and Employees (promoted in SnackShop)
+    can both manage the catalogue."""
+    return shop_is_admin() or shop_is_employee()
+
+
+def shop_product_row_to_dict(row):
+    (pid, name, description, category, emoji, price, quantity,
+     discount_percent, is_offer_of_day, created_at) = row
+    final_price = round(price * (1 - (discount_percent or 0) / 100.0), 2)
+    return {
+        "id": pid, "name": name, "description": description, "category": category,
+        "emoji": emoji, "price": price, "quantity": quantity,
+        "discountPercent": discount_percent, "finalPrice": final_price,
+        "isOfferOfDay": bool(is_offer_of_day), "inStock": quantity > 0,
+    }
+
+
+def shop_get_product(cur, product_id):
+    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
+                           discount_percent, is_offer_of_day, created_at
+                    FROM shop_products WHERE id=?""", (product_id,))
+    return cur.fetchone()
+
+
+def shop_cart_from_session():
+    """Cart lives in the Flask session (same cookie used across every page
+    of the ecosystem, including HKMail/HKS Bank), so it's already shared
+    across SnackShop's front page and browse page without any extra work."""
+    return session.get("shop_cart", {})
+
+
+def shop_cart_summary():
+    cart = shop_cart_from_session()
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    items = []
+    subtotal = 0.0
+    item_count = 0
+    for pid_str, qty in cart.items():
+        row = shop_get_product(cur, int(pid_str))
+        if not row:
+            continue
+        product = shop_product_row_to_dict(row)
+        qty = max(0, min(qty, product["quantity"])) if product["quantity"] else 0
+        if qty <= 0:
+            continue
+        line_total = round(product["finalPrice"] * qty, 2)
+        subtotal += line_total
+        item_count += qty
+        items.append({"product": product, "qty": qty, "lineTotal": line_total})
+    conn.close()
+    return {"items": items, "subtotal": round(subtotal, 2), "itemCount": item_count}
+
+
+@app.route('/api/snackshop/session')
+def snackshop_session():
+    username = shop_current_user()
+    cart = shop_cart_summary()
+    if not username:
+        return jsonify({"loggedIn": False, "isAdmin": False, "isEmployee": False,
+                         "cartCount": cart["itemCount"]})
+    row = shop_get_user(username)
+    return jsonify({
+        "loggedIn": True,
+        "email": username,
+        "fullName": row[1] if row else username,
+        "isAdmin": shop_is_admin(),
+        "isEmployee": bool(row[2]) if row else False,
+        "cartCount": cart["itemCount"],
+    })
+
+
+@app.route('/api/snackshop/register', methods=['POST'])
+def snackshop_register():
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    password = (data.get("password", "") or "").strip()
+    full_name = (data.get("full_name", "") or "").strip()
+
+    if "@" not in email:
+        return jsonify({"success": False, "message": "A valid email address is required."}), 400
+    if len(password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters."}), 400
+    if not full_name:
+        full_name = email.split("@")[0].replace(".", " ").title()
+
+    try:
+        conn = sqlite3.connect(SHOP_DATABASE)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO shop_users (username, password_hash, full_name) VALUES (?, ?, ?)",
+            (email, generate_password_hash(password), full_name)
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.IntegrityError:
+        return jsonify({"success": False, "message": "An account with that email already exists."}), 400
+
+    session["shop_username"] = email
+    return jsonify({"success": True, "email": email, "fullName": full_name,
+                     "isAdmin": shop_is_hkmail_admin(email), "isEmployee": False})
+
+
+@app.route('/api/snackshop/login', methods=['POST'])
+def snackshop_login():
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    password = (data.get("password", "") or "").strip()
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT password_hash, full_name, is_employee FROM shop_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row or not check_password_hash(row[0], password):
+        return jsonify({"success": False, "message": "Incorrect email or password."}), 401
+
+    session["shop_username"] = email
+    return jsonify({
+        "success": True, "email": email, "fullName": row[1],
+        "isAdmin": shop_is_hkmail_admin(email), "isEmployee": bool(row[2]),
+    })
+
+
+@app.route('/api/snackshop/logout', methods=['POST'])
+def snackshop_logout():
+    session.pop("shop_username", None)
+    return jsonify({"success": True})
+
+
+@app.route('/api/snackshop/products')
+def snackshop_list_products():
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
+                           discount_percent, is_offer_of_day, created_at
+                    FROM shop_products ORDER BY name""")
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify({"success": True, "products": [shop_product_row_to_dict(r) for r in rows]})
+
+
+@app.route('/api/snackshop/offer')
+def snackshop_offer_of_day():
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
+                           discount_percent, is_offer_of_day, created_at
+                    FROM shop_products WHERE is_offer_of_day=1 LIMIT 1""")
+    row = cur.fetchone()
+    conn.close()
+    return jsonify({"success": True, "offer": shop_product_row_to_dict(row) if row else None})
+
+
+@app.route('/api/snackshop/deals')
+def snackshop_deals():
+    """The multi-slot deals bar: every currently-discounted product."""
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""SELECT id, name, description, category, emoji, price, quantity,
+                           discount_percent, is_offer_of_day, created_at
+                    FROM shop_products WHERE discount_percent > 0
+                    ORDER BY discount_percent DESC, name""")
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify({"success": True, "deals": [shop_product_row_to_dict(r) for r in rows]})
+
+
+@app.route('/api/snackshop/products', methods=['POST'])
+def snackshop_create_product():
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_can_manage():
+        return jsonify({"success": False, "message": "Admin or Employee access required."}), 403
+
+    data = request.get_json() or {}
+    name = (data.get("name", "") or "").strip()
+    if not name:
+        return jsonify({"success": False, "message": "Product name is required."}), 400
+    try:
+        price = float(data.get("price", 0))
+        quantity = int(data.get("quantity", 0))
+        discount_percent = float(data.get("discount_percent", 0))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Price, quantity and discount must be numbers."}), 400
+    if price < 0 or quantity < 0 or not (0 <= discount_percent <= 95):
+        return jsonify({"success": False, "message": "Price/quantity must be ≥ 0 and discount between 0-95%."}), 400
+
+    description = (data.get("description", "") or "").strip()
+    category = (data.get("category", "") or "Snacks").strip()
+    emoji = (data.get("emoji", "") or "🍪").strip()
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""INSERT INTO shop_products (name, description, category, emoji, price, quantity, discount_percent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (name, description, category, emoji, price, quantity, discount_percent))
+    product_id = cur.lastrowid
+    cur.execute("""INSERT INTO shop_product_events (product_id, action, note, actor_username, actor_role)
+                    VALUES (?, 'created', ?, ?, ?)""",
+                (product_id, f"Created '{name}'", shop_current_user(),
+                 "admin" if shop_is_admin() else "employee"))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{name} added to the catalogue.", "id": product_id})
+
+
+@app.route('/api/snackshop/products/<int:product_id>', methods=['PUT'])
+def snackshop_update_product(product_id):
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_can_manage():
+        return jsonify({"success": False, "message": "Admin or Employee access required."}), 403
+
+    data = request.get_json() or {}
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    row = shop_get_product(cur, product_id)
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Product not found."}), 404
+
+    fields = {"name": row[1], "description": row[2], "category": row[3], "emoji": row[4],
+              "price": row[5], "quantity": row[6], "discount_percent": row[7]}
+
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            conn.close()
+            return jsonify({"success": False, "message": "Product name can't be empty."}), 400
+        fields["name"] = name
+    if "description" in data:
+        fields["description"] = (data.get("description") or "").strip()
+    if "category" in data:
+        fields["category"] = (data.get("category") or "").strip() or fields["category"]
+    if "emoji" in data:
+        fields["emoji"] = (data.get("emoji") or "").strip() or fields["emoji"]
+    try:
+        if "price" in data:
+            fields["price"] = float(data.get("price"))
+        if "quantity" in data:
+            fields["quantity"] = int(data.get("quantity"))
+        if "discount_percent" in data:
+            fields["discount_percent"] = float(data.get("discount_percent"))
+    except (TypeError, ValueError):
+        conn.close()
+        return jsonify({"success": False, "message": "Price, quantity and discount must be numbers."}), 400
+
+    if fields["price"] < 0 or fields["quantity"] < 0 or not (0 <= fields["discount_percent"] <= 95):
+        conn.close()
+        return jsonify({"success": False, "message": "Price/quantity must be ≥ 0 and discount between 0-95%."}), 400
+
+    cur.execute("""UPDATE shop_products SET name=?, description=?, category=?, emoji=?,
+                                             price=?, quantity=?, discount_percent=?
+                    WHERE id=?""",
+                (fields["name"], fields["description"], fields["category"], fields["emoji"],
+                 fields["price"], fields["quantity"], fields["discount_percent"], product_id))
+    cur.execute("""INSERT INTO shop_product_events (product_id, action, note, actor_username, actor_role)
+                    VALUES (?, 'updated', ?, ?, ?)""",
+                (product_id, f"Updated '{fields['name']}' (price ${fields['price']:.2f}, "
+                              f"qty {fields['quantity']}, discount {fields['discount_percent']:.0f}%)",
+                 shop_current_user(), "admin" if shop_is_admin() else "employee"))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{fields['name']} updated."})
+
+
+@app.route('/api/snackshop/products/<int:product_id>', methods=['DELETE'])
+def snackshop_delete_product(product_id):
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_can_manage():
+        return jsonify({"success": False, "message": "Admin or Employee access required."}), 403
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    row = shop_get_product(cur, product_id)
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Product not found."}), 404
+    cur.execute("DELETE FROM shop_products WHERE id=?", (product_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{row[1]} removed from the catalogue."})
+
+
+@app.route('/api/snackshop/products/<int:product_id>/offer-of-day', methods=['POST'])
+def snackshop_set_offer_of_day(product_id):
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_can_manage():
+        return jsonify({"success": False, "message": "Admin or Employee access required."}), 403
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    row = shop_get_product(cur, product_id)
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Product not found."}), 404
+
+    cur.execute("UPDATE shop_products SET is_offer_of_day = 0")
+    cur.execute("UPDATE shop_products SET is_offer_of_day = 1 WHERE id = ?", (product_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"{row[1]} is now the Offer of the Day."})
+
+
+@app.route('/api/snackshop/employees/toggle', methods=['POST'])
+def snackshop_toggle_employee():
+    """Admin-only: promote or demote a SnackShop user to Employee. This is
+    independent of HKMail's own Admin/Employee roles — it only ever affects
+    the SnackShop side."""
+    if not shop_current_user():
+        return jsonify({"success": False, "message": "You must be logged in."}), 401
+    if not shop_is_admin():
+        return jsonify({"success": False, "message": "Admin access required."}), 403
+
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+    if not email:
+        return jsonify({"success": False, "message": "Email required."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT is_employee FROM shop_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "That email hasn't signed up to SnackShop yet."}), 404
+
+    new_val = 0 if row[0] else 1
+    cur.execute("UPDATE shop_users SET is_employee=? WHERE username=?", (new_val, email))
+    conn.commit()
+    conn.close()
+    action = "promoted to Employee" if new_val else "demoted from Employee"
+    return jsonify({"success": True, "message": f"{email} has been {action}.", "isEmployee": bool(new_val)})
+
+
+# ── SnackShop: cart (stored in-session, shared across every SnackShop page) ────
+
+@app.route('/api/snackshop/cart')
+def snackshop_get_cart():
+    return jsonify({"success": True, **shop_cart_summary()})
+
+
+@app.route('/api/snackshop/cart/add', methods=['POST'])
+def snackshop_cart_add():
+    data = request.get_json() or {}
+    try:
+        product_id = int(data.get("product_id"))
+        qty = int(data.get("qty", 1))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid product or quantity."}), 400
+    if qty <= 0:
+        return jsonify({"success": False, "message": "Quantity must be at least 1."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    row = shop_get_product(cur, product_id)
+    conn.close()
+    if not row:
+        return jsonify({"success": False, "message": "Product not found."}), 404
+    available = row[6]
+
+    cart = shop_cart_from_session()
+    key = str(product_id)
+    new_qty = cart.get(key, 0) + qty
+    if available <= 0:
+        return jsonify({"success": False, "message": "That item is out of stock."}), 400
+    cart[key] = min(new_qty, available)
+    session["shop_cart"] = cart
+    session.modified = True
+    return jsonify({"success": True, **shop_cart_summary()})
+
+
+@app.route('/api/snackshop/cart/update', methods=['POST'])
+def snackshop_cart_update():
+    data = request.get_json() or {}
+    try:
+        product_id = int(data.get("product_id"))
+        qty = int(data.get("qty"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid product or quantity."}), 400
+
+    cart = shop_cart_from_session()
+    key = str(product_id)
+    if qty <= 0:
+        cart.pop(key, None)
+    else:
+        conn = sqlite3.connect(SHOP_DATABASE)
+        cur = conn.cursor()
+        row = shop_get_product(cur, product_id)
+        conn.close()
+        if not row:
+            return jsonify({"success": False, "message": "Product not found."}), 404
+        cart[key] = min(qty, row[6])
+    session["shop_cart"] = cart
+    session.modified = True
+    return jsonify({"success": True, **shop_cart_summary()})
+
+
+@app.route('/api/snackshop/cart/remove', methods=['POST'])
+def snackshop_cart_remove():
+    data = request.get_json() or {}
+    key = str(data.get("product_id"))
+    cart = shop_cart_from_session()
+    cart.pop(key, None)
+    session["shop_cart"] = cart
+    session.modified = True
+    return jsonify({"success": True, **shop_cart_summary()})
+
+
+@app.route('/api/snackshop/cart/clear', methods=['POST'])
+def snackshop_cart_clear():
+    session["shop_cart"] = {}
+    session.modified = True
+    return jsonify({"success": True, **shop_cart_summary()})
+
+
 def check_hkmail_card_on_startup():
     """Warn on the console if there's no usable HKMail merchant card — until
     one exists, HKMail Premium subscription revenue has nowhere to land."""
@@ -4880,5 +5432,6 @@ def check_hkmail_card_on_startup():
 if __name__ == '__main__':
     init_db()
     init_mail_db()
+    init_shop_db()
     check_hkmail_card_on_startup()
     app.run(host='0.0.0.0', port=5001, debug=True)

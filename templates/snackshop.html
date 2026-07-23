@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnackShop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --ink: #070b10;
+        --glass-bg: rgba(15, 21, 28, 0.55);
+        --glass-bg-strong: rgba(13, 18, 24, 0.82);
+        --glass-border: rgba(255, 255, 255, 0.14);
+        --text-primary: #f2f6f9;
+        --text-secondary: #a8b4c0;
+        --text-tertiary: #77828d;
+        --accent: #26c9ab;
+        --accent-strong: #1aa88f;
+        --amber: #e3b24d;
+        --amber-strong: #c8912b;
+        --danger: #e2685f;
+        --radius-lg: 22px;
+        --radius-md: 14px;
+        --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .font-display { font-family: "Fraunces", Georgia, serif; }
+    html, body { height: 100%; }
+    body {
+        min-height: 100vh; color: var(--text-primary);
+        background: radial-gradient(1200px 600px at 12% -8%, rgba(227, 178, 77, 0.10), transparent 60%),
+                    radial-gradient(900px 500px at 90% 0%, rgba(38, 201, 171, 0.08), transparent 55%),
+                    var(--ink);
+        overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+    input, select, textarea { font-family: inherit; }
+
+    /* ── Topbar ─────────────────────────────────────────── */
+    .topbar {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 12px 22px; background: var(--glass-bg); backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        border-bottom: 1px solid var(--glass-border); position: sticky; top: 0; z-index: 200;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+        width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, var(--amber), var(--amber-strong)); font-size: 18px; flex-shrink: 0;
+    }
+    .brand-name { font-family: "Fraunces", serif; font-weight: 600; font-size: 1.15rem; letter-spacing: -0.01em; }
+    .brand-sub { display: block; font-size: 0.68rem; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.03em; }
+
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-links a {
+        padding: 8px 14px; border-radius: 999px; font-size: 0.88rem; font-weight: 600; color: var(--text-secondary);
+        transition: background 0.15s, color 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .icon-btn {
+        position: relative; width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); display: flex; align-items: center; justify-content: center;
+        transition: background 0.15s, transform 0.1s;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.09); }
+    .icon-btn:active { transform: scale(0.94); }
+    .cart-badge {
+        position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px;
+        background: var(--danger); color: #fff; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center;
+        justify-content: center; border: 2px solid var(--ink);
+    }
+    .account-pill {
+        display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 8px; border-radius: 999px;
+        border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04); font-size: 0.82rem; font-weight: 700;
+    }
+    .account-avatar {
+        width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; color: #06110e;
+    }
+    .role-tag {
+        font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; text-transform: uppercase;
+    }
+    .role-tag--admin { background: rgba(227, 178, 77, 0.18); color: var(--amber); }
+    .role-tag--employee { background: rgba(38, 201, 171, 0.18); color: var(--accent); }
+
+    .btn {
+        padding: 9px 18px; border-radius: 999px; border: none; font-weight: 700; font-size: 0.85rem;
+        transition: transform 0.1s, filter 0.15s;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: linear-gradient(135deg, var(--amber), var(--amber-strong)); color: #1d1204; }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-ghost { background: rgba(255,255,255,0.06); color: var(--text-primary); border: 1px solid var(--glass-border); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+    .btn-danger { background: rgba(226, 104, 95, 0.16); color: var(--danger); border: 1px solid rgba(226,104,95,0.3); }
+    .btn-block { width: 100%; }
+    .btn-sm { padding: 6px 12px; font-size: 0.76rem; }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    main { max-width: 1180px; margin: 0 auto; padding: 40px 22px 90px; }
+
+    .hero-tag {
+        display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+        background: rgba(227, 178, 77, 0.12); border: 1px solid rgba(227, 178, 77, 0.28); color: var(--amber);
+        font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px;
+    }
+    .hero-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(227,178,77,0.2); }
+
+    /* ── Offer of the day ───────────────────────────────── */
+    .offer-card {
+        display: grid; grid-template-columns: 1.1fr 1fr; gap: 0; border-radius: 28px; overflow: hidden;
+        border: 1px solid var(--glass-border); background: var(--glass-bg-strong); box-shadow: var(--shadow-soft);
+        position: relative;
+    }
+    .offer-visual {
+        display: flex; align-items: center; justify-content: center; position: relative; padding: 40px;
+        background:
+            repeating-linear-gradient(135deg, rgba(227,178,77,0.10) 0 2px, transparent 2px 26px),
+            radial-gradient(circle at 30% 20%, rgba(227,178,77,0.22), transparent 55%),
+            linear-gradient(160deg, rgba(38,201,171,0.10), rgba(0,0,0,0));
+    }
+    .offer-emoji { font-size: 9rem; filter: drop-shadow(0 18px 30px rgba(0,0,0,0.45)); animation: float 4.5s ease-in-out infinite; }
+    @keyframes float { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-14px) rotate(2deg); } }
+
+    .offer-body { padding: 40px 44px; display: flex; flex-direction: column; gap: 14px; }
+    .offer-title { font-family: "Fraunces", serif; font-size: 2.1rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+    .offer-desc { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.55; max-width: 42ch; }
+    .offer-price-row { display: flex; align-items: baseline; gap: 12px; margin-top: 6px; }
+    .offer-price-now { font-family: "Fraunces", serif; font-size: 2.4rem; font-weight: 700; color: var(--amber); }
+    .offer-price-was { font-size: 1.1rem; color: var(--text-tertiary); text-decoration: line-through; }
+    .offer-discount-chip {
+        background: rgba(226,104,95,0.16); color: var(--danger); font-weight: 800; font-size: 0.78rem;
+        padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(226,104,95,0.3);
+    }
+    .offer-actions { display: flex; gap: 12px; margin-top: 10px; }
+
+    /* ── Section headers ────────────────────────────────── */
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 56px 0 18px; }
+    .section-title { font-family: "Fraunces", serif; font-size: 1.5rem; font-weight: 600; }
+    .section-sub { color: var(--text-tertiary); font-size: 0.85rem; }
+
+    /* ── Deals belt — the multi-slot deals bar ─────────────
+       Styled like a shop counter conveyor belt: a striped track that
+       the deal cards sit on, scroll-snapping slot by slot. */
+    .deals-belt-track {
+        position: relative; border-radius: 24px; padding: 22px 0 26px;
+        background:
+            repeating-linear-gradient(-45deg, rgba(255,255,255,0.035) 0 10px, transparent 10px 20px),
+            linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+        border: 1px solid var(--glass-border);
+    }
+    .deals-belt {
+        display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 22px 6px;
+        scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;
+    }
+    .deals-belt::-webkit-scrollbar { height: 6px; }
+    .deals-belt::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 999px; }
+
+    .deal-slot {
+        scroll-snap-align: start; flex: 0 0 220px; border-radius: 18px; padding: 18px;
+        background: var(--glass-bg-strong); border: 1px solid var(--glass-border); position: relative;
+        display: flex; flex-direction: column; gap: 8px; transition: transform 0.18s, border-color 0.18s;
+    }
+    .deal-slot:hover { transform: translateY(-4px); border-color: rgba(227,178,77,0.4); }
+    .deal-slot-badge {
+        position: absolute; top: 12px; right: 12px; background: var(--danger); color: #fff; font-weight: 800;
+        font-size: 0.68rem; padding: 3px 8px; border-radius: 999px;
+    }
+    .deal-slot-emoji { font-size: 2.3rem; }
+    .deal-slot-name { font-weight: 700; font-size: 0.95rem; line-height: 1.25; }
+    .deal-slot-cat { color: var(--text-tertiary); font-size: 0.72rem; }
+    .deal-slot-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
+    .deal-slot-price { font-weight: 800; color: var(--amber); font-size: 1.05rem; }
+    .deal-slot-was { font-size: 0.78rem; color: var(--text-tertiary); text-decoration: line-through; }
+    .deal-empty { color: var(--text-tertiary); font-size: 0.9rem; padding: 20px 22px; }
+
+    .browse-cta {
+        display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 60px;
+        padding: 30px 34px; border-radius: 22px; border: 1px solid var(--glass-border);
+        background: linear-gradient(120deg, rgba(38,201,171,0.10), rgba(227,178,77,0.08));
+    }
+    .browse-cta-title { font-family: "Fraunces", serif; font-size: 1.3rem; font-weight: 600; }
+    .browse-cta-sub { color: var(--text-secondary); font-size: 0.88rem; margin-top: 4px; }
+
+    footer { text-align: center; padding: 30px 22px 50px; color: var(--text-tertiary); font-size: 0.78rem; }
+
+    /* ── Modal (auth) ───────────────────────────────────── */
+    .modal-overlay {
+        display: none; position: fixed; inset: 0; z-index: 900; background: rgba(3,5,8,0.6);
+        backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+        width: 100%; max-width: 380px; background: var(--glass-bg-strong); border: 1px solid var(--glass-border);
+        border-radius: 20px; padding: 28px; box-shadow: var(--shadow-soft); position: relative;
+    }
+    .modal-close { position: absolute; top: 16px; right: 18px; color: var(--text-tertiary); font-size: 1.2rem; background: none; border: none; }
+    .modal-title { font-family: "Fraunces", serif; font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
+    .modal-sub { color: var(--text-tertiary); font-size: 0.82rem; margin-bottom: 20px; }
+    .tab-row { display: flex; gap: 6px; margin-bottom: 18px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 12px; }
+    .tab-btn { flex: 1; padding: 8px; border: none; background: none; color: var(--text-secondary); border-radius: 9px; font-weight: 700; font-size: 0.82rem; }
+    .tab-btn.active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
+    .field input {
+        width: 100%; padding: 11px 13px; border-radius: 11px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); font-size: 0.9rem;
+    }
+    .field input:focus { outline: none; border-color: var(--amber); }
+    .form-msg { font-size: 0.8rem; margin: 8px 0; min-height: 1em; }
+    .form-msg.error { color: var(--danger); }
+    .form-msg.success { color: var(--accent); }
+
+    /* ── Cart drawer ────────────────────────────────────── */
+    .cart-overlay {
+        display: none; position: fixed; inset: 0; z-index: 950; background: rgba(3,5,8,0.5);
+    }
+    .cart-overlay.open { display: block; }
+    .cart-drawer {
+        position: fixed; top: 0; right: 0; height: 100%; width: 100%; max-width: 400px;
+        background: var(--glass-bg-strong); border-left: 1px solid var(--glass-border);
+        display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.25s ease;
+    }
+    .cart-overlay.open .cart-drawer { transform: translateX(0); }
+    .cart-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--glass-border); }
+    .cart-head h3 { font-family: "Fraunces", serif; font-size: 1.2rem; }
+    .cart-items { flex: 1; overflow-y: auto; padding: 14px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .cart-empty { color: var(--text-tertiary); text-align: center; padding: 60px 20px; font-size: 0.9rem; }
+    .cart-item { display: flex; gap: 12px; align-items: center; }
+    .cart-item-emoji { font-size: 1.7rem; width: 40px; text-align: center; }
+    .cart-item-name { font-weight: 700; font-size: 0.88rem; }
+    .cart-item-price { color: var(--text-tertiary); font-size: 0.76rem; }
+    .qty-stepper { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .qty-stepper button {
+        width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06);
+        color: var(--text-primary); font-weight: 700; font-size: 0.9rem; line-height: 1;
+    }
+    .qty-stepper span { min-width: 16px; text-align: center; font-size: 0.85rem; font-weight: 700; }
+    .cart-foot { padding: 18px 22px 22px; border-top: 1px solid var(--glass-border); }
+    .cart-subtotal-row { display: flex; justify-content: space-between; margin-bottom: 14px; font-weight: 700; }
+
+    .toast {
+        position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 1200;
+        background: var(--glass-bg-strong); border: 1px solid var(--glass-border); padding: 12px 20px; border-radius: 12px;
+        font-size: 0.85rem; font-weight: 600; opacity: 0; pointer-events: none; transition: all 0.25s ease; box-shadow: var(--shadow-soft);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 760px) {
+        .offer-card { grid-template-columns: 1fr; }
+        .offer-emoji { font-size: 6rem; }
+        .nav-links { display: none; }
+        main { padding: 26px 16px 70px; }
+    }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-mark">🛒</span>
+        <div>
+            <span class="brand-name">SnackShop</span>
+            <span class="brand-sub">FRESH SNACKS, DELIVERED</span>
+        </div>
+    </div>
+    <nav class="nav-links">
+        <a href="/snackshop.html" class="active">Home</a>
+        <a href="/snackshop-shop.html">Browse Snacks</a>
+        <a href="/">← Home</a>
+    </nav>
+    <div class="topbar-right">
+        <button class="icon-btn" id="cartBtn" aria-label="Cart">
+            🛍️
+            <span class="cart-badge" id="cartBadge" hidden>0</span>
+        </button>
+        <div id="authArea"></div>
+    </div>
+</header>
+
+<main>
+    <span class="hero-tag"><span class="dot"></span> Today's Offer</span>
+    <div class="offer-card" id="offerCard">
+        <div class="offer-visual"><div class="offer-emoji" id="offerEmoji">🍪</div></div>
+        <div class="offer-body">
+            <h1 class="offer-title" id="offerName">Loading…</h1>
+            <p class="offer-desc" id="offerDesc"></p>
+            <div class="offer-price-row">
+                <span class="offer-price-now" id="offerPriceNow"></span>
+                <span class="offer-price-was" id="offerPriceWas"></span>
+                <span class="offer-discount-chip" id="offerDiscountChip" hidden></span>
+            </div>
+            <div class="offer-actions">
+                <button class="btn btn-primary" id="offerAddBtn">Add to cart</button>
+                <a href="/snackshop-shop.html" class="btn btn-ghost">Browse everything</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-head">
+        <div>
+            <div class="section-title">On the belt right now</div>
+            <div class="section-sub">Every item currently discounted — grab it before the slot changes.</div>
+        </div>
+    </div>
+    <div class="deals-belt-track">
+        <div class="deals-belt" id="dealsBelt">
+            <div class="deal-empty">Loading deals…</div>
+        </div>
+    </div>
+
+    <div class="browse-cta">
+        <div>
+            <div class="browse-cta-title">Looking for something specific?</div>
+            <div class="browse-cta-sub">Search the full catalogue by category, price, and more.</div>
+        </div>
+        <a href="/snackshop-shop.html" class="btn btn-primary">Browse Snacks →</a>
+    </div>
+</main>
+
+<footer>&copy; 2026 SnackShop Co. All rights reserved.</footer>
+
+<!-- Auth modal -->
+<div class="modal-overlay" id="authModal">
+    <div class="modal-card">
+        <button class="modal-close" id="authClose">&times;</button>
+        <div class="tab-row">
+            <button class="tab-btn active" id="tabLogin">Log in</button>
+            <button class="tab-btn" id="tabRegister">Sign up</button>
+        </div>
+        <div id="loginPane">
+            <div class="modal-title">Welcome back</div>
+            <div class="modal-sub">Log in with the email address you signed up with.</div>
+            <form id="loginForm">
+                <div class="field"><label>Email</label><input type="email" id="loginEmail" required></div>
+                <div class="field"><label>Password</label><input type="password" id="loginPassword" required></div>
+                <div class="form-msg" id="loginMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Log in</button>
+            </form>
+        </div>
+        <div id="registerPane" style="display:none;">
+            <div class="modal-title">Create your account</div>
+            <div class="modal-sub">Sign up with your email — HKMail admins get Admin access here automatically.</div>
+            <form id="registerForm">
+                <div class="field"><label>Full name</label><input type="text" id="regName"></div>
+                <div class="field"><label>Email</label><input type="email" id="regEmail" required></div>
+                <div class="field"><label>Password</label><input type="password" id="regPassword" required minlength="6"></div>
+                <div class="form-msg" id="registerMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Sign up</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Cart drawer -->
+<div class="cart-overlay" id="cartOverlay">
+    <div class="cart-drawer">
+        <div class="cart-head">
+            <h3>Your cart</h3>
+            <button class="modal-close" id="cartClose">&times;</button>
+        </div>
+        <div class="cart-items" id="cartItems"><div class="cart-empty">Your cart is empty.</div></div>
+        <div class="cart-foot">
+            <div class="cart-subtotal-row"><span>Subtotal</span><span id="cartSubtotal">$0.00</span></div>
+            <button class="btn btn-primary btn-block" id="cartCheckoutBtn">Checkout</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let SESSION = { loggedIn: false, isAdmin: false, isEmployee: false, cartCount: 0 };
+
+function showToast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+function money(n) { return "$" + Number(n).toFixed(2); }
+
+// ── Session / auth ──────────────────────────────────────────
+function renderAuthArea() {
+    const area = $("authArea");
+    if (!SESSION.loggedIn) {
+        area.innerHTML = `<button class="btn btn-primary" id="loginOpenBtn">Log in</button>`;
+        $("loginOpenBtn").onclick = () => openAuthModal("login");
+        return;
+    }
+    const initial = (SESSION.fullName || SESSION.email || "?").trim()[0].toUpperCase();
+    let badges = "";
+    if (SESSION.isAdmin) badges += `<span class="role-tag role-tag--admin">Admin</span>`;
+    else if (SESSION.isEmployee) badges += `<span class="role-tag role-tag--employee">Employee</span>`;
+    area.innerHTML = `
+        <div class="account-pill">
+            <span class="account-avatar">${initial}</span>
+            <span>${SESSION.fullName || SESSION.email}</span>
+            ${badges}
+        </div>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+    `;
+    $("logoutBtn").onclick = doLogout;
+}
+
+async function refreshSession() {
+    const res = await fetch("/api/snackshop/session");
+    SESSION = await res.json();
+    renderAuthArea();
+    updateCartBadge(SESSION.cartCount);
+}
+
+function openAuthModal(tab) {
+    $("authModal").classList.add("open");
+    switchTab(tab || "login");
+}
+function closeAuthModal() { $("authModal").classList.remove("open"); }
+function switchTab(tab) {
+    const isLogin = tab === "login";
+    $("tabLogin").classList.toggle("active", isLogin);
+    $("tabRegister").classList.toggle("active", !isLogin);
+    $("loginPane").style.display = isLogin ? "block" : "none";
+    $("registerPane").style.display = isLogin ? "none" : "block";
+}
+$("tabLogin").onclick = () => switchTab("login");
+$("tabRegister").onclick = () => switchTab("register");
+$("authClose").onclick = closeAuthModal;
+$("authModal").addEventListener("click", (e) => { if (e.target === $("authModal")) closeAuthModal(); });
+
+$("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("loginMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("loginEmail").value, password: $("loginPassword").value })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    closeAuthModal();
+    showToast(`Welcome back, ${data.fullName}!`);
+    await refreshSession();
+});
+
+$("registerForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("registerMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/register", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("regEmail").value, password: $("regPassword").value, full_name: $("regName").value })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    closeAuthModal();
+    showToast(`Account created — welcome, ${data.fullName}!`);
+    await refreshSession();
+});
+
+async function doLogout() {
+    await fetch("/api/snackshop/logout", { method: "POST" });
+    showToast("Logged out.");
+    await refreshSession();
+}
+
+// ── Cart ─────────────────────────────────────────────────────
+function updateCartBadge(count) {
+    const badge = $("cartBadge");
+    if (count > 0) { badge.hidden = false; badge.textContent = count; }
+    else { badge.hidden = true; }
+}
+
+async function refreshCartDrawer() {
+    const res = await fetch("/api/snackshop/cart");
+    const data = await res.json();
+    updateCartBadge(data.itemCount);
+    const container = $("cartItems");
+    if (!data.items.length) {
+        container.innerHTML = `<div class="cart-empty">Your cart is empty.</div>`;
+    } else {
+        container.innerHTML = data.items.map(it => `
+            <div class="cart-item">
+                <span class="cart-item-emoji">${it.product.emoji}</span>
+                <div>
+                    <div class="cart-item-name">${it.product.name}</div>
+                    <div class="cart-item-price">${money(it.product.finalPrice)} each</div>
+                </div>
+                <div class="qty-stepper">
+                    <button data-action="dec" data-id="${it.product.id}" data-qty="${it.qty}">−</button>
+                    <span>${it.qty}</span>
+                    <button data-action="inc" data-id="${it.product.id}" data-qty="${it.qty}">+</button>
+                </div>
+            </div>
+        `).join("");
+        container.querySelectorAll("[data-action]").forEach(btn => {
+            btn.onclick = () => {
+                const id = Number(btn.dataset.id);
+                const qty = Number(btn.dataset.qty) + (btn.dataset.action === "inc" ? 1 : -1);
+                updateCartQty(id, qty);
+            };
+        });
+    }
+    $("cartSubtotal").textContent = money(data.subtotal);
+}
+
+async function addToCart(productId, qty = 1) {
+    const res = await fetch("/api/snackshop/cart/add", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId, qty })
+    });
+    const data = await res.json();
+    if (!data.success) { showToast(data.message); return; }
+    showToast("Added to cart.");
+    updateCartBadge(data.itemCount);
+    refreshCartDrawer();
+}
+
+async function updateCartQty(productId, qty) {
+    const res = await fetch("/api/snackshop/cart/update", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId, qty })
+    });
+    const data = await res.json();
+    if (data.success) refreshCartDrawer();
+}
+
+$("cartBtn").onclick = () => { $("cartOverlay").classList.add("open"); refreshCartDrawer(); };
+$("cartClose").onclick = () => $("cartOverlay").classList.remove("open");
+$("cartOverlay").addEventListener("click", (e) => { if (e.target === $("cartOverlay")) $("cartOverlay").classList.remove("open"); });
+$("cartCheckoutBtn").onclick = () => showToast("Checkout isn't wired up yet — this is a demo cart.");
+
+// ── Page data: offer of the day + deals belt ──────────────────
+async function loadOffer() {
+    const res = await fetch("/api/snackshop/offer");
+    const data = await res.json();
+    if (!data.offer) {
+        $("offerName").textContent = "No offer set today";
+        $("offerDesc").textContent = "Check back soon, or browse the full catalogue.";
+        $("offerAddBtn").disabled = true;
+        return;
+    }
+    const o = data.offer;
+    $("offerEmoji").textContent = o.emoji;
+    $("offerName").textContent = o.name;
+    $("offerDesc").textContent = o.description;
+    $("offerPriceNow").textContent = money(o.finalPrice);
+    if (o.discountPercent > 0) {
+        $("offerPriceWas").textContent = money(o.price);
+        $("offerPriceWas").style.display = "inline";
+        $("offerDiscountChip").hidden = false;
+        $("offerDiscountChip").textContent = `-${Math.round(o.discountPercent)}%`;
+    } else {
+        $("offerPriceWas").style.display = "none";
+    }
+    $("offerAddBtn").disabled = !o.inStock;
+    $("offerAddBtn").textContent = o.inStock ? "Add to cart" : "Out of stock";
+    $("offerAddBtn").onclick = () => addToCart(o.id);
+}
+
+async function loadDeals() {
+    const res = await fetch("/api/snackshop/deals");
+    const data = await res.json();
+    const belt = $("dealsBelt");
+    if (!data.deals.length) {
+        belt.innerHTML = `<div class="deal-empty">No active deals right now — check back soon.</div>`;
+        return;
+    }
+    belt.innerHTML = data.deals.map(d => `
+        <div class="deal-slot">
+            <span class="deal-slot-badge">-${Math.round(d.discountPercent)}%</span>
+            <span class="deal-slot-emoji">${d.emoji}</span>
+            <span class="deal-slot-name">${d.name}</span>
+            <span class="deal-slot-cat">${d.category}</span>
+            <div class="deal-slot-price-row">
+                <span class="deal-slot-price">${money(d.finalPrice)}</span>
+                <span class="deal-slot-was">${money(d.price)}</span>
+            </div>
+            <button class="btn btn-primary btn-sm" data-add="${d.id}" ${d.inStock ? "" : "disabled"}>
+                ${d.inStock ? "Add to cart" : "Out of stock"}
+            </button>
+        </div>
+    `).join("");
+    belt.querySelectorAll("[data-add]").forEach(btn => {
+        btn.onclick = () => addToCart(Number(btn.dataset.add));
+    });
+}
+
+refreshSession();
+loadOffer();
+loadDeals();
+</script>
+</body>
+</html>

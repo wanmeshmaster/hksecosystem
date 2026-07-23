@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Browse Snacks — SnackShop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --ink: #070b10;
+        --glass-bg: rgba(15, 21, 28, 0.55);
+        --glass-bg-strong: rgba(13, 18, 24, 0.82);
+        --glass-border: rgba(255, 255, 255, 0.14);
+        --text-primary: #f2f6f9;
+        --text-secondary: #a8b4c0;
+        --text-tertiary: #77828d;
+        --accent: #26c9ab;
+        --accent-strong: #1aa88f;
+        --amber: #e3b24d;
+        --amber-strong: #c8912b;
+        --danger: #e2685f;
+        --radius-lg: 22px;
+        --radius-md: 14px;
+        --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .font-display { font-family: "Fraunces", Georgia, serif; }
+    html, body { height: 100%; }
+    body {
+        min-height: 100vh; color: var(--text-primary);
+        background: radial-gradient(1200px 600px at 12% -8%, rgba(227, 178, 77, 0.10), transparent 60%),
+                    radial-gradient(900px 500px at 90% 0%, rgba(38, 201, 171, 0.08), transparent 55%),
+                    var(--ink);
+        overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+    input, select, textarea { font-family: inherit; }
+
+    /* ── Topbar (identical to the front page, for a consistent shell) ── */
+    .topbar {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 12px 22px; background: var(--glass-bg); backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        border-bottom: 1px solid var(--glass-border); position: sticky; top: 0; z-index: 200;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+        width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, var(--amber), var(--amber-strong)); font-size: 18px; flex-shrink: 0;
+    }
+    .brand-name { font-family: "Fraunces", serif; font-weight: 600; font-size: 1.15rem; letter-spacing: -0.01em; }
+    .brand-sub { display: block; font-size: 0.68rem; color: var(--text-tertiary); font-weight: 500; letter-spacing: 0.03em; }
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-links a { padding: 8px 14px; border-radius: 999px; font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); transition: background 0.15s, color 0.15s; }
+    .nav-links a:hover, .nav-links a.active { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .icon-btn {
+        position: relative; width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); display: flex; align-items: center; justify-content: center;
+        transition: background 0.15s, transform 0.1s;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.09); }
+    .icon-btn:active { transform: scale(0.94); }
+    .cart-badge {
+        position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px;
+        background: var(--danger); color: #fff; font-size: 0.65rem; font-weight: 800; display: flex; align-items: center;
+        justify-content: center; border: 2px solid var(--ink);
+    }
+    .account-pill {
+        display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 8px; border-radius: 999px;
+        border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04); font-size: 0.82rem; font-weight: 700;
+    }
+    .account-avatar {
+        width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800; color: #06110e;
+    }
+    .role-tag { font-size: 0.6rem; font-weight: 800; letter-spacing: 0.05em; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; }
+    .role-tag--admin { background: rgba(227, 178, 77, 0.18); color: var(--amber); }
+    .role-tag--employee { background: rgba(38, 201, 171, 0.18); color: var(--accent); }
+
+    .btn { padding: 9px 18px; border-radius: 999px; border: none; font-weight: 700; font-size: 0.85rem; transition: transform 0.1s, filter 0.15s; }
+    .btn:active { transform: scale(0.96); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: linear-gradient(135deg, var(--amber), var(--amber-strong)); color: #1d1204; }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-ghost { background: rgba(255,255,255,0.06); color: var(--text-primary); border: 1px solid var(--glass-border); }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+    .btn-danger { background: rgba(226, 104, 95, 0.16); color: var(--danger); border: 1px solid rgba(226,104,95,0.3); }
+    .btn-block { width: 100%; }
+    .btn-sm { padding: 6px 12px; font-size: 0.76rem; }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 22px 90px; }
+
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 22px; }
+    .page-title { font-family: "Fraunces", serif; font-size: 1.9rem; font-weight: 600; }
+    .page-sub { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 26px; }
+    .search-input {
+        flex: 1; min-width: 200px; padding: 11px 16px; border-radius: 12px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); font-size: 0.9rem;
+    }
+    .search-input:focus { outline: none; border-color: var(--amber); }
+    .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip {
+        padding: 8px 14px; border-radius: 999px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04);
+        color: var(--text-secondary); font-size: 0.8rem; font-weight: 700;
+    }
+    .chip.active { background: rgba(227,178,77,0.16); border-color: rgba(227,178,77,0.4); color: var(--amber); }
+
+    .manage-banner {
+        display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+        padding: 16px 20px; border-radius: 16px; margin-bottom: 24px;
+        background: rgba(227,178,77,0.08); border: 1px solid rgba(227,178,77,0.25);
+    }
+    .manage-banner-text { font-size: 0.85rem; }
+    .manage-banner-text b { color: var(--amber); }
+
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+    .product-card {
+        border-radius: 18px; padding: 18px; background: var(--glass-bg-strong); border: 1px solid var(--glass-border);
+        display: flex; flex-direction: column; gap: 8px; position: relative;
+    }
+    .product-card.is-offer { border-color: rgba(227,178,77,0.5); box-shadow: 0 0 0 1px rgba(227,178,77,0.15); }
+    .offer-pin { position: absolute; top: 12px; right: 12px; font-size: 0.65rem; font-weight: 800; color: var(--amber); background: rgba(227,178,77,0.14); padding: 3px 8px; border-radius: 999px; }
+    .discount-pin { position: absolute; top: 12px; left: 12px; font-size: 0.65rem; font-weight: 800; color: #fff; background: var(--danger); padding: 3px 8px; border-radius: 999px; }
+    .product-emoji { font-size: 2.4rem; }
+    .product-name { font-weight: 700; font-size: 1rem; }
+    .product-cat { color: var(--text-tertiary); font-size: 0.74rem; }
+    .product-desc { color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4; min-height: 2.5em; }
+    .product-price-row { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
+    .product-price { font-weight: 800; font-size: 1.1rem; color: var(--amber); }
+    .product-price-was { font-size: 0.78rem; color: var(--text-tertiary); text-decoration: line-through; }
+    .product-stock { font-size: 0.72rem; color: var(--text-tertiary); }
+    .product-stock.low { color: var(--danger); }
+    .product-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+    .manage-panel {
+        margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--glass-border); display: flex; flex-direction: column; gap: 8px;
+    }
+    .manage-row { display: flex; gap: 6px; }
+    .manage-row input {
+        width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); font-size: 0.78rem;
+    }
+    .manage-row label { font-size: 0.65rem; color: var(--text-tertiary); display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .manage-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-tertiary); }
+
+    /* Admin-only panels */
+    .admin-section { margin-top: 60px; }
+    .admin-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+    .admin-card {
+        background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 18px; padding: 22px;
+    }
+    .add-product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .field label { display: block; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+    .field input {
+        width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--glass-border);
+        background: rgba(255,255,255,0.04); color: var(--text-primary); font-size: 0.85rem;
+    }
+    .field input:focus { outline: none; border-color: var(--amber); }
+    .inline-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .inline-form .field { flex: 1; min-width: 160px; }
+    .form-msg { font-size: 0.8rem; margin: 8px 0; min-height: 1em; }
+    .form-msg.error { color: var(--danger); }
+    .form-msg.success { color: var(--accent); }
+
+    footer { text-align: center; padding: 30px 22px 50px; color: var(--text-tertiary); font-size: 0.78rem; }
+
+    /* Auth modal + cart drawer (identical to front page) */
+    .modal-overlay { display: none; position: fixed; inset: 0; z-index: 900; background: rgba(3,5,8,0.6); backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.open { display: flex; }
+    .modal-card { width: 100%; max-width: 380px; background: var(--glass-bg-strong); border: 1px solid var(--glass-border); border-radius: 20px; padding: 28px; box-shadow: var(--shadow-soft); position: relative; }
+    .modal-close { position: absolute; top: 16px; right: 18px; color: var(--text-tertiary); font-size: 1.2rem; background: none; border: none; }
+    .modal-title { font-family: "Fraunces", serif; font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
+    .modal-sub { color: var(--text-tertiary); font-size: 0.82rem; margin-bottom: 20px; }
+    .tab-row { display: flex; gap: 6px; margin-bottom: 18px; background: rgba(255,255,255,0.05); padding: 4px; border-radius: 12px; }
+    .tab-btn { flex: 1; padding: 8px; border: none; background: none; color: var(--text-secondary); border-radius: 9px; font-weight: 700; font-size: 0.82rem; }
+    .tab-btn.active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+    .cart-overlay { display: none; position: fixed; inset: 0; z-index: 950; background: rgba(3,5,8,0.5); }
+    .cart-overlay.open { display: block; }
+    .cart-drawer { position: fixed; top: 0; right: 0; height: 100%; width: 100%; max-width: 400px; background: var(--glass-bg-strong); border-left: 1px solid var(--glass-border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.25s ease; }
+    .cart-overlay.open .cart-drawer { transform: translateX(0); }
+    .cart-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--glass-border); }
+    .cart-head h3 { font-family: "Fraunces", serif; font-size: 1.2rem; }
+    .cart-items { flex: 1; overflow-y: auto; padding: 14px 22px; display: flex; flex-direction: column; gap: 14px; }
+    .cart-empty { color: var(--text-tertiary); text-align: center; padding: 60px 20px; font-size: 0.9rem; }
+    .cart-item { display: flex; gap: 12px; align-items: center; }
+    .cart-item-emoji { font-size: 1.7rem; width: 40px; text-align: center; }
+    .cart-item-name { font-weight: 700; font-size: 0.88rem; }
+    .cart-item-price { color: var(--text-tertiary); font-size: 0.76rem; }
+    .qty-stepper { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+    .qty-stepper button { width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--text-primary); font-weight: 700; font-size: 0.9rem; line-height: 1; }
+    .qty-stepper span { min-width: 16px; text-align: center; font-size: 0.85rem; font-weight: 700; }
+    .cart-foot { padding: 18px 22px 22px; border-top: 1px solid var(--glass-border); }
+    .cart-subtotal-row { display: flex; justify-content: space-between; margin-bottom: 14px; font-weight: 700; }
+
+    .toast {
+        position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 1200;
+        background: var(--glass-bg-strong); border: 1px solid var(--glass-border); padding: 12px 20px; border-radius: 12px;
+        font-size: 0.85rem; font-weight: 600; opacity: 0; pointer-events: none; transition: all 0.25s ease; box-shadow: var(--shadow-soft);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 760px) { .nav-links { display: none; } main { padding: 24px 16px 70px; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-mark">🛒</span>
+        <div>
+            <span class="brand-name">SnackShop</span>
+            <span class="brand-sub">FRESH SNACKS, DELIVERED</span>
+        </div>
+    </div>
+    <nav class="nav-links">
+        <a href="/snackshop.html">Home</a>
+        <a href="/snackshop-shop.html" class="active">Browse Snacks</a>
+        <a href="/">← Home</a>
+    </nav>
+    <div class="topbar-right">
+        <button class="icon-btn" id="cartBtn" aria-label="Cart">
+            🛍️
+            <span class="cart-badge" id="cartBadge" hidden>0</span>
+        </button>
+        <div id="authArea"></div>
+    </div>
+</header>
+
+<main>
+    <div class="page-head">
+        <div>
+            <div class="page-title">Browse Snacks</div>
+            <div class="page-sub" id="productCount">Loading catalogue…</div>
+        </div>
+    </div>
+
+    <div id="manageBanner"></div>
+
+    <div class="toolbar">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search snacks…">
+        <div class="chip-row" id="categoryChips"></div>
+    </div>
+
+    <div class="product-grid" id="productGrid">
+        <div class="empty-state">Loading products…</div>
+    </div>
+
+    <div class="admin-section" id="adminAddSection" hidden>
+        <div class="admin-section-head">
+            <div class="page-title" style="font-size:1.3rem;">Add a product</div>
+        </div>
+        <div class="admin-card">
+            <div class="add-product-grid">
+                <div class="field"><label>Name</label><input id="newName" type="text" placeholder="Ginger Snap Cookies"></div>
+                <div class="field"><label>Category</label><input id="newCategory" type="text" placeholder="Sweet"></div>
+                <div class="field"><label>Emoji</label><input id="newEmoji" type="text" placeholder="🍪" maxlength="4"></div>
+                <div class="field"><label>Price ($)</label><input id="newPrice" type="number" step="0.01" min="0" placeholder="2.99"></div>
+                <div class="field"><label>Quantity</label><input id="newQuantity" type="number" min="0" placeholder="50"></div>
+                <div class="field"><label>Discount (%)</label><input id="newDiscount" type="number" min="0" max="95" placeholder="0"></div>
+            </div>
+            <div class="field"><label>Description</label><input id="newDescription" type="text" placeholder="Short description shown to customers"></div>
+            <div class="form-msg" id="newProductMsg"></div>
+            <button class="btn btn-primary" id="newProductBtn">Add product</button>
+        </div>
+    </div>
+
+    <div class="admin-section" id="adminEmployeeSection" hidden>
+        <div class="admin-section-head">
+            <div class="page-title" style="font-size:1.3rem;">Employees</div>
+        </div>
+        <div class="admin-card">
+            <p class="page-sub" style="margin-bottom:14px;">Promote a signed-up SnackShop user to Employee so they can manage products and discounts. This is separate from HKMail's own roles.</p>
+            <div class="inline-form">
+                <div class="field"><label>User email</label><input id="employeeEmail" type="email" placeholder="jane@hkmail.cn"></div>
+                <button class="btn btn-primary" id="toggleEmployeeBtn">Toggle Employee</button>
+            </div>
+            <div class="form-msg" id="employeeMsg"></div>
+        </div>
+    </div>
+</main>
+
+<footer>&copy; 2026 SnackShop Co. All rights reserved.</footer>
+
+<!-- Auth modal -->
+<div class="modal-overlay" id="authModal">
+    <div class="modal-card">
+        <button class="modal-close" id="authClose">&times;</button>
+        <div class="tab-row">
+            <button class="tab-btn active" id="tabLogin">Log in</button>
+            <button class="tab-btn" id="tabRegister">Sign up</button>
+        </div>
+        <div id="loginPane">
+            <div class="modal-title">Welcome back</div>
+            <div class="modal-sub">Log in with the email address you signed up with.</div>
+            <form id="loginForm">
+                <div class="field"><label>Email</label><input type="email" id="loginEmail" required></div>
+                <div class="field"><label>Password</label><input type="password" id="loginPassword" required></div>
+                <div class="form-msg" id="loginMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Log in</button>
+            </form>
+        </div>
+        <div id="registerPane" style="display:none;">
+            <div class="modal-title">Create your account</div>
+            <div class="modal-sub">Sign up with your email — HKMail admins get Admin access here automatically.</div>
+            <form id="registerForm">
+                <div class="field"><label>Full name</label><input type="text" id="regName"></div>
+                <div class="field"><label>Email</label><input type="email" id="regEmail" required></div>
+                <div class="field"><label>Password</label><input type="password" id="regPassword" required minlength="6"></div>
+                <div class="form-msg" id="registerMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Sign up</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Cart drawer -->
+<div class="cart-overlay" id="cartOverlay">
+    <div class="cart-drawer">
+        <div class="cart-head">
+            <h3>Your cart</h3>
+            <button class="modal-close" id="cartClose">&times;</button>
+        </div>
+        <div class="cart-items" id="cartItems"><div class="cart-empty">Your cart is empty.</div></div>
+        <div class="cart-foot">
+            <div class="cart-subtotal-row"><span>Subtotal</span><span id="cartSubtotal">$0.00</span></div>
+            <button class="btn btn-primary btn-block" id="cartCheckoutBtn">Checkout</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let SESSION = { loggedIn: false, isAdmin: false, isEmployee: false, cartCount: 0 };
+let PRODUCTS = [];
+let ACTIVE_CATEGORY = "All";
+
+function showToast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => t.classList.remove("show"), 2400);
+}
+function money(n) { return "$" + Number(n).toFixed(2); }
+
+// ── Session / auth (shared behaviour with the front page) ─────
+function renderAuthArea() {
+    const area = $("authArea");
+    if (!SESSION.loggedIn) {
+        area.innerHTML = `<button class="btn btn-primary" id="loginOpenBtn">Log in</button>`;
+        $("loginOpenBtn").onclick = () => openAuthModal("login");
+        return;
+    }
+    const initial = (SESSION.fullName || SESSION.email || "?").trim()[0].toUpperCase();
+    let badges = "";
+    if (SESSION.isAdmin) badges += `<span class="role-tag role-tag--admin">Admin</span>`;
+    else if (SESSION.isEmployee) badges += `<span class="role-tag role-tag--employee">Employee</span>`;
+    area.innerHTML = `
+        <div class="account-pill">
+            <span class="account-avatar">${initial}</span>
+            <span>${SESSION.fullName || SESSION.email}</span>
+            ${badges}
+        </div>
+        <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+    `;
+    $("logoutBtn").onclick = doLogout;
+}
+
+function renderManageUI() {
+    const banner = $("manageBanner");
+    const canManage = SESSION.isAdmin || SESSION.isEmployee;
+    if (canManage) {
+        banner.innerHTML = `
+            <div class="manage-banner">
+                <div class="manage-banner-text">
+                    You're signed in as <b>${SESSION.isAdmin ? "Admin" : "Employee"}</b> — edit prices, stock and
+                    discounts directly on each product card below.
+                </div>
+            </div>`;
+    } else {
+        banner.innerHTML = "";
+    }
+    $("adminAddSection").hidden = !canManage;
+    $("adminEmployeeSection").hidden = !SESSION.isAdmin;
+}
+
+async function refreshSession() {
+    const res = await fetch("/api/snackshop/session");
+    SESSION = await res.json();
+    renderAuthArea();
+    renderManageUI();
+    updateCartBadge(SESSION.cartCount);
+    renderProducts();
+}
+
+function openAuthModal(tab) { $("authModal").classList.add("open"); switchTab(tab || "login"); }
+function closeAuthModal() { $("authModal").classList.remove("open"); }
+function switchTab(tab) {
+    const isLogin = tab === "login";
+    $("tabLogin").classList.toggle("active", isLogin);
+    $("tabRegister").classList.toggle("active", !isLogin);
+    $("loginPane").style.display = isLogin ? "block" : "none";
+    $("registerPane").style.display = isLogin ? "none" : "block";
+}
+$("tabLogin").onclick = () => switchTab("login");
+$("tabRegister").onclick = () => switchTab("register");
+$("authClose").onclick = closeAuthModal;
+$("authModal").addEventListener("click", (e) => { if (e.target === $("authModal")) closeAuthModal(); });
+
+$("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("loginMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("loginEmail").value, password: $("loginPassword").value })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    closeAuthModal();
+    showToast(`Welcome back, ${data.fullName}!`);
+    await refreshSession();
+});
+
+$("registerForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("registerMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/register", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: $("regEmail").value, password: $("regPassword").value, full_name: $("regName").value })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    closeAuthModal();
+    showToast(`Account created — welcome, ${data.fullName}!`);
+    await refreshSession();
+});
+
+async function doLogout() {
+    await fetch("/api/snackshop/logout", { method: "POST" });
+    showToast("Logged out.");
+    await refreshSession();
+}
+
+// ── Cart (identical behaviour to the front page) ───────────────
+function updateCartBadge(count) {
+    const badge = $("cartBadge");
+    if (count > 0) { badge.hidden = false; badge.textContent = count; }
+    else { badge.hidden = true; }
+}
+
+async function refreshCartDrawer() {
+    const res = await fetch("/api/snackshop/cart");
+    const data = await res.json();
+    updateCartBadge(data.itemCount);
+    const container = $("cartItems");
+    if (!data.items.length) {
+        container.innerHTML = `<div class="cart-empty">Your cart is empty.</div>`;
+    } else {
+        container.innerHTML = data.items.map(it => `
+            <div class="cart-item">
+                <span class="cart-item-emoji">${it.product.emoji}</span>
+                <div>
+                    <div class="cart-item-name">${it.product.name}</div>
+                    <div class="cart-item-price">${money(it.product.finalPrice)} each</div>
+                </div>
+                <div class="qty-stepper">
+                    <button data-action="dec" data-id="${it.product.id}" data-qty="${it.qty}">−</button>
+                    <span>${it.qty}</span>
+                    <button data-action="inc" data-id="${it.product.id}" data-qty="${it.qty}">+</button>
+                </div>
+            </div>
+        `).join("");
+        container.querySelectorAll("[data-action]").forEach(btn => {
+            btn.onclick = () => {
+                const id = Number(btn.dataset.id);
+                const qty = Number(btn.dataset.qty) + (btn.dataset.action === "inc" ? 1 : -1);
+                updateCartQty(id, qty);
+            };
+        });
+    }
+    $("cartSubtotal").textContent = money(data.subtotal);
+}
+
+async function addToCart(productId, qty = 1) {
+    const res = await fetch("/api/snackshop/cart/add", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId, qty })
+    });
+    const data = await res.json();
+    if (!data.success) { showToast(data.message); return; }
+    showToast("Added to cart.");
+    updateCartBadge(data.itemCount);
+    refreshCartDrawer();
+}
+
+async function updateCartQty(productId, qty) {
+    const res = await fetch("/api/snackshop/cart/update", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId, qty })
+    });
+    const data = await res.json();
+    if (data.success) refreshCartDrawer();
+}
+
+$("cartBtn").onclick = () => { $("cartOverlay").classList.add("open"); refreshCartDrawer(); };
+$("cartClose").onclick = () => $("cartOverlay").classList.remove("open");
+$("cartOverlay").addEventListener("click", (e) => { if (e.target === $("cartOverlay")) $("cartOverlay").classList.remove("open"); });
+$("cartCheckoutBtn").onclick = () => showToast("Checkout isn't wired up yet — this is a demo cart.");
+
+// ── Product catalogue ───────────────────────────────────────────
+async function loadProducts() {
+    const res = await fetch("/api/snackshop/products");
+    const data = await res.json();
+    PRODUCTS = data.products || [];
+    renderCategoryChips();
+    renderProducts();
+}
+
+function renderCategoryChips() {
+    const cats = ["All", ...new Set(PRODUCTS.map(p => p.category))];
+    $("categoryChips").innerHTML = cats.map(c =>
+        `<button class="chip ${c === ACTIVE_CATEGORY ? "active" : ""}" data-cat="${c}">${c}</button>`
+    ).join("");
+    $("categoryChips").querySelectorAll(".chip").forEach(chip => {
+        chip.onclick = () => { ACTIVE_CATEGORY = chip.dataset.cat; renderCategoryChips(); renderProducts(); };
+    });
+}
+
+function renderProducts() {
+    const q = ($("searchInput").value || "").toLowerCase().trim();
+    const filtered = PRODUCTS.filter(p => {
+        const matchesCat = ACTIVE_CATEGORY === "All" || p.category === ACTIVE_CATEGORY;
+        const matchesQ = !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
+        return matchesCat && matchesQ;
+    });
+    $("productCount").textContent = `${filtered.length} of ${PRODUCTS.length} snacks`;
+
+    const grid = $("productGrid");
+    if (!filtered.length) {
+        grid.innerHTML = `<div class="empty-state">No snacks match your search.</div>`;
+        return;
+    }
+    const canManage = SESSION.isAdmin || SESSION.isEmployee;
+
+    grid.innerHTML = filtered.map(p => `
+        <div class="product-card ${p.isOfferOfDay ? "is-offer" : ""}">
+            ${p.isOfferOfDay ? `<span class="offer-pin">★ Offer</span>` : ""}
+            ${p.discountPercent > 0 ? `<span class="discount-pin">-${Math.round(p.discountPercent)}%</span>` : ""}
+            <span class="product-emoji">${p.emoji}</span>
+            <span class="product-name">${p.name}</span>
+            <span class="product-cat">${p.category}</span>
+            <p class="product-desc">${p.description || ""}</p>
+            <div class="product-price-row">
+                <span class="product-price">${money(p.finalPrice)}</span>
+                ${p.discountPercent > 0 ? `<span class="product-price-was">${money(p.price)}</span>` : ""}
+            </div>
+            <span class="product-stock ${p.quantity <= 5 ? "low" : ""}">${p.inStock ? p.quantity + " in stock" : "Out of stock"}</span>
+            <div class="product-actions">
+                <button class="btn btn-primary btn-sm btn-block" data-add="${p.id}" ${p.inStock ? "" : "disabled"}>
+                    ${p.inStock ? "Add to cart" : "Out of stock"}
+                </button>
+            </div>
+            ${canManage ? `
+            <div class="manage-panel">
+                <div class="manage-row">
+                    <div style="flex:1;"><label>Price</label><input type="number" step="0.01" min="0" value="${p.price}" data-field="price" data-id="${p.id}"></div>
+                    <div style="flex:1;"><label>Qty</label><input type="number" min="0" value="${p.quantity}" data-field="quantity" data-id="${p.id}"></div>
+                    <div style="flex:1;"><label>Disc %</label><input type="number" min="0" max="95" value="${p.discountPercent}" data-field="discount_percent" data-id="${p.id}"></div>
+                </div>
+                <div class="manage-actions">
+                    <button class="btn btn-ghost btn-sm" data-save="${p.id}">Save</button>
+                    <button class="btn btn-ghost btn-sm" data-offer="${p.id}">Set Offer of Day</button>
+                    <button class="btn btn-danger btn-sm" data-delete="${p.id}">Delete</button>
+                </div>
+            </div>` : ""}
+        </div>
+    `).join("");
+
+    grid.querySelectorAll("[data-add]").forEach(btn => btn.onclick = () => addToCart(Number(btn.dataset.add)));
+    if (canManage) {
+        grid.querySelectorAll("[data-save]").forEach(btn => btn.onclick = () => saveProduct(Number(btn.dataset.save)));
+        grid.querySelectorAll("[data-offer]").forEach(btn => btn.onclick = () => setOfferOfDay(Number(btn.dataset.offer)));
+        grid.querySelectorAll("[data-delete]").forEach(btn => btn.onclick = () => deleteProduct(Number(btn.dataset.delete)));
+    }
+}
+
+async function saveProduct(id) {
+    const price = document.querySelector(`[data-field="price"][data-id="${id}"]`).value;
+    const quantity = document.querySelector(`[data-field="quantity"][data-id="${id}"]`).value;
+    const discount_percent = document.querySelector(`[data-field="discount_percent"][data-id="${id}"]`).value;
+    const res = await fetch(`/api/snackshop/products/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price, quantity, discount_percent })
+    });
+    const data = await res.json();
+    showToast(data.message);
+    if (data.success) loadProducts();
+}
+
+async function setOfferOfDay(id) {
+    const res = await fetch(`/api/snackshop/products/${id}/offer-of-day`, { method: "POST" });
+    const data = await res.json();
+    showToast(data.message);
+    if (data.success) loadProducts();
+}
+
+async function deleteProduct(id) {
+    if (!confirm("Delete this product? This can't be undone.")) return;
+    const res = await fetch(`/api/snackshop/products/${id}`, { method: "DELETE" });
+    const data = await res.json();
+    showToast(data.message);
+    if (data.success) loadProducts();
+}
+
+$("newProductBtn").onclick = async () => {
+    const msg = $("newProductMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const payload = {
+        name: $("newName").value, category: $("newCategory").value || "Snacks",
+        emoji: $("newEmoji").value || "🍪", price: $("newPrice").value || 0,
+        quantity: $("newQuantity").value || 0, discount_percent: $("newDiscount").value || 0,
+        description: $("newDescription").value,
+    };
+    const res = await fetch("/api/snackshop/products", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    msg.textContent = data.message; msg.classList.add("success");
+    ["newName","newCategory","newEmoji","newPrice","newQuantity","newDiscount","newDescription"].forEach(id => $(id).value = "");
+    loadProducts();
+};
+
+$("toggleEmployeeBtn").onclick = async () => {
+    const msg = $("employeeMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const email = $("employeeEmail").value.trim();
+    const res = await fetch("/api/snackshop/employees/toggle", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    msg.textContent = data.message;
+    msg.classList.add(data.success ? "success" : "error");
+};
+
+$("searchInput").addEventListener("input", renderProducts);
+
+refreshSession();
+loadProducts();
+</script>
+</body>
+</html>
