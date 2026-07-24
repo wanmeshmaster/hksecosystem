@@ -2366,9 +2366,26 @@ def init_mail_db():
             deleted_by_sender    INTEGER NOT NULL DEFAULT 0,
             deleted_by_recipient INTEGER NOT NULL DEFAULT 0,
             folder_sender        TEXT NOT NULL DEFAULT 'sent',
-            folder_recipient     TEXT NOT NULL DEFAULT 'inbox'
+            folder_recipient     TEXT NOT NULL DEFAULT 'inbox',
+            purged_by_sender     INTEGER NOT NULL DEFAULT 0,
+            purged_by_recipient  INTEGER NOT NULL DEFAULT 0
         )
     """)
+
+    # Safe migrations for existing databases — permanent-delete tracking.
+    # purged_by_* is deliberately separate from deleted_by_* (which just
+    # means "sitting in this user's Trash"). Purging means that side is
+    # done with the row for good and must never see it again, independent
+    # of what the other party does. The row (and its attachments) is only
+    # ever hard-deleted from the table once BOTH sides have purged it.
+    for stmt in [
+        "ALTER TABLE emails ADD COLUMN purged_by_sender INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE emails ADD COLUMN purged_by_recipient INTEGER NOT NULL DEFAULT 0",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
 
     # mail_storage_used_bytes() and every folder listing filter/scan by
     # sender and by recipient on every request, so index both columns
@@ -4310,8 +4327,8 @@ def hkmail_trash_api():
                mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
-        WHERE (e.sender=? AND e.deleted_by_sender=1)
-           OR (e.recipient=? AND e.deleted_by_recipient=1)
+        WHERE (e.sender=? AND e.deleted_by_sender=1 AND e.purged_by_sender=0)
+           OR (e.recipient=? AND e.deleted_by_recipient=1 AND e.purged_by_recipient=0)
         ORDER BY e.sent_at DESC
     """, (u, u))
     rows = cur.fetchall()
@@ -4488,13 +4505,22 @@ def hkmail_restore_email(email_id):
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT sender, recipient FROM emails WHERE id=?", (email_id,))
+    cur.execute(
+        "SELECT sender, recipient, purged_by_sender, purged_by_recipient FROM emails WHERE id=?",
+        (email_id,)
+    )
     row = cur.fetchone()
     if not row:
         conn.close()
         return jsonify({"success": False, "message": "Email not found."}), 404
 
-    sender, recipient = row
+    sender, recipient, purged_sender, purged_recipient = row
+    # A side that has already permanently purged its own copy can't restore
+    # it back into existence — that action is final for that side.
+    if (u == sender and purged_sender) or (u == recipient and purged_recipient):
+        conn.close()
+        return jsonify({"success": False, "message": "Email not found."}), 404
+
     if u == sender:
         cur.execute("UPDATE emails SET deleted_by_sender=0 WHERE id=?", (email_id,))
     if u == recipient:
@@ -4515,33 +4541,50 @@ def hkmail_delete_permanent(email_id):
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
-    cur.execute("SELECT sender, recipient, deleted_by_sender, deleted_by_recipient FROM emails WHERE id=?", (email_id,))
+    cur.execute(
+        "SELECT sender, recipient, purged_by_sender, purged_by_recipient FROM emails WHERE id=?",
+        (email_id,)
+    )
     row = cur.fetchone()
     if not row:
         conn.close()
         return jsonify({"success": False, "message": "Email not found."}), 404
 
-    sender, recipient, del_sender, del_recipient = row
+    sender, recipient, purged_sender, purged_recipient = row
     if u not in (sender, recipient):
         conn.close()
         return jsonify({"success": False, "message": "Access denied."}), 403
 
-    # Only truly delete if both parties have deleted it (or it's a self-send)
-    both_deleted = (
-        (sender == u and del_sender) or (sender != u)
-    ) and (
-        (recipient == u and del_recipient) or (recipient != u)
-    )
+    # Purging is per-side and permanent: mark the caller's own side as
+    # purged (and, in case it wasn't already, moved to trash) — this is
+    # what actually makes the email disappear from the caller's mailbox
+    # for good, independent of what the other party has done.
+    if u == sender:
+        purged_sender = 1
+    if u == recipient:
+        purged_recipient = 1
 
-    if both_deleted or sender == recipient:
+    # Only physically remove the row once EVERY party who has a copy has
+    # purged theirs. For a normal two-party email both `sender` and
+    # `recipient` are always real, distinct parties on the row, so this
+    # must check both purge flags directly rather than assuming "the other
+    # party isn't me" means "the other party is done with it."
+    both_purged = bool(purged_sender) and bool(purged_recipient)
+
+    if both_purged or sender == recipient:
         cur.execute("DELETE FROM email_attachments WHERE email_id=?", (email_id,))
         cur.execute("DELETE FROM emails WHERE id=?", (email_id,))
     else:
-        # Just mark this side as deleted
         if u == sender:
-            cur.execute("UPDATE emails SET deleted_by_sender=1 WHERE id=?", (email_id,))
+            cur.execute(
+                "UPDATE emails SET deleted_by_sender=1, purged_by_sender=1 WHERE id=?",
+                (email_id,)
+            )
         if u == recipient:
-            cur.execute("UPDATE emails SET deleted_by_recipient=1 WHERE id=?", (email_id,))
+            cur.execute(
+                "UPDATE emails SET deleted_by_recipient=1, purged_by_recipient=1 WHERE id=?",
+                (email_id,)
+            )
 
     conn.commit()
     conn.close()
