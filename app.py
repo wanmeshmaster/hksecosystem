@@ -2078,7 +2078,13 @@ def checkout_pay_with_card():
         conn.close()
         return jsonify({"success": False, "message": "This card is frozen. Contact HKS Bank to unfreeze it."}), 400
 
+    receipt_cart = None
     if meta.startswith("snackshop_order:"):
+        # Snapshot the cart (items + subtotal) *before* decrementing stock —
+        # shop_cart_summary() caps each item's qty to currently-available
+        # stock, so reading it after the decrement could under-report what
+        # was actually just purchased.
+        receipt_cart = shop_cart_summary()
         stock_ok, stock_message = shop_validate_and_decrement_stock(cur, shop_cart_from_session())
         if not stock_ok:
             conn.close()
@@ -2102,6 +2108,7 @@ def checkout_pay_with_card():
     if meta.startswith("snackshop_order:"):
         session["shop_cart"] = {}
         session.modified = True
+        _send_snackshop_receipt_for_cart(receipt_cart)
 
     return jsonify({"success": True, "message": message})
 
@@ -2154,7 +2161,13 @@ def checkout_pay_with_session_card():
         conn.close()
         return jsonify({"success": False, "message": "This card is frozen. Contact HKS Bank to unfreeze it."}), 400
 
+    receipt_cart = None
     if meta.startswith("snackshop_order:"):
+        # Snapshot the cart (items + subtotal) *before* decrementing stock —
+        # shop_cart_summary() caps each item's qty to currently-available
+        # stock, so reading it after the decrement could under-report what
+        # was actually just purchased.
+        receipt_cart = shop_cart_summary()
         stock_ok, stock_message = shop_validate_and_decrement_stock(cur, shop_cart_from_session())
         if not stock_ok:
             conn.close()
@@ -2178,6 +2191,7 @@ def checkout_pay_with_session_card():
     if meta.startswith("snackshop_order:"):
         session["shop_cart"] = {}
         session.modified = True
+        _send_snackshop_receipt_for_cart(receipt_cart)
 
     # Same shared-cookie hazard as /api/logout: clear only the bank-owned
     # session keys so an HKMail login in the same browser session survives.
@@ -5308,6 +5322,189 @@ def shop_validate_and_decrement_stock(cur, cart):
                 return False, f"\"{name}\" just sold out. Please remove it from your cart to continue."
             return False, f"Only {available} of \"{name}\" left in stock. Please update the quantity in your cart."
     return True, None
+
+
+# ── SnackShop: order receipt emails ─────────────────────────────────────────────
+
+# From-address for order receipts. Like BOUNCE_MAIL_SENDER, this is
+# deliberately just a from-address string stored on the email row rather than
+# a real, loggable-into HKMail mailbox — for now there's no SnackShop support
+# inbox behind it to receive replies.
+SNACKSHOP_RECEIPT_SENDER = "support@snackshop.com"
+
+# The SnackShop wordmark, attached to every receipt email. Lives in the
+# static folder (served at /source/snackshop.jpg) so it's a normal asset
+# as well as something we can read straight off disk to attach.
+SNACKSHOP_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "source", "snackshop.jpg")
+
+_snackshop_logo_cache = None
+
+
+def _snackshop_logo_bytes():
+    """Read the SnackShop logo once per process. Returns None (and the
+    receipt just goes out without it) if the asset hasn't been added yet,
+    rather than failing the whole checkout over a missing image."""
+    global _snackshop_logo_cache
+    if _snackshop_logo_cache is None:
+        try:
+            with open(SNACKSHOP_LOGO_PATH, "rb") as f:
+                _snackshop_logo_cache = f.read()
+        except OSError:
+            _snackshop_logo_cache = b""
+    return _snackshop_logo_cache or None
+
+
+def generate_snackshop_order_number():
+    """Human-readable order reference, e.g. SS-7K2N9QF4. Purely cosmetic —
+    not a foreign key to anything, since SnackShop doesn't persist an
+    `orders` table today; it just gives the customer something short to
+    quote if they contact support about a specific purchase."""
+    alphabet = string.ascii_uppercase + string.digits
+    return "SS-" + ''.join(random.choices(alphabet, k=8))
+
+
+def _format_money(amount):
+    return f"${amount:,.2f}"
+
+
+def _format_receipt_date(dt):
+    fmt = "%B %-d, %Y at %I:%M %p" if os.name != "nt" else "%B %#d, %Y at %I:%M %p"
+    return dt.strftime(fmt)
+
+
+def build_snackshop_receipt_body(order_number, buyer_email, buyer_name, items, subtotal, purchased_at):
+    """Plain-text receipt body — HKMail bodies are plain text, so this is
+    laid out as a simple fixed-width itemised receipt rather than HTML."""
+    W = 46
+    lines = [
+        "SnackShop",
+        "Order Receipt",
+        "=" * W,
+        "",
+        f"Order number:  {order_number}",
+        f"Order date:    {_format_receipt_date(purchased_at)}",
+        f"Billed to:     {buyer_name or buyer_email} <{buyer_email}>",
+        "",
+        "-" * W,
+        f"{'Item':<24}{'Qty':>5}{'Amount':>17}",
+        "-" * W,
+    ]
+    for it in items:
+        name = it["name"] if len(it["name"]) <= 22 else it["name"][:21] + "…"
+        lines.append(f"{name:<24}{it['qty']:>5}{_format_money(it['lineTotal']):>17}")
+    lines += [
+        "-" * W,
+        f"{'Subtotal':<29}{_format_money(subtotal):>17}",
+        f"{'Total charged':<29}{_format_money(subtotal):>17}",
+        "=" * W,
+        "",
+    ]
+    item_count = sum(it["qty"] for it in items)
+    if item_count:
+        lines.append("A photo of each purchased item is attached to this email, along with "
+                      "the SnackShop logo.")
+        lines.append("")
+    lines += [
+        "Thanks for shopping with SnackShop! If anything about this order",
+        "doesn't look right, just reply to this email and our support team",
+        "will help sort it out.",
+        "",
+        "— The SnackShop Team",
+        "support@snackshop.com",
+    ]
+    return "\n".join(lines)
+
+
+def send_snackshop_receipt_email(recipient, buyer_name, items, subtotal, purchased_at=None):
+    """Deliver a purchase receipt into the buyer's HKMail inbox: a plain-text
+    itemised receipt with the SnackShop logo and a photo of each purchased
+    product attached (HKMail attachments, same mechanism as any other
+    HKMail email). No-ops (returns False) if `recipient` doesn't have an
+    HKMail inbox to deliver to — same fallback send_system_mail uses — since
+    a checkout should never fail just because the receipt couldn't be sent.
+    """
+    if not recipient or not items:
+        return False
+    purchased_at = purchased_at or datetime.now()
+    order_number = generate_snackshop_order_number()
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
+    if not cur.fetchone():
+        conn.close()
+        return False
+
+    subject = f"Your SnackShop receipt — Order {order_number}"
+    body = build_snackshop_receipt_body(order_number, recipient, buyer_name, items, subtotal, purchased_at)
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (SNACKSHOP_RECEIPT_SENDER, recipient, subject, body)
+    )
+    email_id = cur.lastrowid
+
+    logo_bytes = _snackshop_logo_bytes()
+    if logo_bytes:
+        cur.execute(
+            "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data) VALUES (?, ?, ?, ?, ?)",
+            (email_id, "snackshop-logo.jpg", "image/jpeg", len(logo_bytes), logo_bytes)
+        )
+
+    # Product photos live in the separate SHOP_DATABASE file, so they're
+    # fetched over their own connection rather than an ATTACH — this send
+    # happens after the payment transaction has already committed, so there's
+    # no need to keep it in the same transaction.
+    shop_conn = sqlite3.connect(SHOP_DATABASE)
+    shop_cur = shop_conn.cursor()
+    for it in items:
+        shop_cur.execute("SELECT image_mime, image_blob FROM shop_products WHERE id=?", (it["productId"],))
+        img_row = shop_cur.fetchone()
+        if img_row and img_row[1]:
+            mime_type, blob = img_row
+            ext = (mime_type or "image/jpeg").split("/")[-1] or "jpg"
+            safe_name = "".join(ch for ch in it["name"] if ch.isalnum() or ch in " -_").strip() or "item"
+            cur.execute(
+                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data) VALUES (?, ?, ?, ?, ?)",
+                (email_id, f"{safe_name}.{ext}", mime_type or "image/jpeg", len(blob), blob)
+            )
+    shop_conn.close()
+
+    conn.commit()
+    conn.close()
+    return True
+
+
+def _send_snackshop_receipt_for_cart(receipt_cart):
+    """Fire off the purchase receipt for a just-completed SnackShop order.
+    `receipt_cart` is a shop_cart_summary()-shaped dict — {"items": [...],
+    "subtotal": ...} — captured *before* checkout cleared the cart/decremented
+    stock. No-ops quietly (no receipt sent) if nobody's logged into SnackShop,
+    since there's no email address to send it to; a checkout should never
+    fail, or even surface a warning to the customer, just because the
+    receipt couldn't go out."""
+    if not receipt_cart or not receipt_cart.get("items"):
+        return
+    recipient = shop_current_user()
+    if not recipient:
+        return
+    buyer_row = shop_get_user(recipient)
+    buyer_name = buyer_row[1] if buyer_row else ""
+    receipt_items = [
+        {
+            "productId": it["product"]["id"],
+            "name": it["product"]["name"],
+            "qty": it["qty"],
+            "lineTotal": it["lineTotal"],
+        }
+        for it in receipt_cart["items"]
+    ]
+    try:
+        send_snackshop_receipt_email(recipient, buyer_name, receipt_items, receipt_cart["subtotal"])
+    except Exception as e:
+        # Best-effort only — the payment already succeeded and the cart is
+        # already cleared, so a receipt-delivery hiccup shouldn't bubble up
+        # as a failed checkout.
+        print(f"SnackShop receipt email failed for {recipient}: {e}")
 
 
 @app.route('/api/snackshop/session')
