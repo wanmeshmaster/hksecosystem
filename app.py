@@ -5392,18 +5392,18 @@ def build_snackshop_receipt_body(order_number, buyer_email, buyer_name, items, s
     for it in items:
         name = it["name"] if len(it["name"]) <= 22 else it["name"][:21] + "…"
         lines.append(f"{name:<24}{it['qty']:>5}{_format_money(it['lineTotal']):>17}")
+    # Tax is already baked into each product's price at purchase time — this
+    # 15% figure is calculated here purely for the receipt breakdown, it does
+    # not change what was actually charged (still `subtotal`).
+    tax = subtotal * 0.15
     lines += [
         "-" * W,
         f"{'Subtotal':<29}{_format_money(subtotal):>17}",
+        f"{'Tax (15%, included)':<29}{_format_money(tax):>17}",
         f"{'Total charged':<29}{_format_money(subtotal):>17}",
         "=" * W,
         "",
     ]
-    item_count = sum(it["qty"] for it in items)
-    if item_count:
-        lines.append("A photo of each purchased item is attached to this email, along with "
-                      "the SnackShop logo.")
-        lines.append("")
     lines += [
         "Thanks for shopping with SnackShop! If anything about this order",
         "doesn't look right, just reply to this email and our support team",
@@ -5417,9 +5417,8 @@ def build_snackshop_receipt_body(order_number, buyer_email, buyer_name, items, s
 
 def send_snackshop_receipt_email(recipient, buyer_name, items, subtotal, purchased_at=None):
     """Deliver a purchase receipt into the buyer's HKMail inbox: a plain-text
-    itemised receipt with the SnackShop logo and a photo of each purchased
-    product attached (HKMail attachments, same mechanism as any other
-    HKMail email). No-ops (returns False) if `recipient` doesn't have an
+    itemised receipt with the SnackShop logo attached (HKMail attachments,
+    same mechanism as any other HKMail email). No-ops (returns False) if `recipient` doesn't have an
     HKMail inbox to deliver to — same fallback send_system_mail uses — since
     a checkout should never fail just because the receipt couldn't be sent.
     """
@@ -5449,25 +5448,6 @@ def send_snackshop_receipt_email(recipient, buyer_name, items, subtotal, purchas
             "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data) VALUES (?, ?, ?, ?, ?)",
             (email_id, "snackshop-logo.jpg", "image/jpeg", len(logo_bytes), logo_bytes)
         )
-
-    # Product photos live in the separate SHOP_DATABASE file, so they're
-    # fetched over their own connection rather than an ATTACH — this send
-    # happens after the payment transaction has already committed, so there's
-    # no need to keep it in the same transaction.
-    shop_conn = sqlite3.connect(SHOP_DATABASE)
-    shop_cur = shop_conn.cursor()
-    for it in items:
-        shop_cur.execute("SELECT image_mime, image_blob FROM shop_products WHERE id=?", (it["productId"],))
-        img_row = shop_cur.fetchone()
-        if img_row and img_row[1]:
-            mime_type, blob = img_row
-            ext = (mime_type or "image/jpeg").split("/")[-1] or "jpg"
-            safe_name = "".join(ch for ch in it["name"] if ch.isalnum() or ch in " -_").strip() or "item"
-            cur.execute(
-                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data) VALUES (?, ?, ?, ?, ?)",
-                (email_id, f"{safe_name}.{ext}", mime_type or "image/jpeg", len(blob), blob)
-            )
-    shop_conn.close()
 
     conn.commit()
     conn.close()
