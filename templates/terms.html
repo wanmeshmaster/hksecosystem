@@ -240,5 +240,28 @@
         </div>
     </main>
 
+    <script>
+    // ── Route mailto: links to HKMail compose instead of the OS mail client ──
+    document.addEventListener('click', function (e) {
+        const link = e.target.closest('a[href^="mailto:"]');
+        if (!link) return;
+
+        e.preventDefault();
+
+        const mailto = new URL(link.href);
+        const to     = mailto.pathname;
+        const params = new URLSearchParams(mailto.search);
+
+        const qs = new URLSearchParams();
+        qs.set('compose', '1');
+        if (to) qs.set('to', to);
+        if (params.get('subject')) qs.set('subject', params.get('subject'));
+        if (params.get('body'))    qs.set('body', params.get('body'));
+        if (params.get('cc'))      qs.set('cc', params.get('cc'));
+
+        window.location.href = '/hkmail-inbox.html?' + qs.toString();
+    });
+    </script>
+
 </body>
 </html>

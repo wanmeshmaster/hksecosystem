@@ -1511,7 +1511,13 @@
         const res  = await fetch('/api/hkmail/current-user');
         const data = await res.json();
         if (!data.loggedIn) {
-            window.location.href = '/hkmail.html';
+            const composeParams = new URLSearchParams(window.location.search);
+            if (composeParams.get('compose') === '1') {
+                composeParams.set('next', 'compose');
+                window.location.href = '/hkmail.html?' + composeParams.toString();
+            } else {
+                window.location.href = '/hkmail.html';
+            }
             return;
         }
         myUsername = data.username;

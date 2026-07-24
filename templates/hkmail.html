@@ -519,6 +519,17 @@
             clearMsgs();
         }
 
+        // Where to send the user after a successful sign-in. If they were
+        // bounced here from a mailto: link (via ?next=compose&to=...), send
+        // them back to the inbox with those params intact so compose reopens
+        // automatically instead of dropping them on an empty inbox.
+        function getPostSignInUrl() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('next') !== 'compose') return '/hkmail-inbox.html';
+            params.delete('next');
+            return '/hkmail-inbox.html?' + params.toString();
+        }
+
         function clearMsgs() {
             ['signin-msg','register-msg','business-msg'].forEach(id => {
                 const el = document.getElementById(id);
@@ -555,7 +566,7 @@
 
                 if (data.success) {
                     showMsg('signin-msg', 'Signed in! Redirecting…', 'success');
-                    setTimeout(() => { window.location.href = '/hkmail-inbox.html'; }, 800);
+                    setTimeout(() => { window.location.href = getPostSignInUrl(); }, 800);
                 } else {
                     showMsg('signin-msg', data.message || 'Incorrect email or password.', 'error');
                     btn.disabled = false;
