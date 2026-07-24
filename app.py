@@ -2047,6 +2047,11 @@ def checkout_pay_with_card():
 
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
+    if meta.startswith("snackshop_order:"):
+        # Bring shop_products into this same connection/transaction so the
+        # stock decrement below commits or rolls back atomically together
+        # with the payment debit (they live in separate .db files).
+        cur.execute("ATTACH DATABASE ? AS shop", (SHOP_DATABASE,))
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
                expiry_month, expiry_year, cardholder_name, status, card_type
@@ -2124,6 +2129,11 @@ def checkout_pay_with_session_card():
 
     conn = sqlite3.connect(DATABASE)
     cur  = conn.cursor()
+    if meta.startswith("snackshop_order:"):
+        # Bring shop_products into this same connection/transaction so the
+        # stock decrement below commits or rolls back atomically together
+        # with the payment debit (they live in separate .db files).
+        cur.execute("ATTACH DATABASE ? AS shop", (SHOP_DATABASE,))
     cur.execute("""
         SELECT id, username, account_id, account_label, card_number, cvv,
                expiry_month, expiry_year, cardholder_name, status, card_type
