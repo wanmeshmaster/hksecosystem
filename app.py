@@ -5277,6 +5277,9 @@ def snackshop_login():
     email = (data.get("email", "") or "").strip().lower()
     password = (data.get("password", "") or "").strip()
 
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+
     conn = sqlite3.connect(SHOP_DATABASE)
     cur = conn.cursor()
     cur.execute(
@@ -5286,8 +5289,11 @@ def snackshop_login():
     row = cur.fetchone()
     conn.close()
 
-    if not row or not check_password_hash(row[0], password):
-        return jsonify({"success": False, "message": "Incorrect email or password."}), 401
+    if not row:
+        return jsonify({"success": False, "message": f"We couldn't find a SnackShop account for {email}."}), 401
+
+    if not check_password_hash(row[0], password):
+        return jsonify({"success": False, "message": "Incorrect password. Please try again."}), 401
 
     restricted_dt = shop_active_restriction(row[3])
     if restricted_dt:
