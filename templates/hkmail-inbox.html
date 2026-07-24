@@ -1568,6 +1568,15 @@
             openStorageModal();
             window.history.replaceState({}, '', '/hkmail-inbox.html');
         }
+
+        // Arriving from a mailto: link (possibly via a login bounce)
+        if (params.get('compose') === '1') {
+            document.getElementById('c-to').value      = params.get('to') || '';
+            document.getElementById('c-subject').value = params.get('subject') || '';
+            document.getElementById('c-body').value    = params.get('body') || '';
+            openCompose();
+            window.history.replaceState({}, '', '/hkmail-inbox.html');
+        }
     })();
 
     // ── Sender badges ──────────────────────────────────────────────────────────
