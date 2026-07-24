@@ -2073,6 +2073,12 @@ def checkout_pay_with_card():
         conn.close()
         return jsonify({"success": False, "message": "This card is frozen. Contact HKS Bank to unfreeze it."}), 400
 
+    if meta.startswith("snackshop_order:"):
+        stock_ok, stock_message = shop_validate_and_decrement_stock(cur, shop_cart_from_session())
+        if not stock_ok:
+            conn.close()
+            return jsonify({"success": False, "message": stock_message}), 409
+
     ok, message = _debit_for_card_payment(cur, card, amount, description)
     if not ok:
         conn.close()
@@ -2137,6 +2143,12 @@ def checkout_pay_with_session_card():
     if card[9] == 'frozen':
         conn.close()
         return jsonify({"success": False, "message": "This card is frozen. Contact HKS Bank to unfreeze it."}), 400
+
+    if meta.startswith("snackshop_order:"):
+        stock_ok, stock_message = shop_validate_and_decrement_stock(cur, shop_cart_from_session())
+        if not stock_ok:
+            conn.close()
+            return jsonify({"success": False, "message": stock_message}), 409
 
     ok, message = _debit_for_card_payment(cur, card, amount, description)
     if not ok:
@@ -5222,6 +5234,72 @@ def shop_cart_summary():
     return {"items": items, "subtotal": round(subtotal, 2), "itemCount": item_count}
 
 
+def shop_check_cart_stock(cart):
+    """Non-mutating pre-flight check: does every item in the cart still have
+    enough stock right now? Used before sending the customer off to HKS
+    Bank's checkout page, so an item someone else just bought out gets
+    caught immediately instead of only surfacing after payment.
+    Returns (True, None) or (False, message)."""
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    try:
+        for pid_str, qty in cart.items():
+            try:
+                product_id = int(pid_str)
+                qty = int(qty)
+            except (TypeError, ValueError):
+                continue
+            if qty <= 0:
+                continue
+            row = shop_get_product(cur, product_id)
+            if not row:
+                return False, "One of the items in your cart is no longer available. Please review your cart."
+            name, available = row[1], row[6]
+            if available <= 0:
+                return False, f"\"{name}\" just sold out. Please remove it from your cart to continue."
+            if qty > available:
+                return False, f"Only {available} of \"{name}\" left in stock. Please update the quantity in your cart."
+        return True, None
+    finally:
+        conn.close()
+
+
+def shop_validate_and_decrement_stock(cur, cart):
+    """Atomically decrement stock for every item in the cart, as part of the
+    caller's existing transaction (same `cur`/connection as the payment
+    debit, committed together). Uses a conditional UPDATE — quantity is only
+    decremented if enough is still available — so this is race-safe even if
+    two checkouts for the last unit of the same product land at the same
+    moment: whichever UPDATE's WHERE clause still matches wins, and the
+    loser's rowcount comes back 0 without ever touching the row.
+
+    On any failure, everything this call already decremented is rolled back
+    so nothing is left half-decremented and the customer isn't charged.
+    Returns (True, None) or (False, message)."""
+    for pid_str, qty in cart.items():
+        try:
+            product_id = int(pid_str)
+            qty = int(qty)
+        except (TypeError, ValueError):
+            continue
+        if qty <= 0:
+            continue
+        cur.execute(
+            "UPDATE shop_products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?",
+            (qty, product_id, qty)
+        )
+        if cur.rowcount == 0:
+            cur.connection.rollback()
+            row = shop_get_product(cur, product_id)
+            if not row:
+                return False, "One of the items in your cart is no longer available. Please review your cart."
+            name, available = row[1], row[6]
+            if available <= 0:
+                return False, f"\"{name}\" just sold out. Please remove it from your cart to continue."
+            return False, f"Only {available} of \"{name}\" left in stock. Please update the quantity in your cart."
+    return True, None
+
+
 @app.route('/api/snackshop/session')
 def snackshop_session():
     username = shop_current_user()
@@ -5892,6 +5970,10 @@ def snackshop_checkout_start():
     cart = shop_cart_summary()
     if not cart["itemCount"] or cart["subtotal"] <= 0:
         return jsonify({"success": False, "message": "Your cart is empty."}), 400
+
+    stock_ok, stock_message = shop_check_cart_stock(shop_cart_from_session())
+    if not stock_ok:
+        return jsonify({"success": False, "message": stock_message}), 409
 
     from urllib.parse import quote
     item_word = "item" if cart["itemCount"] == 1 else "items"
