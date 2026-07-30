@@ -188,6 +188,10 @@
     .form-msg { font-size: 0.8rem; margin: 8px 0; min-height: 1em; }
     .form-msg.error { color: var(--danger); }
     .form-msg.success { color: var(--accent); }
+    .forgot-link { color: var(--amber); font-size: 0.82rem; cursor: pointer; background: none; border: none; padding: 0; font-family: inherit; }
+    .forgot-link:hover { text-decoration: underline; }
+    .forgot-row { text-align: right; margin: -6px 0 12px; }
+    .forgot-footer { text-align: center; margin-top: 14px; }
 
     footer { text-align: center; padding: 30px 22px 50px; color: var(--text-tertiary); font-size: 0.78rem; }
 
@@ -332,9 +336,33 @@
             <form id="loginForm">
                 <div class="field"><label>Email</label><input type="email" id="loginEmail" required></div>
                 <div class="field"><label>Password</label><input type="password" id="loginPassword" required></div>
+                <div class="forgot-row"><button type="button" class="forgot-link" id="forgotOpenLink">Forgot your password?</button></div>
                 <div class="form-msg" id="loginMsg"></div>
                 <button type="submit" class="btn btn-primary btn-block">Log in</button>
             </form>
+        </div>
+        <div id="forgotPane" style="display:none;">
+            <div class="modal-title">Reset your password</div>
+            <div class="modal-sub" id="forgotStep1Sub">Enter your account email and we'll send you a 6-digit reset code.</div>
+            <form id="forgotEmailForm">
+                <div class="field"><label>Email</label><input type="email" id="forgotEmail" required></div>
+                <div class="form-msg" id="forgotEmailMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Send reset code</button>
+            </form>
+            <form id="forgotCodeForm" style="display:none;">
+                <div class="modal-sub" id="forgotStep2Sub"></div>
+                <div class="field"><label>6-digit code</label><input type="text" id="forgotCode" inputmode="numeric" maxlength="6" required></div>
+                <div class="form-msg" id="forgotCodeMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Verify code</button>
+                <div class="forgot-footer"><button type="button" class="forgot-link" id="forgotResendLink">Resend code</button></div>
+            </form>
+            <form id="forgotResetForm" style="display:none;">
+                <div class="field"><label>New password</label><input type="password" id="forgotNewPassword" required minlength="6"></div>
+                <div class="field"><label>Confirm new password</label><input type="password" id="forgotConfirmPassword" required minlength="6"></div>
+                <div class="form-msg" id="forgotResetMsg"></div>
+                <button type="submit" class="btn btn-primary btn-block">Reset password</button>
+            </form>
+            <div class="forgot-footer"><button type="button" class="forgot-link" id="forgotBackLink">&larr; Back to log in</button></div>
         </div>
         <div id="registerPane" style="display:none;">
             <div class="modal-title">Create your account</div>
@@ -436,15 +464,33 @@ function openAuthModal(tab) { $("authModal").classList.add("open"); switchTab(ta
 function closeAuthModal() { $("authModal").classList.remove("open"); }
 function switchTab(tab) {
     const isLogin = tab === "login";
+    const isRegister = tab === "register";
+    const isForgot = tab === "forgot";
     $("tabLogin").classList.toggle("active", isLogin);
-    $("tabRegister").classList.toggle("active", !isLogin);
+    $("tabRegister").classList.toggle("active", isRegister);
+    document.querySelector(".tab-row").style.display = isForgot ? "none" : "";
     $("loginPane").style.display = isLogin ? "block" : "none";
-    $("registerPane").style.display = isLogin ? "none" : "block";
+    $("registerPane").style.display = isRegister ? "block" : "none";
+    $("forgotPane").style.display = isForgot ? "block" : "none";
+    if (isForgot) resetForgotFlow();
+}
+function resetForgotFlow() {
+    $("forgotEmailForm").style.display = "block";
+    $("forgotCodeForm").style.display = "none";
+    $("forgotResetForm").style.display = "none";
+    $("forgotStep2Sub").textContent = "";
+    [$("forgotEmailMsg"), $("forgotCodeMsg"), $("forgotResetMsg")].forEach(m => { m.textContent = ""; m.className = "form-msg"; });
+    $("forgotEmail").value = "";
+    $("forgotCode").value = "";
+    $("forgotNewPassword").value = "";
+    $("forgotConfirmPassword").value = "";
 }
 $("tabLogin").onclick = () => switchTab("login");
 $("tabRegister").onclick = () => switchTab("register");
 $("authClose").onclick = closeAuthModal;
 $("authModal").addEventListener("click", (e) => { if (e.target === $("authModal")) closeAuthModal(); });
+$("forgotOpenLink").onclick = () => switchTab("forgot");
+$("forgotBackLink").onclick = () => switchTab("login");
 
 $("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -472,6 +518,58 @@ $("registerForm").addEventListener("submit", async (e) => {
     closeAuthModal();
     showToast(`Account created — welcome, ${data.fullName}!`);
     await refreshSession();
+});
+
+$("forgotEmailForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("forgotEmailMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const email = $("forgotEmail").value;
+    const res = await fetch("/api/snackshop/forgot-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    $("forgotEmailForm").style.display = "none";
+    $("forgotCodeForm").style.display = "block";
+    $("forgotStep2Sub").textContent = `Enter the 6-digit code we sent to ${email}.`;
+});
+
+$("forgotCodeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("forgotCodeMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/verify-reset-code", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: $("forgotCode").value })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    $("forgotCodeForm").style.display = "none";
+    $("forgotResetForm").style.display = "block";
+});
+
+$("forgotResendLink").onclick = async () => {
+    const msg = $("forgotCodeMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/forgot-password/resend", { method: "POST" });
+    const data = await res.json();
+    msg.textContent = data.message;
+    msg.classList.add(data.success ? "success" : "error");
+};
+
+$("forgotResetForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("forgotResetMsg"); msg.textContent = ""; msg.className = "form-msg";
+    const res = await fetch("/api/snackshop/reset-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            new_password: $("forgotNewPassword").value,
+            confirm_password: $("forgotConfirmPassword").value
+        })
+    });
+    const data = await res.json();
+    if (!data.success) { msg.textContent = data.message; msg.classList.add("error"); return; }
+    showToast("Password reset — please log in with your new password.");
+    switchTab("login");
 });
 
 async function doLogout() {

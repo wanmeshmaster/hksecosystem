@@ -222,6 +222,12 @@ CONTACT_MAIL_DEFAULT_PASSWORD = "ContactDesk742!"
 LEGAL_MAIL_USERNAME = "legal@hkmail.cn"
 LEGAL_MAIL_DEFAULT_PASSWORD = "LegalDept963!"
 
+# SnackShop's support address. Like MAILER_DAEMON_SENDER above, this is NOT
+# a real, loggable-into HKMail mailbox — just an address string used as the
+# "from" on receipts/reset-code emails and as the "to" on password-change
+# notifications sent to SnackShop's own support team.
+SNACKSHOP_SUPPORT_MAIL_USERNAME = "support@snackshop.com"
+
 
 # ── HKMail: account-service support requests (password reset / deletion) ──────
 
@@ -5373,7 +5379,7 @@ def shop_validate_and_decrement_stock(cur, cart):
 # deliberately just a from-address string stored on the email row rather than
 # a real, loggable-into HKMail mailbox — for now there's no SnackShop support
 # inbox behind it to receive replies.
-SNACKSHOP_RECEIPT_SENDER = "support@snackshop.com"
+SNACKSHOP_RECEIPT_SENDER = SNACKSHOP_SUPPORT_MAIL_USERNAME
 
 # The SnackShop wordmark, attached to every receipt email. Lives in the
 # static folder (served at /source/snackshop.jpg) so it's a normal asset
@@ -5495,6 +5501,54 @@ def send_snackshop_receipt_email(recipient, buyer_name, items, subtotal, purchas
     conn.commit()
     conn.close()
     return True
+
+
+def send_snackshop_system_email(recipient, subject, body):
+    """Deliver a plain-text SnackShop system email (password-reset codes,
+    password-changed confirmations, etc.) into the recipient's HKMail inbox,
+    from the SnackShop support address. Returns True if delivered, False if
+    the recipient has no HKMail account to deliver to — same fallback every
+    other system sender in this app uses."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
+    if not cur.fetchone():
+        conn.close()
+        return False
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (SNACKSHOP_RECEIPT_SENDER, recipient, subject, body)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def notify_snackshop_support(subject, body):
+    """Send a password-change notification to support@snackshop.com. Unlike
+    send_snackshop_system_email above, this doesn't check for an HKMail
+    inbox first — support@snackshop.com isn't a real, loggable-into mailbox
+    in this system (see SNACKSHOP_SUPPORT_MAIL_USERNAME), so this just
+    records the outgoing email rather than delivering to an inbox anyone
+    can read. Best-effort only; failures here shouldn't block a password
+    reset, so callers should wrap this in a try/except."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (SNACKSHOP_RECEIPT_SENDER, SNACKSHOP_SUPPORT_MAIL_USERNAME, subject, body)
+    )
+    conn.commit()
+    conn.close()
+
+
+def generate_shop_reset_code():
+    """6-digit numeric password-reset code, e.g. '048213'."""
+    return f"{random.randint(0, 999999):06d}"
+
+
+# How long a SnackShop password-reset code stays valid after being sent.
+SHOP_RESET_CODE_TTL_MINUTES = 15
 
 
 def _send_snackshop_receipt_for_cart(receipt_cart):
@@ -5627,6 +5681,167 @@ def snackshop_login():
 def snackshop_logout():
     session.pop("shop_username", None)
     return jsonify({"success": True})
+
+
+@app.route('/api/snackshop/forgot-password', methods=['POST'])
+def snackshop_forgot_password():
+    data = request.get_json() or {}
+    email = (data.get("email", "") or "").strip().lower()
+
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT full_name FROM shop_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"success": False, "message": f"We couldn't find a SnackShop account for {email}."}), 404
+
+    code = generate_shop_reset_code()
+    session["shop_reset"] = {
+        "email": email,
+        "code": code,
+        "attempts": 0,
+        "verified": False,
+        "expires_at": (datetime.now() + timedelta(minutes=SHOP_RESET_CODE_TTL_MINUTES)).isoformat(),
+    }
+
+    delivered = send_snackshop_system_email(
+        email,
+        "Your SnackShop password reset code",
+        f"Hi {row[0]},\n\n"
+        f"We received a request to reset your SnackShop password. Use the code below to continue:\n\n"
+        f"    {code}\n\n"
+        f"This code expires in {SHOP_RESET_CODE_TTL_MINUTES} minutes. If you didn't request this, "
+        f"you can safely ignore this email — your password won't be changed.\n\n"
+        f"— SnackShop Support\nsupport@snackshop.com"
+    )
+    if not delivered:
+        session.pop("shop_reset", None)
+        return jsonify({
+            "success": False,
+            "message": f"We couldn't deliver a reset code to {email} — that address doesn't have an HKMail inbox we can send to."
+        }), 400
+
+    return jsonify({"success": True, "message": f"We've sent a 6-digit code to {email}."})
+
+
+@app.route('/api/snackshop/forgot-password/resend', methods=['POST'])
+def snackshop_forgot_password_resend():
+    pending = session.get("shop_reset")
+    if not pending:
+        return jsonify({"success": False, "message": "No password reset in progress. Please start over."}), 400
+
+    email = pending["email"]
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT full_name FROM shop_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        session.pop("shop_reset", None)
+        return jsonify({"success": False, "message": "That account no longer exists. Please start over."}), 400
+
+    code = generate_shop_reset_code()
+    session["shop_reset"] = {
+        "email": email,
+        "code": code,
+        "attempts": 0,
+        "verified": False,
+        "expires_at": (datetime.now() + timedelta(minutes=SHOP_RESET_CODE_TTL_MINUTES)).isoformat(),
+    }
+    send_snackshop_system_email(
+        email,
+        "Your new SnackShop password reset code",
+        f"Hi {row[0]},\n\nHere is your new password reset code:\n\n    {code}\n\n"
+        f"This code expires in {SHOP_RESET_CODE_TTL_MINUTES} minutes.\n\n"
+        f"— SnackShop Support\nsupport@snackshop.com"
+    )
+    return jsonify({"success": True, "message": f"We've sent a new code to {email}."})
+
+
+@app.route('/api/snackshop/verify-reset-code', methods=['POST'])
+def snackshop_verify_reset_code():
+    data = request.get_json() or {}
+    code = (data.get("code", "") or "").strip()
+
+    pending = session.get("shop_reset")
+    if not pending:
+        return jsonify({"success": False, "message": "No password reset in progress. Please start over."}), 400
+
+    if datetime.now() > datetime.fromisoformat(pending["expires_at"]):
+        session.pop("shop_reset", None)
+        return jsonify({"success": False, "message": "This code has expired. Please request a new one."}), 400
+
+    if pending["attempts"] >= 5:
+        session.pop("shop_reset", None)
+        return jsonify({"success": False, "message": "Too many incorrect attempts. Please start over."}), 400
+
+    if code != pending["code"]:
+        pending["attempts"] += 1
+        session["shop_reset"] = pending
+        remaining = 5 - pending["attempts"]
+        return jsonify({"success": False, "message": f"Incorrect code. {remaining} attempt(s) remaining."}), 400
+
+    pending["verified"] = True
+    session["shop_reset"] = pending
+    return jsonify({"success": True, "message": "Code verified. You can now set a new password."})
+
+
+@app.route('/api/snackshop/reset-password', methods=['POST'])
+def snackshop_reset_password():
+    data = request.get_json() or {}
+    new_password = (data.get("new_password", "") or "").strip()
+    confirm_password = (data.get("confirm_password", "") or "").strip()
+
+    pending = session.get("shop_reset")
+    if not pending or not pending.get("verified"):
+        return jsonify({"success": False, "message": "Please verify your reset code first."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters."}), 400
+    if new_password != confirm_password:
+        return jsonify({"success": False, "message": "Passwords do not match."}), 400
+
+    email = pending["email"]
+    conn = sqlite3.connect(SHOP_DATABASE)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE shop_users SET password_hash=? WHERE username=?",
+        (generate_password_hash(new_password), email)
+    )
+    conn.commit()
+    conn.close()
+
+    session.pop("shop_reset", None)
+
+    changed_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    try:
+        notify_snackshop_support(
+            f"Password changed — {email}",
+            f"A SnackShop account password was changed via the self-service "
+            f"\"Forgot your password?\" flow.\n\n"
+            f"Account: {email}\nChanged at: {changed_at}\n\n"
+            f"No action is required unless the account holder reports this change as unauthorized."
+        )
+    except Exception:
+        pass
+
+    try:
+        send_snackshop_system_email(
+            email,
+            "Your SnackShop password was changed",
+            f"This confirms your SnackShop account password was just changed.\n\n"
+            f"If this wasn't you, please contact support@snackshop.com immediately.\n\n"
+            f"— SnackShop Support"
+        )
+    except Exception:
+        pass
+
+    return jsonify({"success": True, "message": "Your password has been reset. You can now log in."})
 
 
 @app.route('/api/snackshop/products')
