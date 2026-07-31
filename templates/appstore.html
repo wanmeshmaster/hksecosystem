@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Store - HK OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ink: #070b10;
+            --glass-bg: rgba(15, 21, 28, 0.55);
+            --glass-bg-strong: rgba(13, 18, 24, 0.78);
+            --glass-border: rgba(255, 255, 255, 0.14);
+            --text-primary: #f2f6f9;
+            --text-secondary: #a8b4c0;
+            --text-tertiary: #77828d;
+            --accent: #26c9ab;
+            --accent-strong: #1aa88f;
+            --accent-amber: #e3b24d;
+            --danger: #e0645a;
+            --radius-lg: 22px;
+            --radius-md: 14px;
+            --radius-sm: 10px;
+            --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .font-display {
+            font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            color: var(--text-primary);
+
+            background-image: url('/source/main_bg.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(1100px 560px at 15% -10%, rgba(38, 201, 171, 0.14), transparent 60%),
+                linear-gradient(180deg, rgba(5, 9, 13, 0.66) 0%, rgba(5, 9, 13, 0.4) 42%, rgba(5, 9, 13, 0.7) 100%);
+            z-index: -1;
+        }
+
+        a { color: inherit; text-decoration: none; }
+        button { font-family: inherit; }
+
+        /* ── Intro sequence: logo, then fade to the store ─────────────── */
+
+        .intro-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--ink);
+            opacity: 1;
+            transition: opacity 0.7s ease;
+        }
+
+        .intro-screen.intro-hide {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .intro-logo {
+            width: 132px;
+            height: 132px;
+            object-fit: contain;
+            border-radius: 28px;
+            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transform: scale(0.92);
+            animation: intro-logo-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        .intro-screen.intro-hide .intro-logo {
+            opacity: 0 !important;
+            transform: scale(1.04);
+            transition: opacity 0.55s ease, transform 0.55s ease;
+        }
+
+        .intro-logo-fallback {
+            font-family: "Manrope", sans-serif;
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            color: var(--text-primary);
+            opacity: 0;
+            animation: intro-logo-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes intro-logo-in {
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .intro-logo, .intro-logo-fallback { animation: none; opacity: 1; transform: none; }
+        }
+
+        /* ── Top bar ─────────────────────────────────────────────────── */
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 12px 22px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            border-bottom: 1px solid var(--glass-border);
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+        }
+
+        .back-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            padding: 7px 12px 7px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+            flex-shrink: 0;
+        }
+
+        .back-pill:hover {
+            color: var(--text-primary);
+            border-color: var(--accent);
+            background: rgba(38, 201, 171, 0.1);
+        }
+
+        .back-pill svg { width: 14px; height: 14px; }
+
+        .topbar-title {
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn {
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 9px 16px;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        .btn-solid {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #06231d;
+        }
+
+        .btn-solid:hover {
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #06231d;
+        }
+
+        .account-chip {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 5px 6px 5px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .account-chip.show { display: flex; }
+
+        .account-avatar {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: linear-gradient(150deg, #1c8f7c, #123a37);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .account-name {
+            font-size: 0.8rem;
+            font-weight: 700;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .signed-out-controls { display: flex; align-items: center; gap: 10px; }
+        .signed-out-controls.hide { display: none; }
+
+        /* ── Store body ──────────────────────────────────────────────── */
+
+        .store {
+            flex: 1;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .store-hero {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .store-eyebrow {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+        }
+
+        .store-hero h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .store-hero p {
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            max-width: 46ch;
+            line-height: 1.5;
+        }
+
+        .app-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .app-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            backdrop-filter: blur(14px) saturate(130%);
+            -webkit-backdrop-filter: blur(14px) saturate(130%);
+        }
+
+        .app-card-icon {
+            width: 58px;
+            height: 58px;
+            border-radius: 16px;
+            flex-shrink: 0;
+            background-size: cover;
+            background-position: center;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .app-card-icon:not([style*="background-image"]) {
+            background: linear-gradient(150deg, #1c8f7c, #123a37);
+        }
+
+        .app-card:nth-of-type(3n+2) .app-card-icon:not([style*="background-image"]) {
+            background: linear-gradient(150deg, #2b6f9c, #10222f);
+        }
+
+        .app-card:nth-of-type(3n+3) .app-card-icon:not([style*="background-image"]) {
+            background: linear-gradient(150deg, #a9772f, #2c2013);
+        }
+
+        .app-card-icon span {
+            font-family: "Manrope", sans-serif;
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: rgba(255, 255, 255, 0.92);
+        }
+
+        .app-card-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .app-card-body h3 {
+            font-size: 0.98rem;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .app-card-body p {
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+            line-height: 1.4;
+        }
+
+        .status-pill {
+            flex-shrink: 0;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            padding: 7px 14px;
+            border-radius: 999px;
+            border: 1.5px solid var(--accent);
+            color: var(--accent);
+            background: transparent;
+            white-space: nowrap;
+        }
+
+        .store-empty-note {
+            font-size: 0.78rem;
+            color: var(--text-tertiary);
+            text-align: center;
+            padding-top: 4px;
+        }
+
+        /* ── Modals ──────────────────────────────────────────────────── */
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background-color: rgba(4, 6, 9, 0.6);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(3px);
+            padding: 20px;
+        }
+
+        .modal-overlay.show { display: flex; }
+
+        .modal-content {
+            background: var(--glass-bg-strong);
+            backdrop-filter: blur(22px) saturate(150%);
+            -webkit-backdrop-filter: blur(22px) saturate(150%);
+            border: 1px solid var(--glass-border);
+            padding: 32px;
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 380px;
+            position: relative;
+            box-shadow: var(--shadow-soft);
+            color: var(--text-primary);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 14px;
+            right: 16px;
+            font-size: 1.4rem;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: color 0.2s;
+            line-height: 1;
+            background: none;
+            border: none;
+        }
+
+        .close-btn:hover { color: var(--danger); }
+
+        .modal-content h2 {
+            font-size: 1.2rem;
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+
+        .modal-sub {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+
+        .field label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-tertiary);
+        }
+
+        .field input {
+            font-family: inherit;
+            font-size: 0.92rem;
+            padding: 11px 13px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        .field input::placeholder { color: var(--text-tertiary); }
+        .field input:focus { border-color: var(--accent); }
+
+        .field-hint {
+            font-size: 0.7rem;
+            color: var(--text-tertiary);
+        }
+
+        .modal-submit {
+            width: 100%;
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--accent);
+            color: #06231d;
+            font-size: 0.92rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            margin-top: 4px;
+        }
+
+        .modal-submit:hover { background: var(--accent-strong); }
+        .modal-submit:disabled { background: #4a5560; color: #9aa4ad; cursor: not-allowed; }
+
+        .modal-error {
+            display: none;
+            font-size: 0.78rem;
+            color: var(--danger);
+            background: rgba(224, 100, 90, 0.12);
+            border: 1px solid rgba(224, 100, 90, 0.35);
+            padding: 9px 12px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 14px;
+            line-height: 1.4;
+        }
+
+        .modal-error.show { display: block; }
+
+        .modal-footer-note {
+            margin-top: 16px;
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+            text-align: center;
+        }
+
+        .modal-footer-note button {
+            background: none;
+            border: none;
+            color: var(--accent);
+            font-weight: 700;
+            font-size: inherit;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .modal-footer-note button:hover { text-decoration: underline; }
+
+        .resend-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: -6px;
+            margin-bottom: 14px;
+        }
+
+        .resend-row button {
+            background: none;
+            border: none;
+            color: var(--accent);
+            font-size: 0.76rem;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .resend-row button:disabled { color: var(--text-tertiary); cursor: default; }
+
+        .code-input {
+            letter-spacing: 0.3em;
+            text-align: center;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        /* ── Toast ───────────────────────────────────────────────────── */
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #1a1a1a;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 1300;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            max-width: min(320px, calc(100vw - 48px));
+        }
+
+        .toast.show { opacity: 1; transform: translateY(0); }
+
+        /* ── Responsive ──────────────────────────────────────────────── */
+
+        @media (max-width: 560px) {
+            .topbar { padding: 10px 14px; flex-wrap: wrap; }
+            .store { padding: 36px 16px 64px; gap: 32px; }
+            .store-hero h1 { font-size: 1.6rem; }
+            .app-card { padding: 13px; gap: 12px; }
+            .app-card-icon { width: 48px; height: 48px; border-radius: 13px; }
+            .status-pill { padding: 6px 11px; font-size: 0.68rem; }
+            .account-name { max-width: 90px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                transition-duration: 0.001ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="introScreen" class="intro-screen" aria-hidden="true">
+        <img src="/source/appstore.jpg" alt="" class="intro-logo" id="introLogoImg">
+        <span class="intro-logo-fallback font-display" id="introLogoFallback" hidden>App Store</span>
+    </div>
+    <script>
+        // ── Intro sequence: logo, then fade into the store ────────────
+        (function () {
+            var screen = document.getElementById("introScreen");
+            var logoImg = document.getElementById("introLogoImg");
+            var fallback = document.getElementById("introLogoFallback");
+
+            logoImg.onerror = function () {
+                logoImg.style.display = "none";
+                fallback.hidden = false;
+            };
+
+            var alreadyPlayed = sessionStorage.getItem("appstoreIntroPlayed");
+            if (alreadyPlayed) {
+                screen.style.display = "none";
+                return;
+            }
+            sessionStorage.setItem("appstoreIntroPlayed", "1");
+
+            var reduced = window.matchMedia &&
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            var holdTime = reduced ? 150 : 1500;
+
+            window.addEventListener("load", function () {
+                setTimeout(function () {
+                    screen.classList.add("intro-hide");
+                    setTimeout(function () { screen.style.display = "none"; }, 700);
+                }, holdTime);
+            });
+        })();
+    </script>
+
+    <header class="topbar">
+        <div class="topbar-left">
+            <a href="/" class="back-pill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                HK OS
+            </a>
+            <span class="topbar-title font-display">App Store</span>
+        </div>
+
+        <div class="topbar-right">
+            <div class="signed-out-controls" id="signedOutControls">
+                <button class="btn" id="openSignInBtn" type="button">Sign In</button>
+                <button class="btn btn-solid" id="openSignUpBtn" type="button">Create Account</button>
+            </div>
+            <div class="account-chip" id="accountChip">
+                <span class="account-avatar" id="accountAvatar">A</span>
+                <span class="account-name" id="accountName"></span>
+                <button class="btn" id="signOutBtn" type="button">Sign Out</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="store">
+        <section class="store-hero">
+            <span class="store-eyebrow font-display">HK OS</span>
+            <h1 class="font-display">App Store</h1>
+            <p>Every app across the ecosystem, in one place. This is an early build — browsing works today, and more apps will land here as they ship.</p>
+        </section>
+
+        <section class="app-list" aria-label="Applications">
+            {% for app in apps %}
+                <article class="app-card">
+                    <span class="app-card-icon" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
+                        {% if not app.bg_image %}<span>{{ app.title[0] | upper }}</span>{% endif %}
+                    </span>
+                    <div class="app-card-body">
+                        <h3>{{ app.title }}</h3>
+                        <p>{{ app.description }}</p>
+                    </div>
+                    <span class="status-pill">Installed</span>
+                </article>
+            {% endfor %}
+            <p class="store-empty-note">That's everything for now — check back for new listings.</p>
+        </section>
+    </main>
+
+    <!-- Sign Up modal (email → verification code) -->
+    <div id="signUpModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" id="closeSignUpBtn" type="button" aria-label="Close">&times;</button>
+
+            <div id="signUpStepDetails">
+                <h2 class="font-display">Create your account</h2>
+                <p class="modal-sub">Use your HKMail address. We'll email a code to verify it.</p>
+                <div class="modal-error" id="signUpError"></div>
+                <form id="signUpForm">
+                    <div class="field">
+                        <label for="signUpEmail">HKMail address</label>
+                        <input type="text" id="signUpEmail" name="email" placeholder="name@yourdomain.com" autocomplete="email" required>
+                    </div>
+                    <div class="field">
+                        <label for="signUpFullName">Full name (optional)</label>
+                        <input type="text" id="signUpFullName" name="full_name" placeholder="Jane Doe" autocomplete="name">
+                    </div>
+                    <div class="field">
+                        <label for="signUpPassword">Password</label>
+                        <input type="password" id="signUpPassword" name="password" placeholder="At least 6 characters" autocomplete="new-password" required>
+                    </div>
+                    <button type="submit" class="modal-submit" id="signUpSubmitBtn">Send verification code</button>
+                </form>
+                <p class="modal-footer-note">Already have an account? <button type="button" id="switchToSignInBtn">Sign in</button></p>
+            </div>
+
+            <div id="signUpStepVerify" hidden>
+                <h2 class="font-display">Check your inbox</h2>
+                <p class="modal-sub">We sent a verification code to <strong id="verifyEmailLabel"></strong>. Enter it below to finish creating your account.</p>
+                <div class="modal-error" id="verifyError"></div>
+                <form id="verifyForm">
+                    <div class="field">
+                        <label for="verifyCode">Verification code</label>
+                        <input type="text" id="verifyCode" name="code" class="code-input" placeholder="········" maxlength="8" autocomplete="one-time-code" required>
+                    </div>
+                    <div class="resend-row">
+                        <button type="button" id="resendCodeBtn">Resend code</button>
+                        <button type="button" id="backToDetailsBtn">Use a different email</button>
+                    </div>
+                    <button type="submit" class="modal-submit" id="verifySubmitBtn">Verify &amp; create account</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sign In modal -->
+    <div id="signInModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" id="closeSignInBtn" type="button" aria-label="Close">&times;</button>
+            <h2 class="font-display">Sign in</h2>
+            <p class="modal-sub">Sign in to your App Store account.</p>
+            <div class="modal-error" id="signInError"></div>
+            <form id="signInForm">
+                <div class="field">
+                    <label for="signInEmail">HKMail address</label>
+                    <input type="text" id="signInEmail" name="email" placeholder="name@yourdomain.com" autocomplete="email" required>
+                </div>
+                <div class="field">
+                    <label for="signInPassword">Password</label>
+                    <input type="password" id="signInPassword" name="password" placeholder="Your password" autocomplete="current-password" required>
+                </div>
+                <button type="submit" class="modal-submit" id="signInSubmitBtn">Sign in</button>
+            </form>
+            <p class="modal-footer-note">New here? <button type="button" id="switchToSignUpBtn">Create an account</button></p>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ── Small helpers ──────────────────────────────────────────────
+        function $(id) { return document.getElementById(id); }
+
+        function showToast(msg) {
+            var t = $("toast");
+            t.textContent = msg;
+            t.classList.add("show");
+            setTimeout(function () { t.classList.remove("show"); }, 3200);
+        }
+
+        function setError(el, msg) {
+            if (!msg) { el.classList.remove("show"); el.textContent = ""; return; }
+            el.textContent = msg;
+            el.classList.add("show");
+        }
+
+        async function postJSON(url, body) {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body || {})
+            });
+            let data = {};
+            try { data = await res.json(); } catch (e) {}
+            return { ok: res.ok, data: data };
+        }
+
+        // ── Modal open/close ───────────────────────────────────────────
+        const signUpModal = $("signUpModal");
+        const signInModal = $("signInModal");
+
+        function openModal(modal) { modal.classList.add("show"); }
+        function closeModal(modal) { modal.classList.remove("show"); }
+
+        function resetSignUpModal() {
+            $("signUpStepDetails").hidden = false;
+            $("signUpStepVerify").hidden = true;
+            setError($("signUpError"), "");
+            setError($("verifyError"), "");
+            $("signUpForm").reset();
+            $("verifyForm").reset();
+        }
+
+        $("openSignUpBtn").onclick = function () { resetSignUpModal(); openModal(signUpModal); };
+        $("closeSignUpBtn").onclick = function () { closeModal(signUpModal); };
+        $("openSignInBtn").onclick = function () { setError($("signInError"), ""); $("signInForm").reset(); openModal(signInModal); };
+        $("closeSignInBtn").onclick = function () { closeModal(signInModal); };
+
+        $("switchToSignInBtn").onclick = function () {
+            closeModal(signUpModal);
+            setError($("signInError"), "");
+            openModal(signInModal);
+        };
+        $("switchToSignUpBtn").onclick = function () {
+            closeModal(signInModal);
+            resetSignUpModal();
+            openModal(signUpModal);
+        };
+
+        window.addEventListener("click", function (e) {
+            if (e.target === signUpModal) closeModal(signUpModal);
+            if (e.target === signInModal) closeModal(signInModal);
+        });
+
+        // ── Sign up: step 1 — send verification code ───────────────────
+        $("signUpForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            setError($("signUpError"), "");
+            const email = $("signUpEmail").value.trim();
+            const fullName = $("signUpFullName").value.trim();
+            const password = $("signUpPassword").value;
+            const btn = $("signUpSubmitBtn");
+
+            btn.disabled = true;
+            btn.textContent = "Sending code…";
+
+            const { ok, data } = await postJSON("/api/appstore/register", {
+                email: email, full_name: fullName, password: password
+            });
+
+            btn.disabled = false;
+            btn.textContent = "Send verification code";
+
+            if (!ok || !data.success) {
+                setError($("signUpError"), (data && data.message) || "Something went wrong. Please try again.");
+                return;
+            }
+
+            $("verifyEmailLabel").textContent = data.email;
+            $("signUpStepDetails").hidden = true;
+            $("signUpStepVerify").hidden = false;
+        });
+
+        // ── Sign up: step 2 — confirm code ──────────────────────────────
+        $("verifyForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            setError($("verifyError"), "");
+            const code = $("verifyCode").value.trim();
+            const btn = $("verifySubmitBtn");
+
+            btn.disabled = true;
+            btn.textContent = "Verifying…";
+
+            const { ok, data } = await postJSON("/api/appstore/register/confirm", { code: code });
+
+            btn.disabled = false;
+            btn.textContent = "Verify & create account";
+
+            if (!ok || !data.success) {
+                setError($("verifyError"), (data && data.message) || "Something went wrong. Please try again.");
+                return;
+            }
+
+            closeModal(signUpModal);
+            showToast("Account created — you're signed in.");
+            applySignedIn(data.email, data.fullName);
+        });
+
+        $("resendCodeBtn").onclick = async function () {
+            const btn = $("resendCodeBtn");
+            btn.disabled = true;
+            const { ok, data } = await postJSON("/api/appstore/register/resend", {});
+            btn.disabled = false;
+            if (ok && data.success) {
+                showToast(data.message || "A new code was sent.");
+            } else {
+                setError($("verifyError"), (data && data.message) || "Couldn't resend the code.");
+            }
+        };
+
+        $("backToDetailsBtn").onclick = async function () {
+            await postJSON("/api/appstore/register/cancel", {});
+            resetSignUpModal();
+        };
+
+        // ── Sign in ──────────────────────────────────────────────────
+        $("signInForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            setError($("signInError"), "");
+            const email = $("signInEmail").value.trim();
+            const password = $("signInPassword").value;
+            const btn = $("signInSubmitBtn");
+
+            btn.disabled = true;
+            btn.textContent = "Signing in…";
+
+            const { ok, data } = await postJSON("/api/appstore/login", { email: email, password: password });
+
+            btn.disabled = false;
+            btn.textContent = "Sign in";
+
+            if (!ok || !data.success) {
+                setError($("signInError"), (data && data.message) || "Something went wrong. Please try again.");
+                return;
+            }
+
+            closeModal(signInModal);
+            showToast("Welcome back!");
+            applySignedIn(data.email, data.fullName);
+        });
+
+        // ── Sign out ─────────────────────────────────────────────────
+        $("signOutBtn").onclick = async function () {
+            await postJSON("/api/appstore/logout", {});
+            applySignedOut();
+            showToast("Signed out.");
+        };
+
+        // ── Session state ───────────────────────────────────────────────
+        function applySignedIn(email, fullName) {
+            $("signedOutControls").classList.add("hide");
+            $("accountChip").classList.add("show");
+            const label = fullName || email;
+            $("accountName").textContent = label;
+            $("accountAvatar").textContent = label.charAt(0).toUpperCase();
+        }
+
+        function applySignedOut() {
+            $("signedOutControls").classList.remove("hide");
+            $("accountChip").classList.remove("show");
+        }
+
+        (async function checkSession() {
+            try {
+                const res = await fetch("/api/appstore/me");
+                const data = await res.json();
+                if (data && data.loggedIn) {
+                    applySignedIn(data.email, data.fullName);
+                }
+            } catch (e) {}
+        })();
+    </script>
+
+</body>
+</html>

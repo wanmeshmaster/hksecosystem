@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, Response
+from flask import Flask, render_template, request, jsonify, session, Response, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import os
@@ -230,6 +230,13 @@ LEGAL_MAIL_DEFAULT_PASSWORD = "LegalDept963!"
 # notifications sent to SnackShop's own support team.
 SNACKSHOP_SUPPORT_MAIL_USERNAME = "support@snackshop.com"
 
+# App Store's automated mailbox — sends sign-up email-verification codes for
+# new App Store accounts. A real, loggable-into HKMail account, same fixed
+# demo-credential pattern as the other service mailboxes above (HKS Bank,
+# HKMail Support, etc.).
+APPSTORE_MAIL_SENDER = "appstore@hkmail.cn"
+APPSTORE_MAIL_DEFAULT_PASSWORD = "AppStoreSys159!"
+
 
 # ── HKMail: account-service support requests (password reset / deletion) ──────
 
@@ -319,6 +326,24 @@ def send_system_mail(recipient, subject, body):
     cur.execute(
         "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
         (SYSTEM_MAIL_SENDER, recipient, subject, body)
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def send_appstore_mail(recipient, subject, body):
+    """Deliver an email into HKMail from the App Store system account.
+    Returns True if delivered, False if the recipient has no HKMail account."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (recipient,))
+    if not cur.fetchone():
+        conn.close()
+        return False
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (APPSTORE_MAIL_SENDER, recipient, subject, body)
     )
     conn.commit()
     conn.close()
@@ -582,7 +607,7 @@ def home():
         {'id': 'hks-bank',    'title': '',       'url': '/hks-bank.html'},
         {'id': 'hkmail',      'title': '',          'url': '/hkmail.html'},
         {'id': 'snackshop',   'title': 'SnackShop',  'url': '/snackshop.html'},
-        {'id': 'coming-soon', 'title': '', 'url': '/coming-soon.html'},
+        {'id': 'appstore',    'title': 'App Store',  'url': '/appstore.html'},
     ]
     for a in apps:
         img = f"{a['id']}.jpg"
@@ -591,7 +616,23 @@ def home():
 
 @app.route('/coming-soon.html')
 def coming_soon():
-    return render_template('coming-soon.html')
+    # The old "Coming Soon" page has been replaced by the App Store.
+    return redirect('/appstore.html')
+
+@app.route('/appstore.html')
+def appstore_home():
+    apps = [
+        {'id': 'hks-bank',  'title': 'HKS Bank',  'url': '/hks-bank.html',
+         'description': 'Accounts, cards, and payments for the ecosystem.'},
+        {'id': 'hkmail',    'title': 'HKMail',    'url': '/hkmail.html',
+         'description': 'Email for every HK OS account.'},
+        {'id': 'snackshop', 'title': 'SnackShop', 'url': '/snackshop.html',
+         'description': 'Order snacks and drinks, paid for with HKS Bank.'},
+    ]
+    for a in apps:
+        img = f"{a['id']}.jpg"
+        a['bg_image'] = img if os.path.exists(os.path.join(app.root_path, 'source', img)) else None
+    return render_template('appstore.html', apps=apps)
 
 @app.route('/hks-bank.html')
 def bank():
@@ -2724,6 +2765,16 @@ def init_mail_db():
         cur.execute(
             "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
             (SYSTEM_MAIL_SENDER, system_password_hash, "HKS Bank")
+        )
+
+    # Ensure the App Store system mailbox exists so it can send email
+    # verification codes for new App Store accounts.
+    cur.execute("SELECT id FROM mail_users WHERE username=?", (APPSTORE_MAIL_SENDER,))
+    if not cur.fetchone():
+        appstore_password_hash = generate_password_hash(APPSTORE_MAIL_DEFAULT_PASSWORD)
+        cur.execute(
+            "INSERT INTO mail_users (username, password_hash, full_name, is_admin, is_verified) VALUES (?, ?, ?, 0, 1)",
+            (APPSTORE_MAIL_SENDER, appstore_password_hash, "App Store")
         )
 
     # Ensure the support@hkmail.cn mailbox exists so it can receive support
@@ -5517,6 +5568,44 @@ def init_shop_db():
     conn.close()
 
 
+# ── App Store ────────────────────────────────────────────────────────────────
+# Its own small database, same pattern as SnackShop (SHOP_DATABASE) — a
+# dedicated `appstore_users` table rather than piggybacking on the HKS Bank
+# `users` table, since App Store accounts are their own thing (email +
+# password only, verified via a code emailed through HKMail).
+APPSTORE_DATABASE = "appstore.db"
+
+
+def init_appstore_db():
+    conn = sqlite3.connect(APPSTORE_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS appstore_users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT UNIQUE NOT NULL,   -- HKMail address, e.g. jane@hkmail.cn
+            password_hash TEXT NOT NULL,
+            full_name     TEXT NOT NULL DEFAULT '',
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def appstore_current_user():
+    """Return the App Store username (HKMail email) from session, or None."""
+    return session.get("appstore_username")
+
+
+def appstore_get_user(username):
+    conn = sqlite3.connect(APPSTORE_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT username, full_name FROM appstore_users WHERE username=?", (username,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 # Per-image cap for product photos — generous for a product shot, same
 # decode-then-check-real-size approach as HKMail attachments.
 MAX_PRODUCT_IMAGE_SIZE_MB = 5
@@ -6056,6 +6145,191 @@ def snackshop_login():
 def snackshop_logout():
     session.pop("shop_username", None)
     return jsonify({"success": True})
+
+
+# ── App Store: account registration + email verification ───────────────────────
+# App Store accounts must be tied to an existing HKMail address (any domain,
+# not just @hkmail.cn — see normalize_mail_address) because the sign-up
+# verification code is delivered as a real email through HKMail. The account
+# itself isn't created until that code is confirmed, same two-step pattern as
+# HKS Bank registration (see /api/register and /api/register/confirm above).
+
+@app.route('/api/appstore/register', methods=['POST'])
+def appstore_register():
+    data = request.get_json() or {}
+    email = normalize_mail_address(data.get("email", ""))
+    password = (data.get("password", "") or "").strip()
+    full_name = (data.get("full_name", "") or "").strip()
+
+    if not email or "@" not in email or email.startswith("@") or email.endswith("@"):
+        return jsonify({"success": False, "message": "A valid HKMail email address is required."}), 400
+    if len(password) < 6:
+        return jsonify({"success": False, "message": "Password must be at least 6 characters."}), 400
+
+    if not hkmail_account_lookup(email):
+        return jsonify({
+            "success": False,
+            "message": f"We couldn't find an HKMail account for {email}. Please create one first.",
+            "needsHkmail": True,
+            "email": email
+        }), 400
+
+    conn = sqlite3.connect(APPSTORE_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM appstore_users WHERE username=?", (email,))
+    already_exists = cur.fetchone() is not None
+    conn.close()
+    if already_exists:
+        return jsonify({"success": False, "message": "An App Store account already exists for this email address."}), 400
+
+    if not full_name:
+        full_name = email.split("@")[0].replace(".", " ").title()
+
+    # Registration isn't finalized yet — stash the pending details in the
+    # session and email a verification code. The account is only created
+    # once that code is confirmed via /api/appstore/register/confirm.
+    signup_code = generate_signup_code()
+    session["pending_appstore_signup"] = {
+        "email": email,
+        "password_hash": generate_password_hash(password),
+        "full_name": full_name,
+        "code": signup_code,
+        "attempts": 0,
+    }
+
+    delivered = send_appstore_mail(
+        email,
+        "Your App Store Verification Code",
+        f"Hi {full_name},\n\n"
+        f"Use the code below to verify your email address and finish creating your App Store account:\n\n"
+        f"    {signup_code}\n\n"
+        f"This code is required to complete registration. If you didn't request this, you can ignore this email.\n\n"
+        f"— App Store"
+    )
+    if not delivered:
+        session.pop("pending_appstore_signup", None)
+        return jsonify({"success": False, "message": "Couldn't deliver the verification email. Please try again."}), 400
+
+    return jsonify({
+        "success": True,
+        "pendingVerification": True,
+        "email": email,
+        "message": f"We've sent a verification code to {email}."
+    })
+
+
+@app.route('/api/appstore/register/confirm', methods=['POST'])
+def appstore_register_confirm():
+    pending = session.get("pending_appstore_signup")
+    if not pending:
+        return jsonify({"success": False, "message": "No pending registration found. Please start over."}), 400
+
+    data = request.get_json() or {}
+    code = (data.get("code", "") or "").strip().upper()
+    if not code:
+        return jsonify({"success": False, "message": "Verification code is required."}), 400
+
+    pending["attempts"] = pending.get("attempts", 0) + 1
+    session["pending_appstore_signup"] = pending
+
+    if pending["attempts"] > 5:
+        session.pop("pending_appstore_signup", None)
+        return jsonify({"success": False, "message": "Too many incorrect attempts. Please start registration again."}), 400
+
+    if code != pending["code"]:
+        remaining = 5 - pending["attempts"]
+        return jsonify({"success": False, "message": f"Incorrect code. {remaining} attempt(s) remaining."}), 400
+
+    # Code confirmed — actually create the account now.
+    conn = sqlite3.connect(APPSTORE_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO appstore_users (username, password_hash, full_name) VALUES (?, ?, ?)",
+            (pending["email"], pending["password_hash"], pending["full_name"])
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        session.pop("pending_appstore_signup", None)
+        return jsonify({"success": False, "message": "An App Store account already exists for this email address."}), 400
+    conn.close()
+
+    session.pop("pending_appstore_signup", None)
+    session["appstore_username"] = pending["email"]
+    return jsonify({
+        "success": True,
+        "email": pending["email"],
+        "fullName": pending["full_name"],
+        "message": "Email verified — your App Store account is ready."
+    })
+
+
+@app.route('/api/appstore/register/resend', methods=['POST'])
+def appstore_register_resend():
+    pending = session.get("pending_appstore_signup")
+    if not pending:
+        return jsonify({"success": False, "message": "No pending registration found. Please start over."}), 400
+
+    new_code = generate_signup_code()
+    pending["code"] = new_code
+    pending["attempts"] = 0
+    session["pending_appstore_signup"] = pending
+
+    send_appstore_mail(
+        pending["email"],
+        "Your App Store Verification Code (Resent)",
+        f"Hi {pending['full_name']},\n\nHere is your new verification code:\n\n    {new_code}\n\n— App Store"
+    )
+    return jsonify({"success": True, "message": f"A new code was sent to {pending['email']}."})
+
+
+@app.route('/api/appstore/register/cancel', methods=['POST'])
+def appstore_register_cancel():
+    session.pop("pending_appstore_signup", None)
+    return jsonify({"success": True})
+
+
+@app.route('/api/appstore/login', methods=['POST'])
+def appstore_login():
+    data = request.get_json() or {}
+    email = normalize_mail_address(data.get("email", ""))
+    password = (data.get("password", "") or "").strip()
+
+    if not email or "@" not in email or email.startswith("@") or email.endswith("@"):
+        return jsonify({"success": False, "message": "Please enter a valid email address."}), 400
+
+    conn = sqlite3.connect(APPSTORE_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT password_hash, full_name FROM appstore_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"success": False, "message": f"We couldn't find an App Store account for {email}. Your email may not be verified yet."}), 401
+    if not check_password_hash(row[0], password):
+        return jsonify({"success": False, "message": "Incorrect password. Please try again."}), 401
+
+    session["appstore_username"] = email
+    return jsonify({"success": True, "email": email, "fullName": row[1]})
+
+
+@app.route('/api/appstore/logout', methods=['POST'])
+def appstore_logout():
+    session.pop("appstore_username", None)
+    return jsonify({"success": True})
+
+
+@app.route('/api/appstore/me')
+def appstore_me():
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": True, "loggedIn": False})
+    row = appstore_get_user(username)
+    if not row:
+        session.pop("appstore_username", None)
+        return jsonify({"success": True, "loggedIn": False})
+    return jsonify({"success": True, "loggedIn": True, "email": row[0], "fullName": row[1]})
 
 
 @app.route('/api/snackshop/forgot-password', methods=['POST'])
@@ -6845,6 +7119,7 @@ if __name__ == '__main__':
     init_db()
     init_mail_db()
     init_shop_db()
+    init_appstore_db()
     check_hkmail_card_on_startup()
     check_snackshop_card_on_startup()
     app.run(host='0.0.0.0', port=5001, debug=True)
