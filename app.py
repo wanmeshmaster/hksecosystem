@@ -2999,20 +2999,33 @@ def mail_storage_used_bytes(username, cur=None):
     Trash is therefore how a user actually frees up space, not just
     dragging mail there.
 
+    Purging is per-side (purged_by_sender / purged_by_recipient — see
+    /email/<id>/delete-permanent): a row survives in `emails` as long as
+    either party still has a copy, but each side stops being charged for it
+    the moment THEY purge their own copy, independent of what the other
+    party does. So a row only counts toward username's storage on the side
+    (sender/recipient) that username actually occupies AND hasn't purged —
+    e.g. if the sender permanently deletes their copy but the recipient
+    hasn't, the row keeps existing (for the recipient) but no longer counts
+    against the sender's quota.
+
     Attachments: their raw byte size (size_bytes, computed once at send time
     from the decoded file) is added on top of the subject/body total, joined
-    through the parent email so the same sender/recipient/trash rules apply
-    to them automatically.
+    through the parent email so the same per-side purge rules apply to them
+    automatically.
     """
     query = """
         SELECT
             COALESCE((SELECT SUM(LENGTH(CAST(subject AS BLOB)) + LENGTH(CAST(body AS BLOB)))
-                       FROM emails WHERE sender=? OR recipient=?), 0)
+                       FROM emails
+                       WHERE (sender=? AND purged_by_sender=0)
+                          OR (recipient=? AND purged_by_recipient=0)), 0)
             +
             COALESCE((SELECT SUM(a.size_bytes)
                        FROM email_attachments a
                        JOIN emails e ON e.id = a.email_id
-                       WHERE e.sender=? OR e.recipient=?), 0)
+                       WHERE (e.sender=? AND e.purged_by_sender=0)
+                          OR (e.recipient=? AND e.purged_by_recipient=0)), 0)
     """
     params = (username, username, username, username)
     if cur is not None:
