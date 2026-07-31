@@ -3471,6 +3471,52 @@ def hkmail_current_user():
     return jsonify({"loggedIn": False})
 
 
+@app.route('/api/hkmail/contacts/search')
+def hkmail_contacts_search():
+    """Recipient autocomplete for compose: given a partial address or name,
+    returns matching HKMail accounts (à la Gmail/Outlook's "people"
+    suggestions). Only returns accounts that actually exist, so recipients
+    picked this way are always deliverable. Requires login so the address
+    book can't be scraped anonymously."""
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    q = (request.args.get("q") or "").strip().lower()
+    if len(q) < 2:
+        return jsonify({"success": True, "results": []})
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    like = f"%{q}%"
+    starts = f"{q}%"
+    cur.execute("""
+        SELECT username, full_name, account_type, company_name, is_verified_business
+        FROM mail_users
+        WHERE is_disabled = 0
+          AND username != ?
+          AND (username LIKE ? OR full_name LIKE ? OR company_name LIKE ?)
+        ORDER BY
+            CASE WHEN username LIKE ? THEN 0
+                 WHEN full_name LIKE ? THEN 1
+                 ELSE 2 END,
+            username
+        LIMIT 8
+    """, (u, like, like, like, starts, starts))
+    rows = cur.fetchall()
+    conn.close()
+
+    results = [
+        {
+            "email": r[0],
+            "name": r[1] or (r[3] if r[2] == "business" and r[3] else ""),
+            "is_business": r[2] == "business",
+        }
+        for r in rows
+    ]
+    return jsonify({"success": True, "results": results})
+
+
 # ── HKMail: compose / send ─────────────────────────────────────────────────────
 
 def mail_deliver_bounce(sender_username, recipient, subject, reason_text):

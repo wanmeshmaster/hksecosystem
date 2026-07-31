@@ -571,7 +571,78 @@
 
         .compose-close:hover { color: var(--red); }
 
-        .c-field { margin-bottom: 14px; }
+        .c-field { margin-bottom: 14px; position: relative; }
+
+        /* ── Recipient autocomplete ── */
+        .c-suggest-list {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            box-shadow: 0 10px 28px rgba(11,26,51,0.14);
+            z-index: 20;
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 6px;
+        }
+        .c-suggest-list.open { display: block; }
+        .c-suggest-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 9px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .c-suggest-item:hover,
+        .c-suggest-item.active { background: var(--slate); }
+        .c-suggest-avatar {
+            flex-shrink: 0;
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: var(--navy);
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+        }
+        .c-suggest-info { min-width: 0; flex: 1; }
+        .c-suggest-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--navy);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .c-suggest-email {
+            font-size: 0.76rem;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .c-suggest-badge {
+            flex-shrink: 0;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--red);
+            border: 1px solid var(--red);
+            border-radius: 4px;
+            padding: 1px 5px;
+        }
+        .c-suggest-empty {
+            padding: 10px 9px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
 
         .c-label {
             display: block;
@@ -1309,6 +1380,7 @@
             <label class="c-label" for="c-to">To</label>
             <input class="c-input" type="text" id="c-to"
                    placeholder="username or username@hkmail.cn" autocomplete="off">
+            <div class="c-suggest-list" id="c-suggest-list"></div>
         </div>
         <div class="c-field">
             <label class="c-label" for="c-subject">Subject</label>
@@ -2011,6 +2083,39 @@
         });
     }
 
+    // Validates and reads a single File, pushing it onto composeAttachments.
+    // Returns true on success. Shared by the "Attach files" picker and by
+    // insertInlineMedia (so a pasted/dragged-in image is also attached as a
+    // regular file — a fallback the recipient can download in case the
+    // inline copy in the message body doesn't come through for them).
+    async function addComposeAttachment(file, { silent = false } = {}) {
+        if (composeAttachments.length >= MAX_ATTACHMENTS_PER_EMAIL) {
+            if (!silent) showComposeMsg(`You can attach at most ${MAX_ATTACHMENTS_PER_EMAIL} files.`, 'error');
+            return false;
+        }
+        if (file.size === 0) {
+            if (!silent) showComposeMsg(`"${file.name}" is empty and can't be attached.`, 'error');
+            return false;
+        }
+        if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+            if (!silent) showComposeMsg(`"${file.name}" is ${formatBytes(file.size)} — attachments must be 15MB or smaller.`, 'error');
+            return false;
+        }
+        try {
+            const base64 = await readFileAsBase64(file);
+            composeAttachments.push({
+                filename: file.name || (file.type.startsWith('video/') ? 'video' : 'image'),
+                mime_type: file.type || 'application/octet-stream',
+                size: file.size,
+                data: base64
+            });
+            return true;
+        } catch {
+            if (!silent) showComposeMsg(`Could not read "${file.name}". Please try attaching it again.`, 'error');
+            return false;
+        }
+    }
+
     async function handleAttachmentPick(fileList) {
         const files = Array.from(fileList || []);
         document.getElementById('c-attach-input').value = ''; // allow re-picking the same file later
@@ -2019,29 +2124,8 @@
         clearComposeMsg();
 
         for (const file of files) {
-            if (composeAttachments.length >= MAX_ATTACHMENTS_PER_EMAIL) {
-                showComposeMsg(`You can attach at most ${MAX_ATTACHMENTS_PER_EMAIL} files.`, 'error');
-                break;
-            }
-            if (file.size === 0) {
-                showComposeMsg(`"${file.name}" is empty and can't be attached.`, 'error');
-                continue;
-            }
-            if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
-                showComposeMsg(`"${file.name}" is ${formatBytes(file.size)} — attachments must be 15MB or smaller.`, 'error');
-                continue;
-            }
-            try {
-                const base64 = await readFileAsBase64(file);
-                composeAttachments.push({
-                    filename: file.name,
-                    mime_type: file.type || 'application/octet-stream',
-                    size: file.size,
-                    data: base64
-                });
-            } catch {
-                showComposeMsg(`Could not read "${file.name}". Please try attaching it again.`, 'error');
-            }
+            const ok = await addComposeAttachment(file);
+            if (!ok && composeAttachments.length >= MAX_ATTACHMENTS_PER_EMAIL) break;
         }
         renderComposeAttachments();
     }
@@ -2070,6 +2154,109 @@
         composeAttachments.splice(index, 1);
         renderComposeAttachments();
     }
+
+    // ── Recipient autocomplete (like Gmail/Outlook's "people" suggestions) ────
+    let suggestDebounceTimer = null;
+    let suggestRequestSeq    = 0;
+    let suggestResults       = [];
+    let suggestActiveIndex   = -1;
+
+    function initialsFor(name, email) {
+        const src = (name || '').trim() || (email || '').split('@')[0] || '?';
+        const parts = src.split(/\s+/).filter(Boolean);
+        return parts.length >= 2
+            ? (parts[0][0] + parts[1][0]).toUpperCase()
+            : src.slice(0, 2).toUpperCase();
+    }
+
+    function closeSuggestList() {
+        const list = document.getElementById('c-suggest-list');
+        if (!list) return;
+        list.classList.remove('open');
+        list.innerHTML = '';
+        suggestResults = [];
+        suggestActiveIndex = -1;
+    }
+
+    function renderSuggestList() {
+        const list = document.getElementById('c-suggest-list');
+        if (!suggestResults.length) {
+            list.innerHTML = '<div class="c-suggest-empty">No matching HKMail addresses</div>';
+            list.classList.add('open');
+            return;
+        }
+        list.innerHTML = suggestResults.map((r, i) => `
+            <div class="c-suggest-item${i === suggestActiveIndex ? ' active' : ''}"
+                 onmousedown="event.preventDefault(); selectSuggestion(${i})">
+                <div class="c-suggest-avatar">${escHtml(initialsFor(r.name, r.email))}</div>
+                <div class="c-suggest-info">
+                    <div class="c-suggest-name">${escHtml(r.name || r.email.split('@')[0])}</div>
+                    <div class="c-suggest-email">${escHtml(r.email)}</div>
+                </div>
+                ${r.is_business ? '<span class="c-suggest-badge">Business</span>' : ''}
+            </div>
+        `).join('');
+        list.classList.add('open');
+    }
+
+    function selectSuggestion(index) {
+        const r = suggestResults[index];
+        if (!r) return;
+        const input = document.getElementById('c-to');
+        input.value = r.email;
+        closeSuggestList();
+        document.getElementById('c-subject').focus();
+    }
+
+    async function fetchSuggestions(query) {
+        const seq = ++suggestRequestSeq;
+        try {
+            const res  = await fetch('/api/hkmail/contacts/search?q=' + encodeURIComponent(query));
+            const data = await res.json();
+            if (seq !== suggestRequestSeq) return; // superseded by a newer keystroke
+            suggestResults = (data.success && data.results) || [];
+            suggestActiveIndex = -1;
+            renderSuggestList();
+        } catch {
+            if (seq === suggestRequestSeq) closeSuggestList();
+        }
+    }
+
+    (function initRecipientAutocomplete() {
+        const input = document.getElementById('c-to');
+        const list  = document.getElementById('c-suggest-list');
+        if (!input || !list) return;
+
+        input.addEventListener('input', () => {
+            const q = input.value.trim();
+            clearTimeout(suggestDebounceTimer);
+            if (q.length < 2) { closeSuggestList(); return; }
+            suggestDebounceTimer = setTimeout(() => fetchSuggestions(q), 200);
+        });
+
+        input.addEventListener('keydown', e => {
+            if (!list.classList.contains('open') || !suggestResults.length) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                suggestActiveIndex = Math.min(suggestActiveIndex + 1, suggestResults.length - 1);
+                renderSuggestList();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                suggestActiveIndex = Math.max(suggestActiveIndex - 1, 0);
+                renderSuggestList();
+            } else if (e.key === 'Enter' && suggestActiveIndex > -1) {
+                e.preventDefault();
+                selectSuggestion(suggestActiveIndex);
+            } else if (e.key === 'Escape') {
+                closeSuggestList();
+            }
+        });
+
+        // The mousedown handler on each item already prevents the input from
+        // blurring on click, but this catches every other way focus can leave
+        // (tab away, click elsewhere in the modal, etc).
+        input.addEventListener('blur', () => setTimeout(closeSuggestList, 120));
+    })();
 
     // ── Rich-text body: formatting, inline images/video ───────────────────────
     function composeExec(cmd) {
@@ -2148,6 +2335,17 @@
         sel.removeAllRanges();
         sel.addRange(range);
         clearComposeMsg();
+
+        // Also attach a standalone copy of the file (as long as it's within
+        // the regular attachment size cap — inline video's larger allowance
+        // doesn't apply here). That way, if the recipient's mail client
+        // can't render the embedded image/video, they've still got it as a
+        // normal downloadable attachment.
+        if (file.size <= MAX_ATTACHMENT_SIZE_BYTES) {
+            addComposeAttachment(file, { silent: true }).then(added => {
+                if (added) renderComposeAttachments();
+            });
+        }
     }
 
     async function handleInlineFilePick(fileList) {
@@ -2191,6 +2389,7 @@
 
     function closeCompose() {
         document.getElementById('compose-modal').classList.remove('open');
+        closeSuggestList();
     }
 
     function clearComposeMsg() {
