@@ -516,7 +516,14 @@
             word-break: break-word;
         }
 
-        .email-view-body.rich { white-space: normal; }
+        /* Rich (HTML) bodies used to collapse whitespace like normal HTML
+           (multiple spaces -> one, bare newlines ignored), even though the
+           compose editor itself is pre-wrap — so a sender's spacing looked
+           right while writing but flattened out once sent. pre-wrap here
+           too keeps what you typed matching what's displayed; it's safe
+           because the sanitizer never inserts incidental whitespace of its
+           own between tags, only what the user actually typed. */
+        .email-view-body.rich { white-space: pre-wrap; }
 
         .email-view-body img,
         .email-view-body video {
