@@ -314,6 +314,21 @@ def hkmail_account_details(email):
     }
 
 
+def hkmail_is_admin(email):
+    """Return True if the given address holds HKMail admin rights.
+
+    Lets App Store (and anything else outside HKMail) mirror HKMail's
+    admin flag rather than keeping its own separate copy — an account
+    promoted/demoted in HKMail is reflected here immediately since we
+    read it live instead of caching it in appstore_users."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT is_admin FROM mail_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
 def send_system_mail(recipient, subject, body):
     """Deliver an email into HKMail from the HKS Bank system account.
     Returns True if delivered, False if the recipient has no HKMail account."""
@@ -633,6 +648,18 @@ def appstore_home():
         img = f"{a['id']}.jpg"
         a['bg_image'] = img if os.path.exists(os.path.join(app.root_path, 'source', img)) else None
     return render_template('appstore.html', apps=apps)
+
+@app.route('/appstore-terms.html')
+def appstore_terms():
+    return render_template('appstore-terms.html')
+
+@app.route('/appstore-help.html')
+def appstore_help():
+    return render_template('appstore-help.html')
+
+@app.route('/appstore-developers.html')
+def appstore_developers():
+    return render_template('appstore-developers.html')
 
 @app.route('/hks-bank.html')
 def bank():
@@ -5600,7 +5627,7 @@ def appstore_current_user():
 def appstore_get_user(username):
     conn = sqlite3.connect(APPSTORE_DATABASE)
     cur = conn.cursor()
-    cur.execute("SELECT username, full_name FROM appstore_users WHERE username=?", (username,))
+    cur.execute("SELECT username, full_name, created_at FROM appstore_users WHERE username=?", (username,))
     row = cur.fetchone()
     conn.close()
     return row
@@ -6257,10 +6284,13 @@ def appstore_register_confirm():
 
     session.pop("pending_appstore_signup", None)
     session["appstore_username"] = pending["email"]
+    row = appstore_get_user(pending["email"])
     return jsonify({
         "success": True,
         "email": pending["email"],
         "fullName": pending["full_name"],
+        "isAdmin": hkmail_is_admin(pending["email"]),
+        "joinDate": row[2] if row else None,
         "message": "Email verified — your App Store account is ready."
     })
 
@@ -6301,7 +6331,7 @@ def appstore_login():
 
     conn = sqlite3.connect(APPSTORE_DATABASE)
     cur = conn.cursor()
-    cur.execute("SELECT password_hash, full_name FROM appstore_users WHERE username=?", (email,))
+    cur.execute("SELECT password_hash, full_name, created_at FROM appstore_users WHERE username=?", (email,))
     row = cur.fetchone()
     conn.close()
 
@@ -6311,7 +6341,13 @@ def appstore_login():
         return jsonify({"success": False, "message": "Incorrect password. Please try again."}), 401
 
     session["appstore_username"] = email
-    return jsonify({"success": True, "email": email, "fullName": row[1]})
+    return jsonify({
+        "success": True,
+        "email": email,
+        "fullName": row[1],
+        "isAdmin": hkmail_is_admin(email),
+        "joinDate": row[2]
+    })
 
 
 @app.route('/api/appstore/logout', methods=['POST'])
@@ -6329,7 +6365,14 @@ def appstore_me():
     if not row:
         session.pop("appstore_username", None)
         return jsonify({"success": True, "loggedIn": False})
-    return jsonify({"success": True, "loggedIn": True, "email": row[0], "fullName": row[1]})
+    return jsonify({
+        "success": True,
+        "loggedIn": True,
+        "email": row[0],
+        "fullName": row[1],
+        "isAdmin": hkmail_is_admin(row[0]),
+        "joinDate": row[2]
+    })
 
 
 @app.route('/api/snackshop/forgot-password', methods=['POST'])

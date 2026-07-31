@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Need Help? — App Store</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ink: #070b10;
+            --glass-bg: rgba(15, 21, 28, 0.55);
+            --glass-bg-strong: rgba(13, 18, 24, 0.78);
+            --glass-border: rgba(255, 255, 255, 0.14);
+            --text-primary: #f2f6f9;
+            --text-secondary: #a8b4c0;
+            --text-tertiary: #77828d;
+            --accent: #26c9ab;
+            --accent-strong: #1aa88f;
+            --accent-amber: #e3b24d;
+            --radius-lg: 22px;
+            --radius-md: 14px;
+            --radius-sm: 10px;
+            --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .font-display { font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+        html, body { height: 100%; }
+
+        body {
+            min-height: 100vh;
+            color: var(--text-primary);
+            background:
+                radial-gradient(1000px 620px at 12% -8%, rgba(38, 201, 171, 0.16), transparent 58%),
+                radial-gradient(900px 520px at 96% 8%, rgba(43, 111, 156, 0.16), transparent 55%),
+                linear-gradient(160deg, #0b1016 0%, #0d1720 46%, #0a1a17 100%);
+            background-attachment: fixed;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        a { color: inherit; text-decoration: none; }
+
+        .page-topbar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 22px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            border-bottom: 1px solid var(--glass-border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            padding: 7px 12px 7px 8px;
+            border-radius: 10px;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+
+        .back-link:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+        .back-link svg { width: 16px; height: 16px; }
+
+        .page-topbar-title {
+            font-size: 0.92rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .page-wrap {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 48px 24px 90px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        .page-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 40px 40px 46px;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .page-card h1 {
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
+            margin-bottom: 10px;
+        }
+
+        .page-card .page-sub {
+            font-size: 0.9rem;
+            color: var(--text-tertiary);
+            margin-bottom: 8px;
+        }
+
+        /* ── FAQ accordion ───────────────────────────────────────────── */
+
+        .faq-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 26px;
+        }
+
+        .faq-item {
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            background: rgba(255, 255, 255, 0.03);
+            overflow: hidden;
+        }
+
+        .faq-question {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 18px;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.92rem;
+            font-weight: 700;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .faq-question svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            color: var(--text-tertiary);
+            transition: transform 0.2s ease;
+        }
+
+        .faq-item.open .faq-question svg { transform: rotate(180deg); color: var(--accent); }
+
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.25s ease;
+        }
+
+        .faq-item.open .faq-answer { max-height: 240px; }
+
+        .faq-answer p {
+            padding: 0 18px 18px;
+            font-size: 0.88rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        /* ── Developer callout ───────────────────────────────────────── */
+
+        .dev-callout {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px 22px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--glass-border);
+            background: linear-gradient(120deg, rgba(38, 201, 171, 0.12), rgba(43, 111, 156, 0.1));
+            margin-top: 8px;
+            transition: border-color 0.15s ease, transform 0.15s ease;
+        }
+
+        .dev-callout:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+        .dev-callout-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 13px;
+            flex-shrink: 0;
+            background: linear-gradient(150deg, #1c8f7c, #123a37);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dev-callout-icon svg { width: 22px; height: 22px; color: rgba(255, 255, 255, 0.92); }
+
+        .dev-callout-body { flex: 1; min-width: 0; }
+
+        .dev-callout-body h3 {
+            font-size: 0.96rem;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .dev-callout-body p {
+            font-size: 0.82rem;
+            color: var(--text-tertiary);
+            line-height: 1.4;
+        }
+
+        .dev-callout-arrow {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            color: var(--text-tertiary);
+        }
+
+        .contact-link { color: var(--accent); font-weight: 600; }
+        .contact-link:hover { text-decoration: underline; }
+
+        @media (max-width: 560px) {
+            .page-card { padding: 30px 22px 36px; }
+            .page-wrap { padding: 32px 16px 70px; }
+            .dev-callout { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="page-topbar">
+        <a href="/appstore.html" class="back-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            Back
+        </a>
+        <span class="page-topbar-title font-display">Need Help?</span>
+    </header>
+
+    <main class="page-wrap">
+        <div class="page-card">
+            <h1 class="font-display">App Store Help Center</h1>
+            <p class="page-sub">Answers to common questions about accounts, installs, and permissions. Can't find what you need? Reach out to <a href="mailto:contact@hkmail.cn" class="contact-link">contact@hkmail.cn</a>.</p>
+
+            <div class="faq-list">
+                <div class="faq-item">
+                    <button class="faq-question" type="button">
+                        How do I create an App Store account?
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="faq-answer"><p>Use the "Create Account" button in the top right of the App Store. You'll need an existing HKMail address — we send a verification code there to confirm it's you before your account is created.</p></div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" type="button">
+                        I didn't get my verification code — what now?
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="faq-answer"><p>Check your HKMail inbox (and spam folder) for a message from App Store. If it hasn't arrived after a minute, use "Resend code" on the verification screen.</p></div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" type="button">
+                        Why do I have admin access in the App Store?
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="faq-answer"><p>App Store permissions follow your HKMail account. If you're an administrator in HKMail, that same status carries over here automatically — there's nothing separate to request or set up.</p></div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" type="button">
+                        Can I use the App Store without an HKMail account?
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="faq-answer"><p>You can browse listings without signing in, but creating an account and installing apps requires a valid HKMail address, since that's what the App Store uses for sign-in and verification.</p></div>
+                </div>
+
+                <div class="faq-item">
+                    <button class="faq-question" type="button">
+                        Where can I read the Terms & Conditions?
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="faq-answer"><p>The full App Store Terms & Conditions are linked at the bottom of the App Store page, or you can go straight to the <a href="/appstore-terms.html" class="contact-link">Terms page</a>.</p></div>
+                </div>
+            </div>
+        </div>
+
+        <a href="/appstore-developers.html" class="dev-callout">
+            <span class="dev-callout-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>
+            </span>
+            <span class="dev-callout-body">
+                <h3 class="font-display">Are you a developer? Read here</h3>
+                <p>Information for publishing your own apps to the store — coming soon.</p>
+            </span>
+            <svg class="dev-callout-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </a>
+    </main>
+
+    <script>
+        document.querySelectorAll('.faq-item').forEach(function (item) {
+            item.querySelector('.faq-question').addEventListener('click', function () {
+                var wasOpen = item.classList.contains('open');
+                document.querySelectorAll('.faq-item.open').forEach(function (open) { open.classList.remove('open'); });
+                if (!wasOpen) item.classList.add('open');
+            });
+        });
+
+        document.addEventListener('click', function (e) {
+            const link = e.target.closest('a[href^="mailto:"]');
+            if (!link) return;
+            e.preventDefault();
+            const mailto = new URL(link.href);
+            const qs = new URLSearchParams();
+            qs.set('compose', '1');
+            if (mailto.pathname) qs.set('to', mailto.pathname);
+            window.location.href = '/hkmail-inbox.html?' + qs.toString();
+        });
+    </script>
+
+</body>
+</html>
