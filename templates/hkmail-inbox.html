@@ -2132,7 +2132,7 @@
 
     function renderComposeAttachments() {
         const list = document.getElementById('compose-attachment-list');
-        list.innerHTML = composeAttachments.map((a, i) => `
+        const regularChips = composeAttachments.map((a, i) => `
             <div class="attachment-chip">
                 <div class="attachment-chip-icon">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
@@ -2147,11 +2147,49 @@
                 </div>
                 <button type="button" class="attachment-chip-remove" onclick="removeComposeAttachment(${i})" title="Remove attachment">&times;</button>
             </div>
-        `).join('');
+        `);
+        // Images/video embedded in the message body are also listed here as
+        // a reminder that they'll be attached too (same stored file, not a
+        // second copy — see doSend's also_attach flag) — so recipients whose
+        // view doesn't render the embed still have a plain download.
+        const inlineChips = Array.from(inlineMediaFiles.entries()).map(([cid, file]) => {
+            const name = file.name || (file.type.startsWith('video/') ? 'video' : 'image');
+            return `
+            <div class="attachment-chip">
+                <div class="attachment-chip-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                </div>
+                <div class="attachment-chip-info">
+                    <div class="attachment-chip-name">${escHtml(name)}</div>
+                    <div class="attachment-chip-meta">${escHtml(friendlyFileType(name, file.type))} · ${formatBytes(file.size)} · embedded in message</div>
+                </div>
+                <button type="button" class="attachment-chip-remove" onclick="removeInlineAttachment('${cid}')" title="Remove from message">&times;</button>
+            </div>
+        `;
+        });
+        list.innerHTML = regularChips.concat(inlineChips).join('');
     }
 
     function removeComposeAttachment(index) {
         composeAttachments.splice(index, 1);
+        renderComposeAttachments();
+    }
+
+    // Removes an embedded image/video from the message body (and, since the
+    // attachment chip for it is just a view onto the same file, from the
+    // attachment list too).
+    function removeInlineAttachment(cid) {
+        const editor = document.getElementById('c-body');
+        const el = editor.querySelector(`[data-cid="${cid}"]`);
+        if (el) {
+            if (el.src && el.src.startsWith('blob:')) URL.revokeObjectURL(el.src);
+            el.remove();
+        }
+        inlineMediaFiles.delete(cid);
         renderComposeAttachments();
     }
 
@@ -2280,6 +2318,7 @@
         });
         inlineMediaFiles.clear();
         document.getElementById('c-body').innerHTML = '';
+        renderComposeAttachments();
     }
 
     function hasComposeContent(editor) {
@@ -2336,16 +2375,10 @@
         sel.addRange(range);
         clearComposeMsg();
 
-        // Also attach a standalone copy of the file (as long as it's within
-        // the regular attachment size cap — inline video's larger allowance
-        // doesn't apply here). That way, if the recipient's mail client
-        // can't render the embedded image/video, they've still got it as a
-        // normal downloadable attachment.
-        if (file.size <= MAX_ATTACHMENT_SIZE_BYTES) {
-            addComposeAttachment(file, { silent: true }).then(added => {
-                if (added) renderComposeAttachments();
-            });
-        }
+        // Also listed as a downloadable attachment when sent (see doSend),
+        // so a recipient whose view doesn't render the embed still has a
+        // way to get it — using this same File, not a second stored copy.
+        renderComposeAttachments();
     }
 
     async function handleInlineFilePick(fileList) {
@@ -2437,7 +2470,11 @@
                 mime_type: file.type || 'application/octet-stream',
                 data: await readFileAsBase64(file),
                 inline: true,
-                content_id: cid
+                content_id: cid,
+                // Also list this embedded image/video as a plain downloadable
+                // attachment for the recipient — same stored bytes, no extra
+                // storage used (see server-side show_as_attachment handling).
+                also_attach: true
             })));
 
             const res = await fetch('/api/hkmail/send', {

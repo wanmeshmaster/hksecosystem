@@ -2609,6 +2609,13 @@ def init_mail_db():
     for stmt in [
         "ALTER TABLE email_attachments ADD COLUMN inline INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE email_attachments ADD COLUMN content_id TEXT",
+        # Lets a single inline (embedded) row also show up as a normal
+        # downloadable attachment chip, WITHOUT storing the bytes twice.
+        # Used when a pasted/dragged-in image is embedded in the body but
+        # the sender also wants a plain-download fallback for recipients
+        # whose view doesn't render the embed — same row, same bytes, just
+        # listed in both places.
+        "ALTER TABLE email_attachments ADD COLUMN show_as_attachment INTEGER NOT NULL DEFAULT 0",
     ]:
         try:
             cur.execute(stmt)
@@ -3580,7 +3587,7 @@ def hkmail_send():
     # here (rather than trusting the base64 string's length) means the
     # check is against the actual file size, not the ~33% larger base64
     # encoding of it.
-    parsed_attachments = []  # list of (filename, mime_type, size_bytes, raw_bytes, inline, content_id)
+    parsed_attachments = []  # list of (filename, mime_type, size_bytes, raw_bytes, inline, content_id, show_as_attachment)
     valid_content_ids  = set()
     seen_content_ids   = set()
     total_attachment_bytes = 0
@@ -3592,6 +3599,10 @@ def hkmail_send():
         b64data   = att.get("data") or ""
         inline    = bool(att.get("inline"))
         content_id = (att.get("content_id") or "").strip()
+        # Only meaningful when inline=True: keeps a single stored copy of
+        # an embedded image/video also listed as a downloadable attachment,
+        # instead of the client sending (and us storing) the bytes twice.
+        show_as_attachment = inline and bool(att.get("also_attach"))
 
         if not filename:
             return jsonify({"success": False, "message": "Each attachment needs a filename."}), 400
@@ -3629,7 +3640,7 @@ def hkmail_send():
         total_attachment_bytes += size
         if inline:
             valid_content_ids.add(content_id)
-        parsed_attachments.append((filename, mime_type, size, raw, inline, content_id))
+        parsed_attachments.append((filename, mime_type, size, raw, inline, content_id, show_as_attachment))
 
     # Rich-text bodies are sanitized down to a small safe-tag allowlist
     # before ever being stored — see sanitize_email_body_html(). Only
@@ -3719,10 +3730,10 @@ def hkmail_send():
             )
 
         email_id = cur.lastrowid
-        for filename, mime_type, size, raw, inline, content_id in parsed_attachments:
+        for filename, mime_type, size, raw, inline, content_id, show_as_attachment in parsed_attachments:
             cur.execute(
-                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data, inline, content_id) VALUES (?,?,?,?,?,?,?)",
-                (email_id, filename, mime_type, size, raw, int(inline), content_id)
+                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data, inline, content_id, show_as_attachment) VALUES (?,?,?,?,?,?,?,?)",
+                (email_id, filename, mime_type, size, raw, int(inline), content_id, int(show_as_attachment))
             )
 
         conn.commit()
@@ -4552,7 +4563,7 @@ def hkmail_inbox_api():
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND a.inline = 0),
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND (a.inline = 0 OR a.show_as_attachment = 1)),
                mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
@@ -4583,7 +4594,7 @@ def hkmail_sent_api():
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, recipient, subject, sent_at,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id AND a.inline = 0)
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id AND (a.inline = 0 OR a.show_as_attachment = 1))
         FROM emails
         WHERE sender=? AND deleted_by_sender=0 AND recipient != sender
         ORDER BY sent_at DESC
@@ -4608,7 +4619,7 @@ def hkmail_trash_api():
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
                e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND a.inline = 0),
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND (a.inline = 0 OR a.show_as_attachment = 1)),
                mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
@@ -4667,20 +4678,23 @@ def hkmail_read_email(email_id):
         conn.commit()
 
     cur.execute(
-        "SELECT id, filename, mime_type, size_bytes, inline, content_id FROM email_attachments WHERE email_id=? ORDER BY id",
+        "SELECT id, filename, mime_type, size_bytes, inline, content_id, show_as_attachment FROM email_attachments WHERE email_id=? ORDER BY id",
         (email_id,)
     )
     all_attachments = cur.fetchall()
     conn.close()
 
-    # Downloadable attachment chips only ever list the non-inline files —
-    # anything inline is already visible in the body itself. cid_to_url
-    # maps each inline attachment's content_id to the endpoint that serves
-    # its bytes, so cid: references in the (already-sanitized) body HTML
-    # can be resolved to something the browser can actually load.
+    # Downloadable attachment chips list the non-inline files, plus any
+    # inline (embedded) file the sender also chose to expose as a plain
+    # download (show_as_attachment) — e.g. a pasted-in image, so recipients
+    # whose view doesn't render the embed still have a way to get it. This
+    # reuses the same stored row/bytes rather than duplicating them.
+    # cid_to_url maps each inline attachment's content_id to the endpoint
+    # that serves its bytes, so cid: references in the (already-sanitized)
+    # body HTML can be resolved to something the browser can actually load.
     attachments = [
         {"id": a[0], "filename": a[1], "mime_type": a[2], "size_bytes": a[3]}
-        for a in all_attachments if not a[4]
+        for a in all_attachments if not a[4] or a[6]
     ]
     cid_to_url = {
         a[5]: f"/api/hkmail/attachment/{a[0]}/inline" for a in all_attachments if a[4] and a[5]
