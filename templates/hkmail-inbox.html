@@ -516,6 +516,19 @@
             word-break: break-word;
         }
 
+        .email-view-body.rich { white-space: normal; }
+
+        .email-view-body img,
+        .email-view-body video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 8px 0;
+            display: block;
+        }
+
+        .email-view-body a { color: var(--red); }
+
         /* ── Compose modal ── */
         .modal-overlay {
             display: none;
@@ -586,6 +599,79 @@
         .c-textarea {
             resize: vertical;
             min-height: 140px;
+        }
+
+        /* ── Rich-text compose body ── */
+        .c-editor-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px;
+            border: 1.5px solid var(--border);
+            border-bottom: none;
+            border-radius: 7px 7px 0 0;
+            background: #FAFBFD;
+        }
+
+        .c-editor-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background: none;
+            border: none;
+            border-radius: 5px;
+            color: var(--navy);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .c-editor-btn:hover { background: var(--slate); }
+        .c-editor-btn.active { background: var(--slate); color: var(--red); }
+
+        .c-editor-sep {
+            width: 1px;
+            height: 18px;
+            background: var(--border);
+            margin: 0 2px;
+        }
+
+        .c-body-editor {
+            width: 100%;
+            min-height: 140px;
+            max-height: 340px;
+            overflow-y: auto;
+            padding: 10px 13px;
+            border: 1.5px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 7px 7px;
+            font-size: 0.92rem;
+            color: var(--navy);
+            outline: none;
+            font-family: inherit;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .c-body-editor:focus { border-color: var(--red); }
+        .c-body-editor:empty::before {
+            content: attr(data-placeholder);
+            color: var(--muted);
+        }
+
+        .c-body-editor img,
+        .c-body-editor video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+            margin: 4px 0;
+            display: block;
+        }
+
+        .c-body-editor.drag-over {
+            border-color: var(--red);
+            background: #FFF8F8;
         }
 
         .compose-footer {
@@ -1230,7 +1316,21 @@
         </div>
         <div class="c-field">
             <label class="c-label" for="c-body">Message</label>
-            <textarea class="c-input c-textarea" id="c-body" placeholder="Write your message…"></textarea>
+            <div class="c-editor-toolbar">
+                <button type="button" class="c-editor-btn" title="Bold" onmousedown="event.preventDefault()" onclick="composeExec('bold')"><b>B</b></button>
+                <button type="button" class="c-editor-btn" title="Italic" onmousedown="event.preventDefault()" onclick="composeExec('italic')"><i>I</i></button>
+                <button type="button" class="c-editor-btn" title="Underline" onmousedown="event.preventDefault()" onclick="composeExec('underline')"><u>U</u></button>
+                <div class="c-editor-sep"></div>
+                <button type="button" class="c-editor-btn" title="Insert image or video" onmousedown="event.preventDefault()" onclick="document.getElementById('c-inline-input').click()">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="M21 15l-5-5L5 21"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="c-body-editor" id="c-body" contenteditable="true" data-placeholder="Write your message… (you can paste or drag images and video right in)"></div>
         </div>
         <div class="c-field">
             <div class="c-attach-row">
@@ -1241,9 +1341,10 @@
                     </svg>
                     Attach files
                 </button>
-                <span class="attach-hint">Up to 15MB per file</span>
+                <span class="attach-hint">Up to 15MB per file · images/video up to 50MB can go inline</span>
             </div>
             <input type="file" id="c-attach-input" multiple style="display:none;" onchange="handleAttachmentPick(this.files)">
+            <input type="file" id="c-inline-input" accept="image/*,video/*" multiple style="display:none;" onchange="handleInlineFilePick(this.files)">
             <div class="attachment-list" id="compose-attachment-list"></div>
         </div>
         <div class="compose-footer">
@@ -1573,7 +1674,7 @@
         if (params.get('compose') === '1') {
             document.getElementById('c-to').value      = params.get('to') || '';
             document.getElementById('c-subject').value = params.get('subject') || '';
-            document.getElementById('c-body').value    = params.get('body') || '';
+            setComposeBody(params.get('body') || '');
             openCompose();
             window.history.replaceState({}, '', '/hkmail-inbox.html');
         }
@@ -1733,7 +1834,18 @@
             </div>
             <div class="email-view-actions">${actions}</div>
         `;
-        document.getElementById('email-view-body').textContent = e.body;
+        const bodyEl = document.getElementById('email-view-body');
+        if (e.body_format === 'html') {
+            // e.body has already been through the server-side allowlist
+            // sanitizer (sanitize_email_body_html) before storage, and its
+            // cid: references were rewritten to /api/hkmail/attachment/.../inline
+            // URLs by the read endpoint — safe to insert as markup here.
+            bodyEl.classList.add('rich');
+            bodyEl.innerHTML = e.body;
+        } else {
+            bodyEl.classList.remove('rich');
+            bodyEl.textContent = e.body;
+        }
 
         const attachments = e.attachments || [];
         const attachEl = document.getElementById('email-view-attachments');
@@ -1778,7 +1890,7 @@
     function replyTo(from, subject) {
         document.getElementById('c-to').value = from;
         document.getElementById('c-subject').value = subject.startsWith('Re:') ? subject : 'Re: ' + subject;
-        document.getElementById('c-body').value = '';
+        setComposeBody('');
         openCompose();
     }
 
@@ -1862,9 +1974,11 @@
     }
 
     // ── Compose ────────────────────────────────────────────────────────────────
-    const MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024;
-    const MAX_ATTACHMENTS_PER_EMAIL = 15;
-    let composeAttachments = []; // { filename, mime_type, size, data (base64) }
+    const MAX_ATTACHMENT_SIZE_BYTES    = 15 * 1024 * 1024;
+    const MAX_INLINE_VIDEO_SIZE_BYTES  = 50 * 1024 * 1024;
+    const MAX_ATTACHMENTS_PER_EMAIL    = 15;
+    let composeAttachments = []; // regular (non-inline) files: { filename, mime_type, size, data (base64) }
+    let inlineMediaFiles   = new Map(); // content_id -> File, for images/video embedded in the body
 
     function formatBytes(n) {
         if (n < 1024) return `${n} bytes`;
@@ -1957,6 +2071,118 @@
         renderComposeAttachments();
     }
 
+    // ── Rich-text body: formatting, inline images/video ───────────────────────
+    function composeExec(cmd) {
+        document.getElementById('c-body').focus();
+        document.execCommand(cmd, false, null);
+    }
+
+    function generateContentId() {
+        return 'img_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    }
+
+    function setComposeBody(text) {
+        const el = document.getElementById('c-body');
+        resetComposeMedia();
+        if (text) el.textContent = text;
+    }
+
+    function resetComposeMedia() {
+        document.querySelectorAll('#c-body img[data-cid], #c-body video[data-cid]').forEach(el => {
+            if (el.src && el.src.startsWith('blob:')) URL.revokeObjectURL(el.src);
+        });
+        inlineMediaFiles.clear();
+        document.getElementById('c-body').innerHTML = '';
+    }
+
+    function hasComposeContent(editor) {
+        return editor.textContent.trim().length > 0 || !!editor.querySelector('img, video');
+    }
+
+    // Inserts a File (image or video) as an inline element at the current
+    // cursor position inside the compose editor. The element keeps
+    // pointing at a local blob: URL for preview — the real bytes are only
+    // read and sent at doSend() time, and only for elements still present
+    // in the DOM (so deleting an inserted image before sending drops it).
+    function insertInlineMedia(file) {
+        if (!file) return;
+        const isImage = file.type.startsWith('image/');
+        const isVideo = file.type.startsWith('video/');
+        if (!isImage && !isVideo) {
+            showComposeMsg(`"${file.name}" isn't an image or video, so it can't be embedded — attach it as a file instead.`, 'error');
+            return;
+        }
+        const limit = isVideo ? MAX_INLINE_VIDEO_SIZE_BYTES : MAX_ATTACHMENT_SIZE_BYTES;
+        if (file.size === 0) {
+            showComposeMsg(`"${file.name}" is empty and can't be embedded.`, 'error');
+            return;
+        }
+        if (file.size > limit) {
+            showComposeMsg(`"${file.name}" is ${formatBytes(file.size)} — ${isVideo ? 'inline video' : 'images'} must be ${formatBytes(limit)} or smaller.`, 'error');
+            return;
+        }
+
+        const contentId = generateContentId();
+        inlineMediaFiles.set(contentId, file);
+
+        const el = document.createElement(isImage ? 'img' : 'video');
+        el.src = URL.createObjectURL(file);
+        el.setAttribute('data-cid', contentId);
+        if (isVideo) el.setAttribute('controls', '');
+
+        const editor = document.getElementById('c-body');
+        editor.focus();
+        const sel = window.getSelection();
+        let range;
+        if (sel && sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+            range = sel.getRangeAt(0);
+        } else {
+            range = document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false);
+        }
+        range.deleteContents();
+        range.insertNode(el);
+        range.setStartAfter(el);
+        range.setEndAfter(el);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        clearComposeMsg();
+    }
+
+    async function handleInlineFilePick(fileList) {
+        const files = Array.from(fileList || []);
+        document.getElementById('c-inline-input').value = '';
+        files.forEach(insertInlineMedia);
+    }
+
+    (function initComposeEditor() {
+        const editor = document.getElementById('c-body');
+        if (!editor) return;
+
+        editor.addEventListener('paste', e => {
+            const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
+            const fileItem = items.find(it => it.kind === 'file' && /^(image|video)\//.test(it.type));
+            if (!fileItem) return; // let normal text/HTML paste through — the server sanitizes it anyway
+            e.preventDefault();
+            const file = fileItem.getAsFile();
+            if (file) insertInlineMedia(file);
+        });
+
+        editor.addEventListener('dragover', e => {
+            if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+            e.preventDefault();
+            editor.classList.add('drag-over');
+        });
+        editor.addEventListener('dragleave', () => editor.classList.remove('drag-over'));
+        editor.addEventListener('drop', e => {
+            if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+            e.preventDefault();
+            editor.classList.remove('drag-over');
+            Array.from(e.dataTransfer.files).forEach(insertInlineMedia);
+        });
+    })();
+
     function openCompose() {
         clearComposeMsg();
         document.getElementById('compose-modal').classList.add('open');
@@ -1982,25 +2208,52 @@
     async function doSend() {
         const to      = document.getElementById('c-to').value.trim();
         const subject = document.getElementById('c-subject').value.trim();
-        const body    = document.getElementById('c-body').value.trim();
+        const editor  = document.getElementById('c-body');
         const btn     = document.getElementById('send-btn');
 
-        if (!to)   { showComposeMsg('Please enter a recipient.', 'error'); return; }
-        if (!body) { showComposeMsg('Please write a message.', 'error'); return; }
+        if (!to) { showComposeMsg('Please enter a recipient.', 'error'); return; }
+        if (!hasComposeContent(editor)) { showComposeMsg('Please write a message.', 'error'); return; }
 
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner"></span>Sending…';
         clearComposeMsg();
 
         try {
-            const res  = await fetch('/api/hkmail/send', {
+            // Work on a detached copy of the editor's DOM so we can safely
+            // rewrite src="blob:..." -> src="cid:..." without touching what
+            // the user sees while the request is in flight.
+            const clone = editor.cloneNode(true);
+            const inlineAttachments = [];
+            clone.querySelectorAll('img[data-cid], video[data-cid]').forEach(el => {
+                const cid  = el.getAttribute('data-cid');
+                const file = inlineMediaFiles.get(cid);
+                el.removeAttribute('data-cid');
+                if (!file) { el.remove(); return; } // was removed from the live editor before sending
+                el.setAttribute('src', 'cid:' + cid);
+                inlineAttachments.push({ cid, file });
+            });
+
+            const encoded = await Promise.all(inlineAttachments.map(async ({ cid, file }) => ({
+                filename: file.name || (file.type.startsWith('video/') ? 'video' : 'image'),
+                mime_type: file.type || 'application/octet-stream',
+                data: await readFileAsBase64(file),
+                inline: true,
+                content_id: cid
+            })));
+
+            const res = await fetch('/api/hkmail/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    recipient: to, subject, body,
-                    attachments: composeAttachments.map(a => ({
-                        filename: a.filename, mime_type: a.mime_type, data: a.data
-                    }))
+                    recipient: to, subject,
+                    body: clone.innerHTML,
+                    body_format: 'html',
+                    attachments: [
+                        ...encoded,
+                        ...composeAttachments.map(a => ({
+                            filename: a.filename, mime_type: a.mime_type, data: a.data
+                        }))
+                    ]
                 })
             });
             const data = await res.json();
@@ -2009,7 +2262,7 @@
                 showComposeMsg(data.message, 'success');
                 document.getElementById('c-to').value = '';
                 document.getElementById('c-subject').value = '';
-                document.getElementById('c-body').value = '';
+                resetComposeMedia();
                 composeAttachments = [];
                 renderComposeAttachments();
                 setTimeout(() => {

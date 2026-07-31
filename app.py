@@ -5,6 +5,8 @@ import os
 import random
 import string
 import base64
+import re
+from html.parser import HTMLParser
 from datetime import datetime, date, timedelta
 
 app = Flask(__name__, static_folder='source', static_url_path='/source')
@@ -2250,6 +2252,37 @@ MAX_ATTACHMENT_SIZE_BYTES = MAX_ATTACHMENT_SIZE_MB * 1024 * 1024
 # tiny attachments.
 MAX_ATTACHMENTS_PER_EMAIL = 15
 
+# Inline attachments (images/video embedded directly in the message body,
+# à la Gmail) reuse the same email_attachments table and the same 15MB cap
+# EXCEPT for video, which gets a larger allowance since a few seconds of
+# video easily exceeds a photo's size. Images are never downscaled — the
+# original bytes are stored as-is so the recipient sees full resolution.
+MAX_INLINE_VIDEO_SIZE_MB    = 50
+MAX_INLINE_VIDEO_SIZE_BYTES = MAX_INLINE_VIDEO_SIZE_MB * 1024 * 1024
+
+# Only these mime-type prefixes may be embedded inline in a body. Anything
+# else (e.g. application/pdf) can still be sent as a normal, non-inline
+# attachment, but has no business being addressable from inside the HTML
+# body — an "inline PDF" would just be an <img>/<video> tag pointed at
+# non-image/video bytes.
+INLINE_ATTACHMENT_MIME_PREFIXES = ('image/', 'video/')
+
+# SVG (and a couple of other "image-ish" types) can carry embedded
+# <script>. A browser won't run that script when the SVG is loaded via an
+# <img> tag, but it WILL if someone opens the raw attachment URL directly
+# (e.g. "open image in new tab") — at which point it executes as a full
+# HTML document in this app's own origin, with the viewer's session. So
+# these are excluded from inline embedding specifically, even though they
+# start with "image/". Regular (non-inline) attachments are unaffected —
+# those are always served with Content-Disposition: attachment, which
+# browsers don't execute.
+INLINE_MIME_BLOCKLIST = {'image/svg+xml', 'text/html', 'application/xhtml+xml'}
+
+# content_id values are generated client-side (so the compose editor can
+# reference cid:<id> in the body before the send request even exists), so
+# they're validated against a strict allowlist rather than trusted as-is.
+INLINE_CONTENT_ID_RE = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
+
 
 def format_bytes(n):
     """Human-readable size, e.g. 15728640 -> '15.0 MB'."""
@@ -2264,6 +2297,143 @@ def format_bytes(n):
         return f"{n:.1f} MB"
     n /= 1024
     return f"{n:.1f} GB"
+
+
+# ── Rich-text email body sanitization ───────────────────────────────────────────
+# Compose bodies sent as body_format='html' come from a contenteditable
+# editor on the client, which means the raw HTML can't be trusted any more
+# than any other user-supplied string. This sanitizer rewrites it down to a
+# small allowlist before it's ever stored, so that reading an email can
+# never execute script, load a remote tracking pixel, or reach outside the
+# HKMail domain — the only thing an <img>/<video> may point at is
+# "cid:<content_id>", and only when that content_id belongs to one of this
+# email's own inline attachments.
+_SANITIZE_ALLOWED_TAGS = {
+    'p', 'br', 'b', 'strong', 'i', 'em', 'u', 'div', 'span',
+    'ul', 'ol', 'li', 'a', 'img', 'video', 'blockquote',
+    'h1', 'h2', 'h3',
+}
+# Tags we drop entirely, including their text content — as opposed to
+# unknown/disallowed tags, whose text we keep but whose markup we strip.
+_SANITIZE_DROP_CONTENT_TAGS = {'script', 'style', 'iframe', 'object', 'embed'}
+_SANITIZE_VOID_TAGS = {'br', 'img'}
+_SANITIZE_HREF_RE = re.compile(r'^(https?:|mailto:)', re.IGNORECASE)
+_SANITIZE_DIMENSION_RE = re.compile(r'^\d{1,5}$')
+
+
+class _EmailBodySanitizer(HTMLParser):
+    def __init__(self, valid_content_ids):
+        super().__init__(convert_charrefs=True)
+        self.valid_content_ids = valid_content_ids
+        self.out = []
+        self._drop_depth = 0          # inside a _SANITIZE_DROP_CONTENT_TAGS element
+        self._skip_stack = []         # disallowed tags currently open (content kept)
+
+    def _emit_open(self, tag, attrs_html, self_close=False):
+        self.out.append(f'<{tag}{attrs_html}{" /" if self_close else ""}>')
+
+    def handle_starttag(self, tag, attrs):
+        self._handle_start(tag, attrs, self_closing=False)
+
+    def handle_startendtag(self, tag, attrs):
+        self._handle_start(tag, attrs, self_closing=True)
+
+    def _handle_start(self, tag, attrs, self_closing):
+        tag = tag.lower()
+        attrs = dict(attrs)
+
+        if tag in _SANITIZE_DROP_CONTENT_TAGS:
+            self._drop_depth += 1
+            return
+        if self._drop_depth:
+            return
+
+        if tag not in _SANITIZE_ALLOWED_TAGS:
+            self._skip_stack.append(tag)
+            return
+
+        if tag == 'a':
+            href = (attrs.get('href') or '').strip()
+            safe_attrs = ''
+            if _SANITIZE_HREF_RE.match(href):
+                safe_attrs = f' href="{escape_html_attr(href)}" target="_blank" rel="noopener noreferrer"'
+            self._emit_open('a', safe_attrs)
+
+        elif tag in ('img', 'video'):
+            src = (attrs.get('src') or '').strip()
+            content_id = src[4:] if src.startswith('cid:') else None
+            if not content_id or content_id not in self.valid_content_ids:
+                # Not a reference to one of this email's own inline
+                # attachments — drop the tag rather than render a broken
+                # or (worse) externally-sourced media element.
+                if not self_closing:
+                    self._skip_stack.append(tag)
+                return
+
+            safe_attrs = f' src="cid:{escape_html_attr(content_id)}"'
+            for dim in ('width', 'height'):
+                val = (attrs.get(dim) or '').strip()
+                if _SANITIZE_DIMENSION_RE.match(val):
+                    safe_attrs += f' {dim}="{val}"'
+            alt = (attrs.get('alt') or '').strip()
+            if tag == 'img' and alt:
+                safe_attrs += f' alt="{escape_html_attr(alt)}"'
+            if tag == 'video':
+                safe_attrs += ' controls'
+            self._emit_open(tag, safe_attrs, self_close=(tag == 'img'))
+
+        else:
+            self._emit_open(tag, '', self_close=(tag in _SANITIZE_VOID_TAGS and self_closing))
+
+        if self_closing and tag not in _SANITIZE_VOID_TAGS and tag != 'img':
+            # A self-closing form of a non-void tag (e.g. a stray <div/>)
+            # — nothing further to close since browsers wouldn't treat it
+            # as containing children either.
+            pass
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in _SANITIZE_DROP_CONTENT_TAGS:
+            if self._drop_depth:
+                self._drop_depth -= 1
+            return
+        if self._drop_depth:
+            return
+        if self._skip_stack and self._skip_stack[-1] == tag:
+            self._skip_stack.pop()
+            return
+        if tag in _SANITIZE_ALLOWED_TAGS and tag not in _SANITIZE_VOID_TAGS:
+            self.out.append(f'</{tag}>')
+
+    def handle_data(self, data):
+        if self._drop_depth:
+            return
+        self.out.append(escape_html_text(data))
+
+    def get_html(self):
+        return ''.join(self.out)
+
+
+def escape_html_text(s):
+    return (s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+
+
+def escape_html_attr(s):
+    return (s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+             .replace('"', '&quot;').replace("'", '&#39;'))
+
+
+def sanitize_email_body_html(raw_html, valid_content_ids):
+    """Reduce a contenteditable body down to a small safe-tag allowlist.
+
+    valid_content_ids: set of content_id strings that this email actually
+    has matching inline email_attachments rows for — any cid: reference
+    outside that set is treated as invalid and its tag is dropped.
+    """
+    parser = _EmailBodySanitizer(valid_content_ids)
+    parser.feed(raw_html or '')
+    parser.close()
+    return parser.get_html()
 
 
 def add_one_month(d):
@@ -2374,7 +2544,8 @@ def init_mail_db():
             folder_sender        TEXT NOT NULL DEFAULT 'sent',
             folder_recipient     TEXT NOT NULL DEFAULT 'inbox',
             purged_by_sender     INTEGER NOT NULL DEFAULT 0,
-            purged_by_recipient  INTEGER NOT NULL DEFAULT 0
+            purged_by_recipient  INTEGER NOT NULL DEFAULT 0,
+            body_format          TEXT NOT NULL DEFAULT 'text'
         )
     """)
 
@@ -2384,9 +2555,18 @@ def init_mail_db():
     # done with the row for good and must never see it again, independent
     # of what the other party does. The row (and its attachments) is only
     # ever hard-deleted from the table once BOTH sides have purged it.
+    #
+    # body_format distinguishes plain-text bodies (every email sent before
+    # inline images existed, and anything sent by a client that never
+    # opted into rich text) from sanitized HTML bodies. This matters for
+    # rendering: a 'text' body is safe to display as a plain text node,
+    # but MUST NOT be interpreted as HTML, since a user could have typed
+    # a literal "<" or "<script>" as text. Only 'html' bodies — which are
+    # sanitized server-side before storage — are ever inserted as markup.
     for stmt in [
         "ALTER TABLE emails ADD COLUMN purged_by_sender INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE emails ADD COLUMN purged_by_recipient INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE emails ADD COLUMN body_format TEXT NOT NULL DEFAULT 'text'",
     ]:
         try:
             cur.execute(stmt)
@@ -2413,10 +2593,28 @@ def init_mail_db():
             mime_type   TEXT NOT NULL DEFAULT 'application/octet-stream',
             size_bytes  INTEGER NOT NULL,
             data        BLOB NOT NULL,
+            inline      INTEGER NOT NULL DEFAULT 0,
+            content_id  TEXT,
             FOREIGN KEY (email_id) REFERENCES emails(id)
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_attachments_email ON email_attachments(email_id)")
+
+    # Safe migrations for existing databases — inline (embedded) attachments.
+    # `inline` marks a row as one that's referenced from inside the body's
+    # HTML (via cid:<content_id>) rather than shown as a plain download
+    # chip. `content_id` is the identifier the body HTML uses to point at
+    # it. Both default to "not inline" so every pre-existing attachment
+    # keeps behaving exactly as before.
+    for stmt in [
+        "ALTER TABLE email_attachments ADD COLUMN inline INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE email_attachments ADD COLUMN content_id TEXT",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_attachments_content_id ON email_attachments(email_id, content_id)")
 
     # Account-service support requests: password resets and account-deletion
     # requests filed through HKMail Support, reviewed and processed by
@@ -3316,6 +3514,9 @@ def hkmail_send():
     recipient = data.get("recipient", "").strip().lower()
     subject   = data.get("subject",   "").strip() or "(No subject)"
     body      = data.get("body",       "").strip()
+    body_format = data.get("body_format") or "text"
+    if body_format not in ("text", "html"):
+        return jsonify({"success": False, "message": "Invalid body format."}), 400
     attachments_in = data.get("attachments") or []
 
     if not recipient:
@@ -3326,11 +3527,16 @@ def hkmail_send():
     if len(attachments_in) > MAX_ATTACHMENTS_PER_EMAIL:
         return jsonify({"success": False, "message": f"You can attach at most {MAX_ATTACHMENTS_PER_EMAIL} files."}), 400
 
-    # Decode and validate every attachment up front — each file must be
-    # 15MB or smaller. Decoding here (rather than trusting the base64
-    # string's length) means the check is against the actual file size,
-    # not the ~33% larger base64 encoding of it.
-    parsed_attachments = []  # list of (filename, mime_type, size_bytes, raw_bytes)
+    # Decode and validate every attachment up front. Regular attachments
+    # must be 15MB or smaller; inline images share that same 15MB cap, but
+    # inline video gets a larger allowance (MAX_INLINE_VIDEO_SIZE_BYTES),
+    # since a few seconds of video is easily bigger than a photo. Decoding
+    # here (rather than trusting the base64 string's length) means the
+    # check is against the actual file size, not the ~33% larger base64
+    # encoding of it.
+    parsed_attachments = []  # list of (filename, mime_type, size_bytes, raw_bytes, inline, content_id)
+    valid_content_ids  = set()
+    seen_content_ids   = set()
     total_attachment_bytes = 0
     for att in attachments_in:
         if not isinstance(att, dict):
@@ -3338,9 +3544,22 @@ def hkmail_send():
         filename  = (att.get("filename") or "").strip()
         mime_type = (att.get("mime_type") or "").strip() or "application/octet-stream"
         b64data   = att.get("data") or ""
+        inline    = bool(att.get("inline"))
+        content_id = (att.get("content_id") or "").strip()
 
         if not filename:
             return jsonify({"success": False, "message": "Each attachment needs a filename."}), 400
+
+        if inline:
+            if not INLINE_CONTENT_ID_RE.match(content_id):
+                return jsonify({"success": False, "message": "Invalid inline image/video reference."}), 400
+            if content_id in seen_content_ids:
+                return jsonify({"success": False, "message": "Duplicate inline image/video reference."}), 400
+            if not mime_type.startswith(INLINE_ATTACHMENT_MIME_PREFIXES) or mime_type.lower() in INLINE_MIME_BLOCKLIST:
+                return jsonify({"success": False, "message": f'"{filename}" can\'t be embedded inline — only images and video can.'}), 400
+            seen_content_ids.add(content_id)
+        else:
+            content_id = None
 
         try:
             raw = base64.b64decode(b64data, validate=True)
@@ -3350,14 +3569,28 @@ def hkmail_send():
         size = len(raw)
         if size == 0:
             return jsonify({"success": False, "message": f'"{filename}" is empty.'}), 400
-        if size > MAX_ATTACHMENT_SIZE_BYTES:
+
+        if inline and mime_type.startswith('video/'):
+            size_limit_bytes, size_limit_mb = MAX_INLINE_VIDEO_SIZE_BYTES, MAX_INLINE_VIDEO_SIZE_MB
+        else:
+            size_limit_bytes, size_limit_mb = MAX_ATTACHMENT_SIZE_BYTES, MAX_ATTACHMENT_SIZE_MB
+        if size > size_limit_bytes:
             return jsonify({
                 "success": False,
-                "message": f'"{filename}" is {format_bytes(size)} — attachments must be {MAX_ATTACHMENT_SIZE_MB}MB or smaller.'
+                "message": f'"{filename}" is {format_bytes(size)} — {"inline video" if inline and mime_type.startswith("video/") else "attachments"} must be {size_limit_mb}MB or smaller.'
             }), 400
 
         total_attachment_bytes += size
-        parsed_attachments.append((filename, mime_type, size, raw))
+        if inline:
+            valid_content_ids.add(content_id)
+        parsed_attachments.append((filename, mime_type, size, raw, inline, content_id))
+
+    # Rich-text bodies are sanitized down to a small safe-tag allowlist
+    # before ever being stored — see sanitize_email_body_html(). Only
+    # cid: references matching one of this email's own inline attachments
+    # (valid_content_ids, built above) survive; anything else is dropped.
+    if body_format == "html":
+        body = sanitize_email_body_html(body, valid_content_ids)
 
     # Auto-append @hkmail.cn if no domain given
     if "@" not in recipient:
@@ -3430,20 +3663,20 @@ def hkmail_send():
         # Self-send: one row, shows in both sent & inbox
         if recipient == u:
             cur.execute(
-                "INSERT INTO emails (sender, recipient, subject, body, folder_sender, folder_recipient) VALUES (?,?,?,?,?,?)",
-                (u, recipient, subject, body, 'sent', 'inbox')
+                "INSERT INTO emails (sender, recipient, subject, body, body_format, folder_sender, folder_recipient) VALUES (?,?,?,?,?,?,?)",
+                (u, recipient, subject, body, body_format, 'sent', 'inbox')
             )
         else:
             cur.execute(
-                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?,?,?,?)",
-                (u, recipient, subject, body)
+                "INSERT INTO emails (sender, recipient, subject, body, body_format) VALUES (?,?,?,?,?)",
+                (u, recipient, subject, body, body_format)
             )
 
         email_id = cur.lastrowid
-        for filename, mime_type, size, raw in parsed_attachments:
+        for filename, mime_type, size, raw, inline, content_id in parsed_attachments:
             cur.execute(
-                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data) VALUES (?,?,?,?,?)",
-                (email_id, filename, mime_type, size, raw)
+                "INSERT INTO email_attachments (email_id, filename, mime_type, size_bytes, data, inline, content_id) VALUES (?,?,?,?,?,?,?)",
+                (email_id, filename, mime_type, size, raw, int(inline), content_id)
             )
 
         conn.commit()
@@ -4273,7 +4506,7 @@ def hkmail_inbox_api():
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id),
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND a.inline = 0),
                mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
@@ -4304,7 +4537,7 @@ def hkmail_sent_api():
     cur  = conn.cursor()
     cur.execute("""
         SELECT id, recipient, subject, sent_at,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id)
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id AND a.inline = 0)
         FROM emails
         WHERE sender=? AND deleted_by_sender=0 AND recipient != sender
         ORDER BY sent_at DESC
@@ -4329,7 +4562,7 @@ def hkmail_trash_api():
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
                e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id),
+               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND a.inline = 0),
                mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
@@ -4367,7 +4600,7 @@ def hkmail_read_email(email_id):
     cur  = conn.cursor()
     cur.execute("""
         SELECT e.id, e.sender, e.recipient, e.subject, e.body, e.sent_at, e.read,
-               mu.is_admin, mu.is_verified, mu.is_verified_business
+               mu.is_admin, mu.is_verified, mu.is_verified_business, e.body_format
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
         WHERE e.id=?
@@ -4388,21 +4621,41 @@ def hkmail_read_email(email_id):
         conn.commit()
 
     cur.execute(
-        "SELECT id, filename, mime_type, size_bytes FROM email_attachments WHERE email_id=? ORDER BY id",
+        "SELECT id, filename, mime_type, size_bytes, inline, content_id FROM email_attachments WHERE email_id=? ORDER BY id",
         (email_id,)
     )
+    all_attachments = cur.fetchall()
+    conn.close()
+
+    # Downloadable attachment chips only ever list the non-inline files —
+    # anything inline is already visible in the body itself. cid_to_url
+    # maps each inline attachment's content_id to the endpoint that serves
+    # its bytes, so cid: references in the (already-sanitized) body HTML
+    # can be resolved to something the browser can actually load.
     attachments = [
         {"id": a[0], "filename": a[1], "mime_type": a[2], "size_bytes": a[3]}
-        for a in cur.fetchall()
+        for a in all_attachments if not a[4]
     ]
+    cid_to_url = {
+        a[5]: f"/api/hkmail/attachment/{a[0]}/inline" for a in all_attachments if a[4] and a[5]
+    }
 
-    conn.close()
+    body_format = row[10] or 'text'
+    body = row[4]
+    if body_format == 'html' and cid_to_url:
+        body = re.sub(
+            r'cid:([a-zA-Z0-9_-]{1,64})',
+            lambda m: cid_to_url.get(m.group(1), 'cid:' + m.group(1)),
+            body
+        )
+
     is_premium, badge_label, badge_tier = mail_get_premium_summary(row[1])
     return jsonify({
         "success": True,
         "email": {
             "id": row[0], "from": row[1], "to": row[2],
-            "subject": row[3], "body": row[4], "date": row[5], "read": True,
+            "subject": row[3], "body": body, "body_format": body_format,
+            "date": row[5], "read": True,
             "from_is_admin": bool(row[7]), "from_is_verified": bool(row[8]),
             "from_is_premium": is_premium,
             "from_premium_label": badge_label,
@@ -4448,7 +4701,56 @@ def hkmail_download_attachment(attachment_id):
     return Response(
         data,
         mimetype=mime_type or 'application/octet-stream',
-        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+            "X-Content-Type-Options": "nosniff",
+        }
+    )
+
+
+# ── HKMail: view an inline attachment (embedded images/video) ───────────────────
+# Same bytes, same access check as the download route above, but served with
+# Content-Disposition: inline so an <img>/<video> tag in the reading pane
+# renders it directly instead of the browser offering to save it.
+
+@app.route('/api/hkmail/attachment/<int:attachment_id>/inline')
+def hkmail_inline_attachment(attachment_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT a.filename, a.mime_type, a.data, e.sender, e.recipient, a.inline
+        FROM email_attachments a
+        JOIN emails e ON e.id = a.email_id
+        WHERE a.id=?
+    """, (attachment_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return jsonify({"success": False, "message": "Attachment not found."}), 404
+
+    filename, mime_type, data, sender, recipient, is_inline = row
+    if u not in (sender, recipient):
+        return jsonify({"success": False, "message": "Access denied."}), 403
+    if not is_inline:
+        return jsonify({"success": False, "message": "Not an inline attachment."}), 404
+    if (mime_type or '').lower() in INLINE_MIME_BLOCKLIST:
+        # Defense in depth: send_endpoint already rejects these at write
+        # time, but never serve one as inline even if a row somehow exists.
+        return jsonify({"success": False, "message": "This file type can't be displayed inline."}), 403
+
+    safe_filename = filename.replace('"', "'").replace("\r", " ").replace("\n", " ")
+    return Response(
+        data,
+        mimetype=mime_type or 'application/octet-stream',
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_filename}"',
+            "X-Content-Type-Options": "nosniff",
+        }
     )
 
 
