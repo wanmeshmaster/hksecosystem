@@ -634,8 +634,8 @@ def coming_soon():
     # The old "Coming Soon" page has been replaced by the App Store.
     return redirect('/appstore.html')
 
-@app.route('/appstore.html')
-def appstore_home():
+def get_appstore_apps():
+    """Shared app-listing data for the App Store index and per-app detail pages."""
     apps = [
         {'id': 'hks-bank',  'title': 'HKS Bank',  'url': '/hks-bank.html',
          'description': 'Accounts, cards, and payments for the ecosystem.',
@@ -653,7 +653,18 @@ def appstore_home():
     for a in apps:
         img = f"{a['id']}.jpg"
         a['bg_image'] = img if os.path.exists(os.path.join(app.root_path, 'source', img)) else None
-    return render_template('appstore.html', apps=apps)
+    return apps
+
+@app.route('/appstore.html')
+def appstore_home():
+    return render_template('appstore.html', apps=get_appstore_apps())
+
+@app.route('/appstore/app/<app_id>')
+def appstore_app_detail(app_id):
+    matched = next((a for a in get_appstore_apps() if a['id'] == app_id), None)
+    if not matched:
+        return redirect('/appstore.html')
+    return render_template('appstore-app.html', app=matched)
 
 @app.route('/appstore-terms.html')
 def appstore_terms():

@@ -427,196 +427,6 @@
             grid-column: 1 / -1;
         }
 
-        /* ── App detail modal ───────────────────────────────────────── */
-
-        .modal-content.detail-content {
-            max-width: 440px;
-            padding: 0;
-            overflow: hidden;
-        }
-
-        .detail-back {
-            position: absolute;
-            top: 14px;
-            left: 14px;
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: rgba(10, 12, 15, 0.55);
-            backdrop-filter: blur(6px);
-            border: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            cursor: pointer;
-            z-index: 5;
-            transition: background 0.15s ease;
-        }
-
-        .detail-back:hover { background: rgba(10, 12, 15, 0.8); }
-        .detail-back svg { width: 18px; height: 18px; }
-
-        .detail-banner {
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            background-size: cover;
-            background-position: center;
-            position: relative;
-            display: flex;
-            align-items: flex-end;
-        }
-
-        .detail-banner:not([style*="background-image"]) {
-            background: linear-gradient(150deg, #1c8f7c, #123a37);
-        }
-
-        .detail-banner-scrim {
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(180deg, rgba(7, 11, 16, 0.05) 0%, rgba(7, 11, 16, 0.85) 100%);
-        }
-
-        .detail-banner-text {
-            position: relative;
-            z-index: 2;
-            padding: 20px 22px 16px;
-            width: 100%;
-        }
-
-        .detail-banner-text h2 {
-            font-size: 1.35rem;
-            font-weight: 800;
-            letter-spacing: -0.01em;
-            margin-bottom: 6px;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-        }
-
-        .detail-developer-row {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-
-        .detail-developer {
-            font-size: 0.84rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-        }
-
-        .detail-body {
-            padding: 20px 22px 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 18px;
-        }
-
-        .detail-stats-row {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .detail-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: 14px;
-            background-size: cover;
-            background-position: center;
-            border: 1px solid var(--glass-border);
-            flex-shrink: 0;
-        }
-
-        .detail-icon:not([style*="background-image"]) {
-            background: linear-gradient(150deg, #1c8f7c, #123a37);
-        }
-
-        .detail-stats {
-            display: flex;
-            align-items: center;
-            gap: 18px;
-        }
-
-        .detail-stat {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .detail-stat-value {
-            font-size: 0.88rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .detail-stat small {
-            font-size: 0.68rem;
-            color: var(--text-tertiary);
-            font-weight: 600;
-        }
-
-        .template-chip {
-            font-size: 0.6rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--accent-amber);
-            border: 1px solid var(--accent-amber);
-            padding: 1px 6px;
-            border-radius: 999px;
-        }
-
-        .detail-actions {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .detail-open-btn {
-            flex: 1;
-            width: auto;
-            margin-top: 0;
-        }
-
-        .detail-info-box {
-            border: 1px solid var(--glass-border);
-            border-radius: var(--radius-md);
-            background: rgba(255, 255, 255, 0.03);
-            padding: 14px 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .detail-info-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-size: 0.82rem;
-        }
-
-        .detail-info-row span { color: var(--text-tertiary); }
-        .detail-info-row strong { font-weight: 700; }
-
-        .detail-description {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            line-height: 1.55;
-        }
-
-        .rating-template-note {
-            font-size: 0.76rem;
-            color: var(--text-tertiary);
-            line-height: 1.5;
-            border: 1px dashed var(--glass-border);
-            border-radius: var(--radius-sm);
-            padding: 10px 12px;
-        }
-
-        .rating-template-note strong { color: var(--accent-amber); }
-
         /* ── Footer ──────────────────────────────────────────────────── */
 
         .store-footer {
@@ -851,8 +661,6 @@
             .status-pill { padding: 6px 11px; font-size: 0.68rem; }
             .account-name { max-width: 90px; }
             .store-footer { padding: 16px 16px 20px; }
-            .modal-content.detail-content { max-width: 100%; }
-            .detail-banner-text h2 { font-size: 1.15rem; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -932,18 +740,18 @@
 
         <section class="app-grid" aria-label="Applications">
             {% for app in apps %}
-                <div class="app-tile" role="button" tabindex="0" data-app-index="{{ loop.index0 }}">
+                <a class="app-tile" href="/appstore/app/{{ app.id }}">
                     <span class="app-tile-thumb" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
                         {% if not app.bg_image %}<span>{{ app.title[0] | upper }}</span>{% endif %}
                     </span>
                     <span class="app-tile-title-row">
                         <span class="app-tile-title">{{ app.title }}</span>
                         {% if app.verified == 'official' %}
-                            <span class="verify-badge badge-official" tabindex="0" data-tooltip="Official HKS App">
+                            <span class="verify-badge badge-official" tabindex="-1" data-tooltip="Official HKS App">
                                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.4-4-4 1.4-1.4 2.6 2.6 6-6 1.4 1.4-7.4 7.4Z"/></svg>
                             </span>
                         {% elif app.verified == 'verified' %}
-                            <span class="verify-badge badge-verified" tabindex="0" data-tooltip="Verified app">
+                            <span class="verify-badge badge-verified" tabindex="-1" data-tooltip="Verified app">
                                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.4-4-4 1.4-1.4 2.6 2.6 6-6 1.4 1.4-7.4 7.4Z"/></svg>
                             </span>
                         {% endif %}
@@ -953,7 +761,7 @@
                         <span class="meta-dot">&bull;</span>
                         <span>{{ app.developer }}</span>
                     </span>
-                </div>
+                </a>
             {% endfor %}
             <p class="store-empty-note">That's everything for now — check back for new listings.</p>
         </section>
@@ -964,57 +772,6 @@
         <span class="footer-dot">&bull;</span>
         <a href="/appstore-terms.html">Terms &amp; Conditions</a>
     </footer>
-
-    <!-- App detail modal -->
-    <div id="appDetailModal" class="modal-overlay">
-        <div class="modal-content detail-content">
-            <button class="detail-back" id="detailBackBtn" type="button" aria-label="Close">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            </button>
-            <div class="detail-banner" id="detailBanner">
-                <div class="detail-banner-scrim"></div>
-                <div class="detail-banner-text">
-                    <h2 class="font-display" id="detailTitle"></h2>
-                    <div class="detail-developer-row">
-                        <span class="detail-developer" id="detailDeveloper"></span>
-                        <span id="detailBadgeSlot"></span>
-                    </div>
-                </div>
-            </div>
-            <div class="detail-body">
-                <div class="detail-stats-row">
-                    <span class="detail-icon" id="detailIcon"></span>
-                    <div class="detail-stats">
-                        <div class="detail-stat">
-                            <span class="detail-stat-value">&mdash; <span class="template-chip">Template</span></span>
-                            <small>No ratings yet</small>
-                        </div>
-                        <div class="detail-stat">
-                            <span class="detail-stat-value" id="detailDownloads"></span>
-                            <small>Downloads</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="detail-actions">
-                    <button class="modal-submit detail-open-btn" id="detailOpenBtn" type="button">Open</button>
-                    <span class="status-pill">Installed</span>
-                </div>
-
-                <div class="detail-info-box">
-                    <div class="detail-info-row"><span>Published</span><strong id="detailPublished"></strong></div>
-                    <div class="detail-info-row"><span>Category</span><strong id="detailCategory"></strong></div>
-                    <div class="detail-info-row"><span>Verification</span><strong id="detailVerification"></strong></div>
-                </div>
-
-                <p class="detail-description" id="detailDescription"></p>
-
-                <div class="rating-template-note">
-                    <strong>Template</strong> — user ratings aren't collected yet. This card is placeholder UI for a feature that's coming later.
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Sign Up modal (email → verification code) -->
     <div id="signUpModal" class="modal-overlay">
@@ -1090,7 +847,6 @@
         // ── Small helpers ──────────────────────────────────────────────
         function $(id) { return document.getElementById(id); }
 
-        const APPS = {{ apps | tojson }};
 
         function showToast(msg) {
             var t = $("toast");
@@ -1119,7 +875,6 @@
         // ── Modal open/close ───────────────────────────────────────────
         const signUpModal = $("signUpModal");
         const signInModal = $("signInModal");
-        const appDetailModal = $("appDetailModal");
 
         function openModal(modal) { modal.classList.add("show"); }
         function closeModal(modal) { modal.classList.remove("show"); }
@@ -1152,70 +907,7 @@
         window.addEventListener("click", function (e) {
             if (e.target === signUpModal) closeModal(signUpModal);
             if (e.target === signInModal) closeModal(signInModal);
-            if (e.target === appDetailModal) closeModal(appDetailModal);
         });
-
-        // ── App detail modal ────────────────────────────────────────────
-        const CHECK_ICON_PATH =
-            'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.4-4-4 1.4-1.4 2.6 2.6 6-6 1.4 1.4-7.4 7.4Z';
-
-        function verifyBadgeHTML(app) {
-            if (app.verified === 'official') {
-                return '<span class="verify-badge badge-official" tabindex="0" data-tooltip="Official HKS App">' +
-                    '<svg viewBox="0 0 24 24" fill="currentColor"><path d="' + CHECK_ICON_PATH + '"/></svg></span>';
-            }
-            if (app.verified === 'verified') {
-                return '<span class="verify-badge badge-verified" tabindex="0" data-tooltip="Verified app">' +
-                    '<svg viewBox="0 0 24 24" fill="currentColor"><path d="' + CHECK_ICON_PATH + '"/></svg></span>';
-            }
-            return '';
-        }
-
-        function openAppDetail(app) {
-            $("detailTitle").textContent = app.title;
-            $("detailDeveloper").textContent = app.developer || '';
-            $("detailBadgeSlot").innerHTML = verifyBadgeHTML(app);
-            $("detailDownloads").textContent = app.downloads || '—';
-            $("detailPublished").textContent = app.published || '—';
-            $("detailCategory").textContent = app.category || '—';
-            $("detailVerification").textContent =
-                app.verified === 'official' ? 'Official HKS App' :
-                app.verified === 'verified' ? 'Verified app' : 'Unverified';
-            $("detailDescription").textContent = app.description || '';
-
-            const banner = $("detailBanner");
-            const icon = $("detailIcon");
-            if (app.bg_image) {
-                banner.style.backgroundImage = "url('/source/" + app.bg_image + "')";
-                icon.style.backgroundImage = "url('/source/" + app.bg_image + "')";
-            } else {
-                banner.style.backgroundImage = "";
-                icon.style.backgroundImage = "";
-            }
-
-            $("detailOpenBtn").onclick = function () { window.location.href = app.url; };
-
-            openModal(appDetailModal);
-        }
-
-        document.querySelectorAll(".app-tile").forEach(function (tile) {
-            tile.addEventListener("click", function () {
-                const idx = parseInt(tile.getAttribute("data-app-index"), 10);
-                const app = APPS[idx];
-                if (app) openAppDetail(app);
-            });
-            tile.addEventListener("keydown", function (e) {
-                if (e.target !== tile) return; // let the verify badge handle its own tooltip focus
-                if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    tile.click();
-                }
-            });
-        });
-
-        $("detailBackBtn").onclick = function () { closeModal(appDetailModal); };
-
-
 
         // ── Sign up: step 1 — send verification code ───────────────────
         $("signUpForm").addEventListener("submit", async function (e) {
