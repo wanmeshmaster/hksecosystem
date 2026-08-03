@@ -323,13 +323,90 @@
         }
 
         .list-header {
-            padding: 16px 18px 12px;
+            padding: 12px 14px 12px 10px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 6px;
             flex-shrink: 0;
         }
+
+        .list-select-all {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            padding: 4px;
+            cursor: pointer;
+        }
+        .list-select-all input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
+            accent-color: var(--red);
+        }
+        .list-select-all input[type="checkbox"]:disabled { cursor: default; opacity: 0.4; }
+
+        .list-header-normal,
+        .list-header-selection {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .list-header-selection { display: none; }
+        .list-header.has-selection .list-header-normal { display: none; }
+        .list-header.has-selection .list-header-selection { display: flex; }
+
+        .selection-count {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--navy);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .selection-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .selection-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 5px 9px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: var(--navy);
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            white-space: nowrap;
+        }
+        .selection-btn:hover { background: var(--slate); border-color: var(--muted); }
+        .selection-btn.danger { color: var(--red); border-color: #FCC8CC; }
+        .selection-btn.danger:hover { background: #FEE8EB; }
+        .selection-btn.success { color: #1A7A3C; border-color: #B8E0C4; }
+        .selection-btn.success:hover { background: #E8F5EC; }
+
+        .selection-clear {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            font-size: 1.15rem;
+            color: var(--muted);
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 4px;
+        }
+        .selection-clear:hover { color: var(--red); }
 
         .list-header h2 {
             font-size: 1rem;
@@ -348,6 +425,9 @@
         }
 
         .email-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
             padding: 13px 18px;
             border-bottom: 1px solid var(--border);
             cursor: pointer;
@@ -359,6 +439,27 @@
         .email-item.active { background: #FEE8EB; }
         .email-item.unread { background: var(--unread); }
         .email-item.unread:hover { background: #dce6f7; }
+        .email-item.selected { background: #FFF3F4; }
+        .email-item.selected:hover { background: #FEE8EB; }
+
+        .email-item-select {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            padding-top: 2px;
+            cursor: pointer;
+        }
+        .email-item-select input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
+            accent-color: var(--red);
+        }
+
+        .email-item-main {
+            flex: 1;
+            min-width: 0;
+        }
 
         .email-from {
             font-size: 0.85rem;
@@ -1345,9 +1446,19 @@
 
     <!-- Email list pane -->
     <div class="list-pane">
-        <div class="list-header">
-            <h2 id="folder-title">Inbox</h2>
-            <span class="list-count" id="list-count"></span>
+        <div class="list-header" id="list-header">
+            <label class="list-select-all" title="Select all">
+                <input type="checkbox" id="select-all-checkbox" onclick="toggleSelectAll()">
+            </label>
+            <div class="list-header-normal" id="list-header-normal">
+                <h2 id="folder-title">Inbox</h2>
+                <span class="list-count" id="list-count"></span>
+            </div>
+            <div class="list-header-selection" id="list-header-selection">
+                <span class="selection-count" id="selection-count">0 selected</span>
+                <div class="selection-actions" id="selection-actions"></div>
+                <button type="button" class="selection-clear" onclick="clearSelection()" title="Clear selection">&times;</button>
+            </div>
         </div>
         <div class="email-list" id="email-list">
             <div class="empty-state" id="list-loading">
@@ -1676,6 +1787,7 @@
     let currentFolder = 'inbox';
     let currentEmailId = null;
     let emailCache = [];
+    let selectedIds = new Set();
     let iAmAdmin = false;
     let iAmSupportStaff = false;
     let adminUsersCache = [];
@@ -1789,6 +1901,7 @@
     async function loadFolder(folder) {
         currentFolder = folder;
         currentEmailId = null;
+        selectedIds = new Set();
         hideEmailView();
 
         // Update nav
@@ -1817,6 +1930,13 @@
         const listEl = document.getElementById('email-list');
         document.getElementById('list-count').textContent = emails.length ? `${emails.length} message${emails.length !== 1 ? 's' : ''}` : '';
 
+        // Drop any selected id that's no longer in this view (e.g. it was
+        // deleted by the other party, or a background refresh moved it) so
+        // the toolbar's count and "select all" state stay accurate.
+        const idsOnScreen = new Set(emails.map(e => e.id));
+        selectedIds = new Set(Array.from(selectedIds).filter(id => idsOnScreen.has(id)));
+        updateSelectionUI();
+
         if (!emails.length) {
             const icons = {
                 inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
@@ -1829,6 +1949,7 @@
 
         listEl.innerHTML = emails.map(e => {
             const isUnread = currentFolder === 'inbox' && !e.read;
+            const isSelected = selectedIds.has(e.id);
             const displayName = currentFolder === 'sent' ? (e.to || '') : (e.from || '');
             const label = currentFolder === 'sent' ? `To: ${displayName}` : displayName;
             const dateStr = formatDate(e.date);
@@ -1842,14 +1963,128 @@
                    </span>`
                 : '';
             return `
-                <div class="email-item ${isUnread ? 'unread' : ''}" id="ei-${e.id}"
+                <div class="email-item ${isUnread ? 'unread' : ''} ${isSelected ? 'selected' : ''}" id="ei-${e.id}"
                      onclick="openEmail(${e.id})">
-                    <div class="email-from">${escHtml(label)} ${badges}</div>
-                    <div class="email-subject">${escHtml(e.subject)}${clip}</div>
-                    <div class="email-date">${dateStr}</div>
+                    <label class="email-item-select" onclick="event.stopPropagation()" title="Select">
+                        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect(${e.id}, this.checked)">
+                    </label>
+                    <div class="email-item-main">
+                        <div class="email-from">${escHtml(label)} ${badges}</div>
+                        <div class="email-subject">${escHtml(e.subject)}${clip}</div>
+                        <div class="email-date">${dateStr}</div>
+                    </div>
                     <div class="unread-dot"></div>
                 </div>`;
         }).join('');
+    }
+
+    // ── Multi-select ───────────────────────────────────────────────────────────
+    function toggleSelect(id, checked) {
+        if (checked) selectedIds.add(id); else selectedIds.delete(id);
+        const item = document.getElementById('ei-' + id);
+        if (item) item.classList.toggle('selected', checked);
+        updateSelectionUI();
+    }
+
+    function toggleSelectAll() {
+        const idsOnScreen = emailCache.map(e => e.id);
+        const allSelected = idsOnScreen.length > 0 && idsOnScreen.every(id => selectedIds.has(id));
+        idsOnScreen.forEach(id => {
+            if (allSelected) selectedIds.delete(id); else selectedIds.add(id);
+            const item = document.getElementById('ei-' + id);
+            if (item) {
+                item.classList.toggle('selected', !allSelected);
+                const cb = item.querySelector('.email-item-select input');
+                if (cb) cb.checked = !allSelected;
+            }
+        });
+        updateSelectionUI();
+    }
+
+    function clearSelection() {
+        selectedIds.clear();
+        document.querySelectorAll('.email-item.selected').forEach(el => {
+            el.classList.remove('selected');
+            const cb = el.querySelector('.email-item-select input');
+            if (cb) cb.checked = false;
+        });
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        const header = document.getElementById('list-header');
+        const count  = selectedIds.size;
+        header.classList.toggle('has-selection', count > 0);
+
+        const idsOnScreen = emailCache.map(e => e.id);
+        const selectedOnScreen = idsOnScreen.filter(id => selectedIds.has(id));
+        const selectAllCb = document.getElementById('select-all-checkbox');
+        selectAllCb.disabled = idsOnScreen.length === 0;
+        selectAllCb.checked = idsOnScreen.length > 0 && selectedOnScreen.length === idsOnScreen.length;
+        selectAllCb.indeterminate = selectedOnScreen.length > 0 && selectedOnScreen.length < idsOnScreen.length;
+
+        if (count === 0) return;
+
+        document.getElementById('selection-count').textContent = `${count} selected`;
+
+        let actions = '';
+        if (currentFolder === 'inbox') {
+            actions += `<button type="button" class="selection-btn" onclick="bulkMarkRead(true)">Mark read</button>`;
+            actions += `<button type="button" class="selection-btn" onclick="bulkMarkRead(false)">Mark unread</button>`;
+            actions += `<button type="button" class="selection-btn danger" onclick="bulkDelete()">Move to Trash</button>`;
+        } else if (currentFolder === 'sent') {
+            actions += `<button type="button" class="selection-btn danger" onclick="bulkDelete()">Move to Trash</button>`;
+        } else if (currentFolder === 'trash') {
+            actions += `<button type="button" class="selection-btn success" onclick="bulkRestore()">Restore</button>`;
+            actions += `<button type="button" class="selection-btn danger" onclick="bulkPermanentDelete()">Delete permanently</button>`;
+        }
+        document.getElementById('selection-actions').innerHTML = actions;
+    }
+
+    // Bulk actions reuse the same per-email endpoints as the single-item
+    // actions (mark-read/delete/restore/delete-permanent) — each one already
+    // checks that the caller is a party to that email, so firing them in
+    // parallel for a whole selection is just as safe as doing them one at a
+    // time, only faster. loadFolder() re-fetches the folder afterward (and
+    // resets selectedIds), so the list and toolbar always end up reflecting
+    // exactly what's left on the server, not a locally-guessed state.
+    async function bulkMarkRead(readVal) {
+        const ids = Array.from(selectedIds);
+        if (!ids.length) return;
+        await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ read: readVal })
+        })));
+        showToast(`Marked ${ids.length} message${ids.length !== 1 ? 's' : ''} as ${readVal ? 'read' : 'unread'}.`);
+        await loadFolder(currentFolder);
+        refreshUnread();
+    }
+
+    async function bulkDelete() {
+        const ids = Array.from(selectedIds);
+        if (!ids.length) return;
+        await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/delete', { method: 'POST' })));
+        showToast(`Moved ${ids.length} message${ids.length !== 1 ? 's' : ''} to Trash.`);
+        await loadFolder(currentFolder);
+        refreshUnread();
+    }
+
+    async function bulkRestore() {
+        const ids = Array.from(selectedIds);
+        if (!ids.length) return;
+        await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/restore', { method: 'POST' })));
+        showToast(`Restored ${ids.length} message${ids.length !== 1 ? 's' : ''}.`);
+        await loadFolder('trash');
+    }
+
+    async function bulkPermanentDelete() {
+        const ids = Array.from(selectedIds);
+        if (!ids.length) return;
+        if (!confirm(`Permanently delete ${ids.length} message${ids.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+        await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/delete-permanent', { method: 'POST' })));
+        showToast(`Permanently deleted ${ids.length} message${ids.length !== 1 ? 's' : ''}.`);
+        await loadFolder('trash');
     }
 
     // ── Open email ─────────────────────────────────────────────────────────────
