@@ -2691,6 +2691,38 @@ def init_mail_db():
             pass
     cur.execute("CREATE INDEX IF NOT EXISTS idx_attachments_content_id ON email_attachments(email_id, content_id)")
 
+    # Mailbox folders — both the built-in ones (Inbox/Spam/Updates/Sent/Trash)
+    # and any the user creates themselves. Every folder, built-in or custom,
+    # gets a row here so its sidebar position (sort_order) can be dragged
+    # and persisted the same way regardless of kind — that's the whole
+    # reason built-ins are real rows instead of being hardcoded in the UI.
+    #
+    # Placement of a *received* email into a non-Trash/Sent folder is
+    # tracked on emails.folder_recipient (see below), not by a foreign key
+    # to this table: 'inbox' | 'spam' | 'updates' for the built-ins, or
+    # 'custom:<mail_folders.id>' for a custom folder. Sent/Trash aren't
+    # placement targets — they're computed the same way they always were
+    # (by sender, and by deleted_by_sender/deleted_by_recipient), so their
+    # rows here exist purely to give them a draggable sidebar slot.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS mail_folders (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_username TEXT NOT NULL,
+            name           TEXT NOT NULL,
+            kind           TEXT NOT NULL DEFAULT 'custom',
+            sort_order     INTEGER NOT NULL DEFAULT 0,
+            created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_mail_folders_owner ON mail_folders(owner_username)")
+    # A user can only ever have one of each built-in folder, but any number
+    # of custom ones — hence a unique index scoped to kind != 'custom'
+    # rather than a table-wide UNIQUE(owner_username, kind).
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_folders_system_unique
+        ON mail_folders(owner_username, kind) WHERE kind != 'custom'
+    """)
+
     # Account-service support requests: password resets and account-deletion
     # requests filed through HKMail Support, reviewed and processed by
     # authorised support staff (Employees/Admins). Deliberately its own
@@ -2864,6 +2896,56 @@ def mail_is_support_staff():
     (Employee) account — the only roles allowed to review/process support
     requests."""
     return bool(session.get("mail_is_admin")) or bool(session.get("mail_is_employee"))
+
+
+# ── HKMail: mailbox folders ─────────────────────────────────────────────────
+# Built-in folders every mailbox has, in their default order. Each becomes a
+# real row in mail_folders (see ensure_default_mail_folders) so its sidebar
+# position can be dragged and persisted exactly like a custom folder's.
+MAIL_SYSTEM_FOLDER_KINDS = ('inbox', 'spam', 'updates', 'sent', 'trash')
+MAIL_SYSTEM_FOLDERS = [
+    ('inbox',   'Inbox'),
+    ('spam',    'Spam'),
+    ('updates', 'Updates'),
+    ('sent',    'Sent'),
+    ('trash',   'Trash'),
+]
+MAX_CUSTOM_FOLDERS  = 30
+MAX_FOLDER_NAME_LEN = 40
+
+
+def ensure_default_mail_folders(username):
+    """Make sure this mailbox has its five built-in folders as rows in
+    mail_folders. Safe to call on every folder-related request — a no-op
+    once they all exist, and fills in any that are missing (e.g. a newly
+    added built-in kind) without touching ones already there."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT kind FROM mail_folders WHERE owner_username=? AND kind!='custom'", (username,))
+    existing = {r[0] for r in cur.fetchall()}
+    if not (set(MAIL_SYSTEM_FOLDER_KINDS) - existing):
+        conn.close()
+        return
+    cur.execute("SELECT COALESCE(MAX(sort_order), -1) FROM mail_folders WHERE owner_username=?", (username,))
+    next_order = cur.fetchone()[0] + 1
+    for kind, name in MAIL_SYSTEM_FOLDERS:
+        if kind in existing:
+            continue
+        cur.execute(
+            "INSERT INTO mail_folders (owner_username, name, kind, sort_order) VALUES (?,?,?,?)",
+            (username, name, kind, next_order)
+        )
+        next_order += 1
+    conn.commit()
+    conn.close()
+
+
+def mail_folder_recipient_tag(folder_id, kind):
+    """The value stored in emails.folder_recipient for mail filed into this
+    folder: the kind slug itself for built-ins ('inbox'/'spam'/'updates'),
+    or 'custom:<id>' for a user-created folder. Sent/Trash are never a
+    filing target — they're computed from sender/deleted_by_* as always."""
+    return kind if kind in ('inbox', 'spam', 'updates') else f'custom:{folder_id}'
 
 
 def generate_support_request_number(cur, length=10):
@@ -3615,7 +3697,225 @@ def hkmail_contacts_search():
     return jsonify({"success": True, "results": results})
 
 
-# ── HKMail: compose / send ─────────────────────────────────────────────────────
+# ── HKMail: mailbox folders ─────────────────────────────────────────────────
+
+@app.route('/api/hkmail/folders')
+def hkmail_folders_list():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    ensure_default_mail_folders(u)
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute(
+        "SELECT id, name, kind, sort_order FROM mail_folders WHERE owner_username=? ORDER BY sort_order, id",
+        (u,)
+    )
+    rows = cur.fetchall()
+
+    folders = []
+    for fid, name, kind, sort_order in rows:
+        unread_count = 0
+        # Sent/Trash never carry an "unread" concept in this UI (mirrors
+        # the pre-folders behavior, where only Inbox had a badge) — only
+        # the folders mail can actually be filed into show a count.
+        if kind in ('inbox', 'spam', 'updates', 'custom'):
+            tag = mail_folder_recipient_tag(fid, kind)
+            cur.execute(
+                "SELECT COUNT(*) FROM emails WHERE recipient=? AND deleted_by_recipient=0 AND read=0 AND folder_recipient=?",
+                (u, tag)
+            )
+            unread_count = cur.fetchone()[0]
+        folders.append({
+            "id": fid, "name": name, "kind": kind,
+            "sort_order": sort_order, "unread_count": unread_count
+        })
+    conn.close()
+    return jsonify({"success": True, "folders": folders})
+
+
+@app.route('/api/hkmail/folders', methods=['POST'])
+def hkmail_folders_create():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    ensure_default_mail_folders(u)
+
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"success": False, "message": "Folder name is required."}), 400
+    if len(name) > MAX_FOLDER_NAME_LEN:
+        return jsonify({"success": False, "message": f"Folder names must be {MAX_FOLDER_NAME_LEN} characters or fewer."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM mail_folders WHERE owner_username=? AND kind='custom'", (u,))
+    if cur.fetchone()[0] >= MAX_CUSTOM_FOLDERS:
+        conn.close()
+        return jsonify({"success": False, "message": f"You can have at most {MAX_CUSTOM_FOLDERS} custom folders."}), 400
+
+    cur.execute("SELECT COALESCE(MAX(sort_order), -1) FROM mail_folders WHERE owner_username=?", (u,))
+    next_order = cur.fetchone()[0] + 1
+    cur.execute(
+        "INSERT INTO mail_folders (owner_username, name, kind, sort_order) VALUES (?,?, 'custom', ?)",
+        (u, name, next_order)
+    )
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "folder": {"id": new_id, "name": name, "kind": "custom",
+                                                 "sort_order": next_order, "unread_count": 0}})
+
+
+@app.route('/api/hkmail/folders/<int:folder_id>', methods=['PATCH'])
+def hkmail_folders_rename(folder_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"success": False, "message": "Folder name is required."}), 400
+    if len(name) > MAX_FOLDER_NAME_LEN:
+        return jsonify({"success": False, "message": f"Folder names must be {MAX_FOLDER_NAME_LEN} characters or fewer."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT kind FROM mail_folders WHERE id=? AND owner_username=?", (folder_id, u))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Folder not found."}), 404
+    # Built-in folders keep their fixed names — other logic (icons, the
+    # Spam/Updates-specific toolbar actions) is keyed off `kind`, not name,
+    # but letting them drift from their recognizable defaults would be
+    # confusing for no real benefit. Only folders the user made are theirs
+    # to rename.
+    if row[0] != 'custom':
+        conn.close()
+        return jsonify({"success": False, "message": "Built-in folders can't be renamed."}), 403
+
+    cur.execute("UPDATE mail_folders SET name=? WHERE id=?", (name, folder_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route('/api/hkmail/folders/<int:folder_id>', methods=['DELETE'])
+def hkmail_folders_delete(folder_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT kind FROM mail_folders WHERE id=? AND owner_username=?", (folder_id, u))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Folder not found."}), 404
+    if row[0] != 'custom':
+        conn.close()
+        return jsonify({"success": False, "message": "Built-in folders can't be deleted."}), 403
+
+    # Deleting a folder doesn't delete the mail in it — it just can't stay
+    # filed somewhere that no longer exists, so it moves back to Inbox,
+    # the same way removing a label (rather than deleting the mail itself)
+    # works in most mail clients.
+    tag = mail_folder_recipient_tag(folder_id, 'custom')
+    cur.execute(
+        "UPDATE emails SET folder_recipient='inbox' WHERE recipient=? AND folder_recipient=?",
+        (u, tag)
+    )
+    cur.execute("DELETE FROM mail_folders WHERE id=?", (folder_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": "Folder deleted."})
+
+
+@app.route('/api/hkmail/folders/reorder', methods=['POST'])
+def hkmail_folders_reorder():
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    ensure_default_mail_folders(u)
+
+    data  = request.get_json() or {}
+    order = data.get("order")
+    if not isinstance(order, list) or not order:
+        return jsonify({"success": False, "message": "Invalid folder order."}), 400
+    try:
+        order = [int(x) for x in order]
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid folder order."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM mail_folders WHERE owner_username=?", (u,))
+    owned_ids = {r[0] for r in cur.fetchall()}
+    # The new order has to be a full reshuffle of exactly the folders this
+    # user owns — no dropping, adding, or repeating an id — otherwise a
+    # stale or tampered order could silently orphan a folder's sort_order.
+    if set(order) != owned_ids or len(order) != len(owned_ids):
+        conn.close()
+        return jsonify({"success": False, "message": "Folder order must match your existing folders exactly."}), 400
+
+    for index, folder_id in enumerate(order):
+        cur.execute("UPDATE mail_folders SET sort_order=? WHERE id=? AND owner_username=?", (index, folder_id, u))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+# ── HKMail: move a received email between folders ────────────────────────────
+
+@app.route('/api/hkmail/email/<int:email_id>/move', methods=['POST'])
+def hkmail_email_move(email_id):
+    u = mail_current_user()
+    if not u:
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
+    ensure_default_mail_folders(u)
+
+    data = request.get_json() or {}
+    folder_id = data.get("folder_id")
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    cur.execute("SELECT recipient FROM emails WHERE id=?", (email_id,))
+    row = cur.fetchone()
+    if not row or row[0] != u:
+        conn.close()
+        return jsonify({"success": False, "message": "Email not found."}), 404
+
+    # folder_id null (or omitted) means "back to Inbox" — the same as
+    # passing the id of the user's own Inbox folder, just without the
+    # frontend needing to know that id.
+    if folder_id is None:
+        tag, folder_name = 'inbox', 'Inbox'
+    else:
+        try:
+            folder_id = int(folder_id)
+        except (TypeError, ValueError):
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid folder."}), 400
+        cur.execute("SELECT name, kind FROM mail_folders WHERE id=? AND owner_username=?", (folder_id, u))
+        frow = cur.fetchone()
+        if not frow or frow[1] not in ('inbox', 'spam', 'updates', 'custom'):
+            conn.close()
+            return jsonify({"success": False, "message": "Invalid folder."}), 400
+        folder_name = frow[0]
+        tag = mail_folder_recipient_tag(folder_id, frow[1])
+
+    cur.execute("UPDATE emails SET folder_recipient=? WHERE id=?", (tag, email_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "message": f"Moved to {folder_name}."})
+
+
+
 
 def mail_deliver_bounce(sender_username, recipient, subject, reason_text):
     """Insert an automatic non-delivery notice into sender_username's inbox,
@@ -3648,11 +3948,19 @@ def hkmail_send():
 
     conn_check = sqlite3.connect(MAIL_DATABASE)
     cur_check  = conn_check.cursor()
-    cur_check.execute("SELECT is_disabled FROM mail_users WHERE username=?", (u,))
-    disabled_row = cur_check.fetchone()
+    cur_check.execute(
+        "SELECT is_disabled, is_verified_business, is_admin, is_employee FROM mail_users WHERE username=?",
+        (u,)
+    )
+    sender_row = cur_check.fetchone()
     conn_check.close()
-    if disabled_row and disabled_row[0]:
+    if sender_row and sender_row[0]:
         return jsonify({"success": False, "message": "Your account is disabled pending deletion. Request reinstatement to resume sending mail."}), 403
+    # Only Business-verified and HKMail staff (Admin/Support) accounts can
+    # choose to deliver into the recipient's Updates folder instead of their
+    # Inbox — everyone else's choice is quietly ignored rather than
+    # rejected, since a stale/tampered request shouldn't fail the send.
+    sender_can_use_updates = bool(sender_row) and (bool(sender_row[1]) or bool(sender_row[2]) or bool(sender_row[3]))
 
     data      = request.get_json()
     recipient = data.get("recipient", "").strip().lower()
@@ -3662,6 +3970,9 @@ def hkmail_send():
     if body_format not in ("text", "html"):
         return jsonify({"success": False, "message": "Invalid body format."}), 400
     attachments_in = data.get("attachments") or []
+    deliver_to = (data.get("deliver_to") or "inbox").strip().lower()
+    if deliver_to not in ("inbox", "updates") or not sender_can_use_updates:
+        deliver_to = "inbox"
 
     if not recipient:
         return jsonify({"success": False, "message": "Recipient is required."}), 400
@@ -3809,15 +4120,16 @@ def hkmail_send():
                 }), 400
 
         # Self-send: one row, shows in both sent & inbox
+        folder_recipient = 'updates' if deliver_to == 'updates' else 'inbox'
         if recipient == u:
             cur.execute(
                 "INSERT INTO emails (sender, recipient, subject, body, body_format, folder_sender, folder_recipient) VALUES (?,?,?,?,?,?,?)",
-                (u, recipient, subject, body, body_format, 'sent', 'inbox')
+                (u, recipient, subject, body, body_format, 'sent', folder_recipient)
             )
         else:
             cur.execute(
-                "INSERT INTO emails (sender, recipient, subject, body, body_format) VALUES (?,?,?,?,?)",
-                (u, recipient, subject, body, body_format)
+                "INSERT INTO emails (sender, recipient, subject, body, body_format, folder_recipient) VALUES (?,?,?,?,?,?)",
+                (u, recipient, subject, body, body_format, folder_recipient)
             )
 
         email_id = cur.lastrowid
@@ -4642,25 +4954,83 @@ def hkmail_delete_account():
     return jsonify({"success": True, "message": "Your HKMail account has been deleted."})
 
 
-# ── HKMail: list folders ───────────────────────────────────────────────────────
+# ── HKMail: list a folder's mail ────────────────────────────────────────────
 
-@app.route('/api/hkmail/inbox')
-def hkmail_inbox_api():
+@app.route('/api/hkmail/folder/<int:folder_id>')
+def hkmail_folder_contents(folder_id):
     u = mail_current_user()
     if not u:
         return jsonify({"success": False, "message": "Unauthorized"}), 401
-    mail_run_billing_cycle(u)
+    ensure_default_mail_folders(u)
+
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
+    cur.execute("SELECT name, kind FROM mail_folders WHERE id=? AND owner_username=?", (folder_id, u))
+    frow = cur.fetchone()
+    if not frow:
+        conn.close()
+        return jsonify({"success": False, "message": "Folder not found."}), 404
+    folder_name, kind = frow
+
+    if kind == 'sent':
+        cur.execute("""
+            SELECT id, recipient, subject, sent_at,
+                   (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id AND (a.inline = 0 OR a.show_as_attachment = 1))
+            FROM emails
+            WHERE sender=? AND deleted_by_sender=0 AND recipient != sender
+            ORDER BY sent_at DESC
+        """, (u,))
+        emails = [{"id": r[0], "to": r[1], "subject": r[2], "date": r[3], "attachment_count": r[4]}
+                  for r in cur.fetchall()]
+        conn.close()
+        return jsonify({"success": True, "emails": emails, "folder": {"id": folder_id, "name": folder_name, "kind": kind}})
+
+    if kind == 'trash':
+        # Trash shows anything either side of this user's mail has soft-deleted
+        # (sent or received) that they haven't purged — unaffected by which
+        # folder it was filed in beforehand, exactly as before folders existed.
+        cur.execute("""
+            SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
+                   e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
+                   (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND (a.inline = 0 OR a.show_as_attachment = 1)),
+                   mu.is_verified_business
+            FROM emails e
+            LEFT JOIN mail_users mu ON mu.username = e.sender
+            WHERE (e.sender=? AND e.deleted_by_sender=1 AND e.purged_by_sender=0)
+               OR (e.recipient=? AND e.deleted_by_recipient=1 AND e.purged_by_recipient=0)
+            ORDER BY e.sent_at DESC
+        """, (u, u))
+        rows = cur.fetchall()
+        conn.close()
+        emails = []
+        for r in rows:
+            is_premium, badge_label, badge_tier = mail_get_premium_summary(r[1])
+            emails.append({
+                "id": r[0], "from": r[1], "to": r[2],
+                "subject": r[3], "date": r[4],
+                "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8]),
+                "from_is_premium": is_premium,
+                "from_premium_label": badge_label,
+                "from_premium_tier": badge_tier,
+                "attachment_count": r[9],
+                "from_is_verified_business": bool(r[10])
+            })
+        return jsonify({"success": True, "emails": emails, "folder": {"id": folder_id, "name": folder_name, "kind": kind}})
+
+    # inbox / spam / updates / custom — all "received mail filed here" views,
+    # identical shape, differing only in which folder_recipient tag they match.
+    if kind == 'inbox':
+        mail_run_billing_cycle(u)
+    tag = mail_folder_recipient_tag(folder_id, kind)
     cur.execute("""
         SELECT e.id, e.sender, e.subject, e.sent_at, e.read, mu.is_admin, mu.is_verified,
                (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND (a.inline = 0 OR a.show_as_attachment = 1)),
                mu.is_verified_business
         FROM emails e
         LEFT JOIN mail_users mu ON mu.username = e.sender
-        WHERE e.recipient=? AND e.deleted_by_recipient=0
+        WHERE e.recipient=? AND e.deleted_by_recipient=0 AND e.folder_recipient=?
         ORDER BY e.sent_at DESC
-    """, (u,))
+    """, (u, tag))
     rows = cur.fetchall()
     conn.close()
     emails = []
@@ -4673,67 +5043,7 @@ def hkmail_inbox_api():
                         "from_premium_tier": badge_tier,
                         "attachment_count": r[7],
                         "from_is_verified_business": bool(r[8])})
-    return jsonify({"success": True, "emails": emails})
-
-
-@app.route('/api/hkmail/sent')
-def hkmail_sent_api():
-    u = mail_current_user()
-    if not u:
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-    conn = sqlite3.connect(MAIL_DATABASE)
-    cur  = conn.cursor()
-    cur.execute("""
-        SELECT id, recipient, subject, sent_at,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = emails.id AND (a.inline = 0 OR a.show_as_attachment = 1))
-        FROM emails
-        WHERE sender=? AND deleted_by_sender=0 AND recipient != sender
-        ORDER BY sent_at DESC
-    """, (u,))
-    emails = [{"id": r[0], "to": r[1], "subject": r[2], "date": r[3], "attachment_count": r[4]}
-              for r in cur.fetchall()]
-    conn.close()
-    return jsonify({"success": True, "emails": emails})
-
-
-
-
-
-@app.route('/api/hkmail/trash')
-def hkmail_trash_api():
-    u = mail_current_user()
-    if not u:
-        return jsonify({"success": False, "message": "Unauthorized"}), 401
-    conn = sqlite3.connect(MAIL_DATABASE)
-    cur  = conn.cursor()
-    # Show emails deleted by this user (either as sender or recipient)
-    cur.execute("""
-        SELECT e.id, e.sender, e.recipient, e.subject, e.sent_at,
-               e.deleted_by_sender, e.deleted_by_recipient, mu.is_admin, mu.is_verified,
-               (SELECT COUNT(*) FROM email_attachments a WHERE a.email_id = e.id AND (a.inline = 0 OR a.show_as_attachment = 1)),
-               mu.is_verified_business
-        FROM emails e
-        LEFT JOIN mail_users mu ON mu.username = e.sender
-        WHERE (e.sender=? AND e.deleted_by_sender=1 AND e.purged_by_sender=0)
-           OR (e.recipient=? AND e.deleted_by_recipient=1 AND e.purged_by_recipient=0)
-        ORDER BY e.sent_at DESC
-    """, (u, u))
-    rows = cur.fetchall()
-    conn.close()
-    emails = []
-    for r in rows:
-        is_premium, badge_label, badge_tier = mail_get_premium_summary(r[1])
-        emails.append({
-            "id": r[0], "from": r[1], "to": r[2],
-            "subject": r[3], "date": r[4],
-            "from_is_admin": bool(r[7]), "from_is_verified": bool(r[8]),
-            "from_is_premium": is_premium,
-            "from_premium_label": badge_label,
-            "from_premium_tier": badge_tier,
-            "attachment_count": r[9],
-            "from_is_verified_business": bool(r[10])
-        })
-    return jsonify({"success": True, "emails": emails})
+    return jsonify({"success": True, "emails": emails, "folder": {"id": folder_id, "name": folder_name, "kind": kind}})
 
 
 # ── HKMail: read a single email ────────────────────────────────────────────────
@@ -5059,8 +5369,12 @@ def hkmail_unread_count():
         return jsonify({"success": False, "message": "Unauthorized"}), 401
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
+    # Scoped to Inbox specifically (not Spam/Updates/custom folders, which
+    # get their own per-folder counts from /api/hkmail/folders) — this is
+    # the number the topbar/sidebar Inbox badge has always shown.
     cur.execute(
-        "SELECT COUNT(*) FROM emails WHERE recipient=? AND read=0 AND deleted_by_recipient=0", (u,)
+        "SELECT COUNT(*) FROM emails WHERE recipient=? AND read=0 AND deleted_by_recipient=0 AND folder_recipient='inbox'",
+        (u,)
     )
     count = cur.fetchone()[0]
     conn.close()

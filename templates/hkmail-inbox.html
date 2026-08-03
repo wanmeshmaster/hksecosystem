@@ -301,6 +301,178 @@
 
         .badge.visible { display: block; }
 
+        /* ── Dynamic folder list (sidebar) ── */
+        .folder-nav-list { display: flex; flex-direction: column; gap: 2px; }
+
+        .nav-item.folder-item {
+            padding-right: 6px;
+        }
+
+        .nav-item.folder-item.drag-over {
+            box-shadow: inset 0 2px 0 var(--red);
+        }
+
+        .nav-item.folder-item.dragging { opacity: 0.4; }
+
+        .folder-item-label {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .folder-kebab {
+            flex-shrink: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 20px; height: 20px;
+            border-radius: 5px;
+            color: var(--muted);
+            cursor: pointer;
+            margin-left: auto;
+        }
+        .nav-item.folder-item:hover .folder-kebab { display: flex; }
+        .nav-item.folder-item.active .folder-kebab { color: var(--red); }
+        .folder-kebab:hover { background: rgba(11,26,51,0.08); color: var(--navy); }
+        .nav-item.folder-item.active .folder-kebab:hover { background: rgba(215,38,56,0.12); }
+        .folder-kebab svg { width: 14px; height: 14px; }
+
+        .folder-item.has-badge .folder-kebab { display: none; }
+        .folder-item.has-badge:hover .folder-kebab { display: flex; }
+        .folder-item.has-badge:hover .badge { display: none; }
+
+        .folder-menu {
+            position: absolute;
+            top: calc(100% + 2px);
+            right: 6px;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 10px 28px rgba(11,26,51,0.18);
+            z-index: 30;
+            min-width: 130px;
+            padding: 4px;
+            display: none;
+        }
+        .folder-menu.open { display: block; }
+        .folder-menu-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            padding: 7px 9px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--navy);
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .folder-menu-item:hover { background: var(--slate); }
+        .folder-menu-item.danger { color: var(--red); }
+        .folder-menu-item.danger:hover { background: #FEE8EB; }
+
+        .folder-new-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--muted);
+        }
+        .folder-new-row:hover { background: var(--slate); color: var(--navy); }
+        .folder-new-row svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+        .folder-new-input-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 6px;
+        }
+        .folder-new-input {
+            flex: 1;
+            min-width: 0;
+            padding: 7px 9px;
+            border: 1.5px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-family: inherit;
+            outline: none;
+            color: var(--navy);
+        }
+        .folder-new-input:focus { border-color: var(--red); }
+        .folder-new-cancel {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            color: var(--muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px;
+        }
+        .folder-new-cancel:hover { color: var(--red); }
+
+        .sidebar-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 8px 4px;
+        }
+
+        /* ── Move-to-folder select (toolbar + email view) ── */
+        .folder-select {
+            appearance: none;
+            -webkit-appearance: none;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 5px 24px 5px 9px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: var(--navy);
+            cursor: pointer;
+            font-family: inherit;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A99' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 6px center;
+            background-size: 12px;
+        }
+        .folder-select:hover { background-color: var(--slate); border-color: var(--muted); }
+        .action-btn.folder-select { padding: 6px 26px 6px 12px; font-size: 0.8rem; }
+
+        /* ── Deliver-to (compose) ── */
+        .c-deliver-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            padding: 8px 11px;
+            background: #FAFBFD;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+        }
+        .c-deliver-row label.c-label {
+            margin-bottom: 0;
+            flex-shrink: 0;
+        }
+        .c-deliver-select {
+            flex: 1;
+            padding: 6px 9px;
+            border: 1.5px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            color: var(--navy);
+            background: var(--white);
+            cursor: pointer;
+        }
+
         .admin-tab .badge {
             margin-left: 6px;
             display: none;
@@ -1376,33 +1548,10 @@
     <!-- Sidebar -->
     <div class="sidebar">
         <nav class="sidebar-nav">
-            <div class="nav-item active" id="nav-inbox" onclick="loadFolder('inbox')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/>
-                    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
-                </svg>
-                Inbox
-                <span class="badge" id="unread-badge">0</span>
+            <div class="folder-nav-list" id="folder-nav-list">
+                <!-- Populated by renderFolderNav() from /api/hkmail/folders -->
             </div>
-            <div class="nav-item" id="nav-sent" onclick="loadFolder('sent')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"/>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                </svg>
-                Sent
-            </div>
-            <div class="nav-item" id="nav-trash" onclick="loadFolder('trash')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                    <path d="M10 11v6M14 11v6"/>
-                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                </svg>
-                Trash
-            </div>
+            <div class="sidebar-divider"></div>
             <div class="nav-item" id="nav-storage" onclick="openStorageModal()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                      stroke-linecap="round" stroke-linejoin="round">
@@ -1503,6 +1652,13 @@
         <div class="c-field">
             <label class="c-label" for="c-subject">Subject</label>
             <input class="c-input" type="text" id="c-subject" placeholder="(No subject)">
+        </div>
+        <div class="c-deliver-row" id="c-deliver-row" style="display:none;">
+            <label class="c-label" for="c-deliver-to">Deliver to</label>
+            <select class="c-deliver-select" id="c-deliver-to">
+                <option value="inbox">Inbox</option>
+                <option value="updates">Updates</option>
+            </select>
         </div>
         <div class="c-field">
             <label class="c-label" for="c-body">Message</label>
@@ -1784,7 +1940,15 @@
 
 <script>
     // ── State ──────────────────────────────────────────────────────────────────
-    let currentFolder = 'inbox';
+    // The mailbox's folders (built-in + custom), as returned by
+    // /api/hkmail/folders — the single source of truth for the sidebar and
+    // for resolving a folder id to its kind/name elsewhere in the UI.
+    let folders = [];
+    // Which folder is currently open in the list/reading pane. currentFolder
+    // is always a real mail_folders.id (never a string like 'inbox') — kind
+    // ('inbox'/'spam'/'updates'/'sent'/'trash'/'custom') and display name
+    // are looked up from `folders` via currentFolderKind()/currentFolderName().
+    let currentFolder = null;
     let currentEmailId = null;
     let emailCache = [];
     let selectedIds = new Set();
@@ -1797,6 +1961,31 @@
     let supportRequestDetailId = null;
     let accountDisabled = false;
     let daysRemaining = 0;
+    // Only Business-verified and HKMail staff accounts can choose to
+    // deliver a message into the recipient's Updates folder — mirrors the
+    // server-side sender_can_use_updates check in /api/hkmail/send.
+    let canDeliverToUpdates = false;
+    // Drag-reorder + kebab-menu state for the folder list.
+    let draggedFolderId = null;
+    let openFolderMenuId = null;
+    let folderCreatorOpen = false;
+
+    function getFolder(id) {
+        return folders.find(f => f.id === id) || null;
+    }
+    function currentFolderKind() {
+        const f = getFolder(currentFolder);
+        return f ? f.kind : 'inbox';
+    }
+    function currentFolderName() {
+        const f = getFolder(currentFolder);
+        return f ? f.name : '';
+    }
+    // "Received mail" folders are the ones a message can actually be filed
+    // into (as opposed to Sent/Trash, which are computed views) — inbox,
+    // spam, updates, and every custom folder all share this behavior.
+    const RECEIVED_KINDS = ['inbox', 'spam', 'updates', 'custom'];
+    function isReceivedKind(kind) { return RECEIVED_KINDS.includes(kind); }
 
     // ── Init ───────────────────────────────────────────────────────────────────
     (async function init() {
@@ -1850,8 +2039,13 @@
             topbarBadge.title = `${data.premiumLabel || 'HKMail Premium'} — manage your Premium subscription`;
             topbarBadge.style.display = 'inline-flex';
         }
-        await loadFolder('inbox');
-        refreshUnread();
+        // Business/Support senders get the "Deliver to" compose control —
+        // matches the server's own sender_can_use_updates check.
+        canDeliverToUpdates = !!data.isVerifiedBusiness || iAmSupportStaff;
+
+        await loadFolders();
+        const inboxFolder = folders.find(f => f.kind === 'inbox');
+        await loadFolder(inboxFolder ? inboxFolder.id : (folders[0] && folders[0].id));
 
         // Returning from HKS Bank checkout after subscribing
         const params = new URLSearchParams(window.location.search);
@@ -1897,25 +2091,246 @@
         return html;
     }
 
+    // ── Folder icons ───────────────────────────────────────────────────────────
+    function folderIconSvg(kind) {
+        const icons = {
+            inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+            spam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/></svg>',
+            updates: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+            sent: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+            trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+            custom: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>',
+        };
+        return icons[kind] || icons.custom;
+    }
+
+    // ── Folder list (sidebar) ──────────────────────────────────────────────────
+    async function loadFolders() {
+        try {
+            const res  = await fetch('/api/hkmail/folders');
+            const data = await res.json();
+            if (!data.success) return;
+            folders = data.folders || [];
+            renderFolderNav();
+        } catch {}
+    }
+
+    function renderFolderNav() {
+        const listEl = document.getElementById('folder-nav-list');
+        const sorted = [...folders].sort((a, b) => a.sort_order - b.sort_order);
+
+        listEl.innerHTML = sorted.map(f => {
+            const isActive = f.id === currentFolder;
+            const hasBadge = f.unread_count > 0;
+            const isCustom = f.kind === 'custom';
+            const menuOpen = openFolderMenuId === f.id;
+            return `
+                <div class="nav-item folder-item ${isActive ? 'active' : ''} ${hasBadge ? 'has-badge' : ''}"
+                     id="nav-folder-${f.id}" data-folder-id="${f.id}"
+                     draggable="true"
+                     onclick="loadFolder(${f.id})"
+                     ondragstart="folderDragStart(event, ${f.id})"
+                     ondragover="folderDragOver(event, ${f.id})"
+                     ondragleave="folderDragLeave(event, ${f.id})"
+                     ondrop="folderDrop(event, ${f.id})"
+                     ondragend="folderDragEnd(event)">
+                    ${folderIconSvg(f.kind)}
+                    <span class="folder-item-label">${escHtml(f.name)}</span>
+                    <span class="badge ${hasBadge ? 'visible' : ''}">${f.unread_count}</span>
+                    ${isCustom ? `
+                        <span class="folder-kebab" onclick="toggleFolderMenu(event, ${f.id})" title="Folder options">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                        </span>
+                        <div class="folder-menu ${menuOpen ? 'open' : ''}" onclick="event.stopPropagation()">
+                            <button type="button" class="folder-menu-item" onclick="renameFolderPrompt(${f.id})">Rename</button>
+                            <button type="button" class="folder-menu-item danger" onclick="deleteFolderPrompt(${f.id})">Delete</button>
+                        </div>
+                    ` : ''}
+                </div>`;
+        }).join('') + renderFolderCreator();
+    }
+
+    function renderFolderCreator() {
+        if (!folderCreatorOpen) {
+            return `
+                <div class="folder-new-row" onclick="openFolderCreator()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    New folder
+                </div>`;
+        }
+        return `
+            <div class="folder-new-input-row">
+                <input type="text" class="folder-new-input" id="folder-new-input"
+                       placeholder="Folder name" maxlength="40"
+                       onkeydown="if(event.key==='Enter'){submitNewFolder();} else if(event.key==='Escape'){closeFolderCreator();}">
+                <button type="button" class="folder-new-cancel" title="Cancel" onclick="closeFolderCreator()">&times;</button>
+            </div>`;
+    }
+
+    function openFolderCreator() {
+        folderCreatorOpen = true;
+        renderFolderNav();
+        const input = document.getElementById('folder-new-input');
+        if (input) input.focus();
+    }
+
+    function closeFolderCreator() {
+        folderCreatorOpen = false;
+        renderFolderNav();
+    }
+
+    async function submitNewFolder() {
+        const input = document.getElementById('folder-new-input');
+        const name = (input?.value || '').trim();
+        if (!name) { closeFolderCreator(); return; }
+        try {
+            const res  = await fetch('/api/hkmail/folders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json();
+            if (!data.success) { showToast(data.message || 'Could not create folder.'); return; }
+            folderCreatorOpen = false;
+            await loadFolders();
+            showToast(`"${name}" created.`);
+        } catch {
+            showToast('Connection error.');
+        }
+    }
+
+    function toggleFolderMenu(evt, folderId) {
+        evt.stopPropagation();
+        openFolderMenuId = openFolderMenuId === folderId ? null : folderId;
+        renderFolderNav();
+    }
+
+    document.addEventListener('click', () => {
+        if (openFolderMenuId !== null) { openFolderMenuId = null; renderFolderNav(); }
+    });
+
+    async function renameFolderPrompt(folderId) {
+        openFolderMenuId = null;
+        const f = getFolder(folderId);
+        const name = prompt('Rename folder', f ? f.name : '');
+        if (name === null) { renderFolderNav(); return; }
+        const trimmed = name.trim();
+        if (!trimmed) { renderFolderNav(); return; }
+        try {
+            const res  = await fetch('/api/hkmail/folders/' + folderId, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: trimmed })
+            });
+            const data = await res.json();
+            if (!data.success) { showToast(data.message || 'Could not rename folder.'); }
+            await loadFolders();
+            if (currentFolder === folderId) document.getElementById('folder-title').textContent = trimmed;
+        } catch {
+            showToast('Connection error.');
+        }
+    }
+
+    async function deleteFolderPrompt(folderId) {
+        openFolderMenuId = null;
+        const f = getFolder(folderId);
+        if (!confirm(`Delete "${f ? f.name : 'this folder'}"? Mail inside it moves back to Inbox.`)) { renderFolderNav(); return; }
+        try {
+            const res  = await fetch('/api/hkmail/folders/' + folderId, { method: 'DELETE' });
+            const data = await res.json();
+            showToast(data.message || 'Folder deleted.');
+            const wasOpen = currentFolder === folderId;
+            await loadFolders();
+            if (wasOpen) {
+                const inboxFolder = folders.find(fl => fl.kind === 'inbox');
+                if (inboxFolder) await loadFolder(inboxFolder.id);
+            }
+        } catch {
+            showToast('Connection error.');
+        }
+    }
+
+    // ── Folder drag-reorder ────────────────────────────────────────────────────
+    function folderDragStart(evt, folderId) {
+        draggedFolderId = folderId;
+        evt.dataTransfer.effectAllowed = 'move';
+        evt.dataTransfer.setData('text/plain', String(folderId));
+        evt.currentTarget.classList.add('dragging');
+    }
+
+    function folderDragOver(evt, folderId) {
+        if (draggedFolderId === null || draggedFolderId === folderId) return;
+        evt.preventDefault();
+        evt.currentTarget.classList.add('drag-over');
+    }
+
+    function folderDragLeave(evt) {
+        evt.currentTarget.classList.remove('drag-over');
+    }
+
+    async function folderDrop(evt, targetFolderId) {
+        evt.preventDefault();
+        evt.currentTarget.classList.remove('drag-over');
+        if (draggedFolderId === null || draggedFolderId === targetFolderId) return;
+
+        const sorted = [...folders].sort((a, b) => a.sort_order - b.sort_order);
+        const order = sorted.map(f => f.id);
+        const fromIdx = order.indexOf(draggedFolderId);
+        const toIdx   = order.indexOf(targetFolderId);
+        if (fromIdx === -1 || toIdx === -1) return;
+        order.splice(fromIdx, 1);
+        order.splice(toIdx, 0, draggedFolderId);
+
+        // Optimistically re-order locally so the sidebar doesn't wait on
+        // the round-trip, then sync sort_order values from the new order.
+        order.forEach((id, idx) => { const f = getFolder(id); if (f) f.sort_order = idx; });
+        renderFolderNav();
+
+        try {
+            const res  = await fetch('/api/hkmail/folders/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order })
+            });
+            const data = await res.json();
+            if (!data.success) { showToast(data.message || 'Could not save folder order.'); await loadFolders(); }
+        } catch {
+            await loadFolders();
+        }
+    }
+
+    function folderDragEnd(evt) {
+        evt.currentTarget.classList.remove('dragging');
+        draggedFolderId = null;
+        document.querySelectorAll('.folder-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+    }
+
+    // Options for the "Move to folder" pickers — every folder mail can
+    // actually be filed into, i.e. every RECEIVED_KINDS folder.
+    function movableFolderOptions(excludeId) {
+        return [...folders]
+            .filter(f => isReceivedKind(f.kind) && f.id !== excludeId)
+            .sort((a, b) => a.sort_order - b.sort_order);
+    }
+
     // ── Folder loading ─────────────────────────────────────────────────────────
     async function loadFolder(folder) {
+        if (folder === null || folder === undefined) return;
         currentFolder = folder;
         currentEmailId = null;
         selectedIds = new Set();
         hideEmailView();
 
         // Update nav
-        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-        document.getElementById('nav-' + folder).classList.add('active');
+        renderFolderNav();
 
-        const titles = { inbox: 'Inbox', sent: 'Sent', trash: 'Trash' };
-        document.getElementById('folder-title').textContent = titles[folder] || folder;
+        document.getElementById('folder-title').textContent = currentFolderName() || 'Folder';
 
         const listEl = document.getElementById('email-list');
         listEl.innerHTML = '<div class="empty-state"><p>Loading…</p></div>';
 
         try {
-            const res  = await fetch('/api/hkmail/' + folder);
+            const res  = await fetch('/api/hkmail/folder/' + folder);
             const data = await res.json();
             if (!data.success) { listEl.innerHTML = '<div class="empty-state"><p>Failed to load.</p></div>'; return; }
 
@@ -1937,23 +2352,19 @@
         selectedIds = new Set(Array.from(selectedIds).filter(id => idsOnScreen.has(id)));
         updateSelectionUI();
 
+        const kind = currentFolderKind();
         if (!emails.length) {
-            const icons = {
-                inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
-                sent:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
-                trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
-            };
-            listEl.innerHTML = `<div class="empty-state">${icons[currentFolder] || ''}<p>Nothing here yet.</p></div>`;
+            listEl.innerHTML = `<div class="empty-state">${folderIconSvg(kind)}<p>Nothing here yet.</p></div>`;
             return;
         }
 
         listEl.innerHTML = emails.map(e => {
-            const isUnread = currentFolder === 'inbox' && !e.read;
+            const isUnread = isReceivedKind(kind) && !e.read;
             const isSelected = selectedIds.has(e.id);
-            const displayName = currentFolder === 'sent' ? (e.to || '') : (e.from || '');
-            const label = currentFolder === 'sent' ? `To: ${displayName}` : displayName;
+            const displayName = kind === 'sent' ? (e.to || '') : (e.from || '');
+            const label = kind === 'sent' ? `To: ${displayName}` : displayName;
             const dateStr = formatDate(e.date);
-            const badges = currentFolder === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier, e.from_is_verified_business);
+            const badges = kind === 'sent' ? '' : senderBadges(e.from_is_admin, e.from_is_verified, e.from_is_premium, e.from_premium_label, e.from_premium_tier, e.from_is_verified_business);
             const clip = e.attachment_count > 0
                 ? `<span class="email-subject-clip" title="${e.attachment_count} attachment${e.attachment_count !== 1 ? 's' : ''}">
                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"
@@ -2027,14 +2438,25 @@
 
         document.getElementById('selection-count').textContent = `${count} selected`;
 
+        const kind = currentFolderKind();
         let actions = '';
-        if (currentFolder === 'inbox') {
+        if (isReceivedKind(kind)) {
             actions += `<button type="button" class="selection-btn" onclick="bulkMarkRead(true)">Mark read</button>`;
             actions += `<button type="button" class="selection-btn" onclick="bulkMarkRead(false)">Mark unread</button>`;
+            actions += kind === 'spam'
+                ? `<button type="button" class="selection-btn" onclick="bulkReportSpam(false)">Not spam</button>`
+                : `<button type="button" class="selection-btn" onclick="bulkReportSpam(true)">Report spam</button>`;
+            actions += `<select class="selection-btn folder-select" onchange="bulkMoveToFolder(this.value); this.selectedIndex=0;">
+                <option value="" selected disabled>Move to folder…</option>
+                ${movableFolderOptions(currentFolder).map(f => `<option value="${f.id}">${escHtml(f.name)}</option>`).join('')}
+            </select>`;
             actions += `<button type="button" class="selection-btn danger" onclick="bulkDelete()">Move to Trash</button>`;
-        } else if (currentFolder === 'sent') {
+            if (kind === 'spam') {
+                actions += `<button type="button" class="selection-btn danger" onclick="bulkPermanentDelete()">Delete permanently</button>`;
+            }
+        } else if (kind === 'sent') {
             actions += `<button type="button" class="selection-btn danger" onclick="bulkDelete()">Move to Trash</button>`;
-        } else if (currentFolder === 'trash') {
+        } else if (kind === 'trash') {
             actions += `<button type="button" class="selection-btn success" onclick="bulkRestore()">Restore</button>`;
             actions += `<button type="button" class="selection-btn danger" onclick="bulkPermanentDelete()">Delete permanently</button>`;
         }
@@ -2075,7 +2497,7 @@
         if (!ids.length) return;
         await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/restore', { method: 'POST' })));
         showToast(`Restored ${ids.length} message${ids.length !== 1 ? 's' : ''}.`);
-        await loadFolder('trash');
+        await loadFolder(currentFolder);
     }
 
     async function bulkPermanentDelete() {
@@ -2084,7 +2506,41 @@
         if (!confirm(`Permanently delete ${ids.length} message${ids.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
         await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/delete-permanent', { method: 'POST' })));
         showToast(`Permanently deleted ${ids.length} message${ids.length !== 1 ? 's' : ''}.`);
-        await loadFolder('trash');
+        await loadFolder(currentFolder);
+        refreshUnread();
+    }
+
+    // "Report spam" moves selected mail into the Spam folder; "Not spam"
+    // moves it back to Inbox (folder_id omitted = Inbox, per /move's API).
+    async function bulkReportSpam(toSpam) {
+        const ids = Array.from(selectedIds);
+        if (!ids.length) return;
+        const spamFolder = folders.find(f => f.kind === 'spam');
+        if (toSpam && !spamFolder) return;
+        await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: toSpam ? spamFolder.id : null })
+        })));
+        showToast(toSpam
+            ? `Reported ${ids.length} message${ids.length !== 1 ? 's' : ''} as spam.`
+            : `Marked ${ids.length} message${ids.length !== 1 ? 's' : ''} as not spam.`);
+        await loadFolder(currentFolder);
+        refreshUnread();
+    }
+
+    async function bulkMoveToFolder(folderId) {
+        const ids = Array.from(selectedIds);
+        if (!ids.length || !folderId) return;
+        const target = getFolder(Number(folderId));
+        await Promise.all(ids.map(id => fetch('/api/hkmail/email/' + id + '/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: Number(folderId) })
+        })));
+        showToast(`Moved ${ids.length} message${ids.length !== 1 ? 's' : ''} to ${target ? target.name : 'folder'}.`);
+        await loadFolder(currentFolder);
+        refreshUnread();
     }
 
     // ── Open email ─────────────────────────────────────────────────────────────
@@ -2114,14 +2570,14 @@
     }
 
     function renderEmailView(e) {
-        const isInbox = currentFolder === 'inbox';
-        const isSent  = currentFolder === 'sent';
-        const isTrash = currentFolder === 'trash';
+        const kind = currentFolderKind();
+        const isReceived = isReceivedKind(kind);
+        const isTrash = kind === 'trash';
 
         let actions = '';
 
         if (!isTrash) {
-            if (isInbox) {
+            if (isReceived) {
                 actions += `<button class="action-btn" onclick="replyTo('${escHtml(e.from)}','${escHtml(e.subject)}')">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
                     Reply
@@ -2129,11 +2585,24 @@
                 actions += `<button class="action-btn" onclick="toggleRead(${e.id}, ${e.read ? 0 : 1})">
                     ${e.read ? 'Mark unread' : 'Mark read'}
                 </button>`;
+                actions += kind === 'spam'
+                    ? `<button class="action-btn" onclick="reportSpam(${e.id}, false)">Not spam</button>`
+                    : `<button class="action-btn" onclick="reportSpam(${e.id}, true)">Report spam</button>`;
+                const moveOptions = movableFolderOptions(currentFolder);
+                if (moveOptions.length) {
+                    actions += `<select class="action-btn folder-select" onchange="moveEmailToFolder(${e.id}, this.value)">
+                        <option value="" selected disabled>Move to folder…</option>
+                        ${moveOptions.map(f => `<option value="${f.id}">${escHtml(f.name)}</option>`).join('')}
+                    </select>`;
+                }
             }
             actions += `<button class="action-btn danger" onclick="deleteEmail(${e.id})">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                 Move to Trash
             </button>`;
+            if (kind === 'spam') {
+                actions += `<button class="action-btn danger" onclick="permanentDelete(${e.id})">Delete permanently</button>`;
+            }
         } else {
             actions += `<button class="action-btn success" onclick="restoreEmail(${e.id})">Restore</button>`;
             actions += `<button class="action-btn danger" onclick="permanentDelete(${e.id})">Delete permanently</button>`;
@@ -2231,7 +2700,7 @@
         const res  = await fetch('/api/hkmail/email/' + id + '/restore', { method: 'POST' });
         const data = await res.json();
         showToast(data.message || 'Restored.');
-        await loadFolder('trash');
+        await loadFolder(currentFolder);
     }
 
     async function permanentDelete(id) {
@@ -2239,22 +2708,46 @@
         const res  = await fetch('/api/hkmail/email/' + id + '/delete-permanent', { method: 'POST' });
         const data = await res.json();
         showToast(data.message || 'Deleted.');
-        await loadFolder('trash');
+        await loadFolder(currentFolder);
+        refreshUnread();
     }
 
-    // ── Unread badge ───────────────────────────────────────────────────────────
+    // "Report spam" files a single received email into Spam; "Not spam"
+    // (shown while viewing Spam) files it back to Inbox.
+    async function reportSpam(id, toSpam) {
+        const spamFolder = folders.find(f => f.kind === 'spam');
+        if (toSpam && !spamFolder) return;
+        const res  = await fetch('/api/hkmail/email/' + id + '/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: toSpam ? spamFolder.id : null })
+        });
+        const data = await res.json();
+        showToast(data.message || (toSpam ? 'Reported as spam.' : 'Marked as not spam.'));
+        await loadFolder(currentFolder);
+        refreshUnread();
+    }
+
+    async function moveEmailToFolder(id, folderId) {
+        if (!folderId) return;
+        const target = getFolder(Number(folderId));
+        const res  = await fetch('/api/hkmail/email/' + id + '/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder_id: Number(folderId) })
+        });
+        const data = await res.json();
+        showToast(data.message || `Moved to ${target ? target.name : 'folder'}.`);
+        await loadFolder(currentFolder);
+        refreshUnread();
+    }
+
+    // ── Unread badges ──────────────────────────────────────────────────────────
+    // Sidebar badges live on the folders themselves now (unread_count from
+    // /api/hkmail/folders), so "refreshing unread" just means re-syncing
+    // the folder list — this keeps the name call sites already use.
     async function refreshUnread() {
-        try {
-            const res  = await fetch('/api/hkmail/unread-count');
-            const data = await res.json();
-            const badge = document.getElementById('unread-badge');
-            if (data.count > 0) {
-                badge.textContent = data.count;
-                badge.classList.add('visible');
-            } else {
-                badge.classList.remove('visible');
-            }
-        } catch {}
+        await loadFolders();
     }
 
     function updateNotificationBadge(badgeId, count) {
@@ -2659,6 +3152,8 @@
     function openCompose() {
         clearComposeMsg();
         document.getElementById('compose-modal').classList.add('open');
+        document.getElementById('c-deliver-row').style.display = canDeliverToUpdates ? 'flex' : 'none';
+        document.getElementById('c-deliver-to').value = 'inbox';
         document.getElementById('c-to').focus();
     }
 
@@ -2719,6 +3214,10 @@
                 also_attach: true
             })));
 
+            const deliverTo = canDeliverToUpdates
+                ? (document.getElementById('c-deliver-to').value || 'inbox')
+                : 'inbox';
+
             const res = await fetch('/api/hkmail/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2726,6 +3225,7 @@
                     recipient: to, subject,
                     body: clone.innerHTML,
                     body_format: 'html',
+                    deliver_to: deliverTo,
                     attachments: [
                         ...encoded,
                         ...composeAttachments.map(a => ({
@@ -2745,7 +3245,8 @@
                 renderComposeAttachments();
                 setTimeout(() => {
                     closeCompose();
-                    if (currentFolder === 'sent') loadFolder('sent');
+                    if (currentFolderKind() === 'sent') loadFolder(currentFolder);
+                    refreshUnread();
                     showToast('Message sent!');
                 }, 1200);
             } else {
@@ -2958,7 +3459,7 @@
                 document.getElementById('s-body').value = '';
                 setTimeout(() => {
                     closeSupportModal();
-                    if (currentFolder === 'inbox') loadFolder('inbox');
+                    if (currentFolderKind() === 'inbox') loadFolder(currentFolder);
                     refreshUnread();
                     showToast('Support request sent!');
                 }, 1200);
@@ -3756,10 +4257,13 @@
     });
 
     // ── Silent auto-refresh (doesn't close whatever email is open) ──────────────
-    async function silentRefreshInbox() {
-        if (currentFolder !== 'inbox') { refreshUnread(); return; }
+    async function silentRefreshCurrentFolder() {
+        // Sent/Trash aren't filing targets for incoming mail, so there's
+        // nothing new to silently pull in there — just keep sidebar badges
+        // (unread counts across every folder) current.
+        if (!isReceivedKind(currentFolderKind()) || currentFolder === null) { refreshUnread(); return; }
         try {
-            const res  = await fetch('/api/hkmail/inbox');
+            const res  = await fetch('/api/hkmail/folder/' + currentFolder);
             const data = await res.json();
             if (!data.success) return;
 
@@ -3783,9 +4287,9 @@
         refreshUnread();
     }
 
-    // Auto-refresh inbox every 30s
+    // Auto-refresh the open folder (and sidebar badges) every 30s
     setInterval(() => {
-        silentRefreshInbox();
+        silentRefreshCurrentFolder();
     }, 30000);
 </script>
 
