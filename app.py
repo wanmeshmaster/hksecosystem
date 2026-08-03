@@ -619,8 +619,8 @@ def bank_account_snapshot_text(cur, username):
 @app.route('/')
 def home():
     apps = [
-        {'id': 'hks-bank',    'title': '',       'url': '/hks-bank.html'},
-        {'id': 'hkmail',      'title': '',          'url': '/hkmail.html'},
+        {'id': 'hks-bank',    'title': 'HKS Bank',       'url': '/hks-bank.html'},
+        {'id': 'hkmail',      'title': 'HKMail',          'url': '/hkmail.html'},
         {'id': 'snackshop',   'title': 'SnackShop',  'url': '/snackshop.html'},
         {'id': 'appstore',    'title': 'App Store',  'url': '/appstore.html'},
     ]
@@ -638,11 +638,17 @@ def coming_soon():
 def appstore_home():
     apps = [
         {'id': 'hks-bank',  'title': 'HKS Bank',  'url': '/hks-bank.html',
-         'description': 'Accounts, cards, and payments for the ecosystem.'},
+         'description': 'Accounts, cards, and payments for the ecosystem.',
+         'developer': 'Hong Kong Solutions Ltd.', 'verified': 'official',
+         'category': 'Finance', 'downloads': '4.1k+', 'published': 'Jan 2026'},
         {'id': 'hkmail',    'title': 'HKMail',    'url': '/hkmail.html',
-         'description': 'Email for every HK OS account.'},
+         'description': 'Email for every HK OS account.',
+         'developer': 'Hong Kong Solutions Ltd.', 'verified': 'official',
+         'category': 'Productivity', 'downloads': '5.8k+', 'published': 'Jan 2026'},
         {'id': 'snackshop', 'title': 'SnackShop', 'url': '/snackshop.html',
-         'description': 'Order snacks and drinks, paid for with HKS Bank.'},
+         'description': 'Order snacks and drinks, paid for with HKS Bank.',
+         'developer': 'SnackShop Co.', 'verified': 'verified',
+         'category': 'Shopping', 'downloads': '2.3k+', 'published': 'Mar 2026'},
     ]
     for a in apps:
         img = f"{a['id']}.jpg"
