@@ -44,7 +44,7 @@
             min-height: 100vh;
             color: var(--text-primary);
 
-            background-image: url('/source/main_bg.png');
+            background-image: url('/source/appstore.jpg');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -369,6 +369,36 @@
             padding-top: 4px;
         }
 
+        /* ── Footer ──────────────────────────────────────────────────── */
+
+        .store-footer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 20px 24px 26px;
+            border-top: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(140%);
+            -webkit-backdrop-filter: blur(18px) saturate(140%);
+        }
+
+        .store-footer a {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            transition: color 0.15s ease;
+        }
+
+        .store-footer a:hover { color: var(--accent); }
+
+        .store-footer .footer-dot {
+            color: var(--text-tertiary);
+            opacity: 0.5;
+            font-size: 0.7rem;
+        }
+
         /* ── Modals ──────────────────────────────────────────────────── */
 
         .modal-overlay {
@@ -572,6 +602,7 @@
             .app-card-icon { width: 48px; height: 48px; border-radius: 13px; }
             .status-pill { padding: 6px 11px; font-size: 0.68rem; }
             .account-name { max-width: 90px; }
+            .store-footer { padding: 16px 16px 20px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -585,7 +616,7 @@
 <body>
 
     <div id="introScreen" class="intro-screen" aria-hidden="true">
-        <img src="/source/appstore.jpg" alt="" class="intro-logo" id="introLogoImg">
+        <img src="/source/appstore-logo.jpg" alt="" class="intro-logo" id="introLogoImg">
         <span class="intro-logo-fallback font-display" id="introLogoFallback" hidden>App Store</span>
     </div>
     <script>
@@ -665,6 +696,12 @@
             <p class="store-empty-note">That's everything for now — check back for new listings.</p>
         </section>
     </main>
+
+    <footer class="store-footer">
+        <a href="/appstore-help.html">Help</a>
+        <span class="footer-dot">&bull;</span>
+        <a href="/appstore-terms.html">Terms &amp; Conditions</a>
+    </footer>
 
     <!-- Sign Up modal (email → verification code) -->
     <div id="signUpModal" class="modal-overlay">
