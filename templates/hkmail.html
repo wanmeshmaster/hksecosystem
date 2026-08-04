@@ -519,12 +519,28 @@
             clearMsgs();
         }
 
-        // Where to send the user after a successful sign-in. If they were
-        // bounced here from a mailto: link (via ?next=compose&to=...), send
-        // them back to the inbox with those params intact so compose reopens
-        // automatically instead of dropping them on an empty inbox.
+        // Where to send the user after a successful sign-in.
+        //
+        // Other apps in the ecosystem (e.g. App Store, which has no login
+        // page of its own) send users here with ?return_to=<path> and expect
+        // to land back where they started once they're signed in — this is
+        // the whole mechanism behind "App Store uses the HKMail login page."
+        // Only an internal, same-origin path is honored (must start with a
+        // single "/", not "//") so this can't be turned into an open
+        // redirect to an arbitrary external site.
+        //
+        // Absent that, if they were bounced here from a mailto: link (via
+        // ?next=compose&to=...), send them back to the inbox with those
+        // params intact so compose reopens automatically instead of
+        // dropping them on an empty inbox.
         function getPostSignInUrl() {
             const params = new URLSearchParams(window.location.search);
+
+            const returnTo = params.get('return_to');
+            if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+                return returnTo;
+            }
+
             if (params.get('next') !== 'compose') return '/hkmail-inbox.html';
             params.delete('next');
             return '/hkmail-inbox.html?' + params.toString();

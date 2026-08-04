@@ -495,8 +495,7 @@
 
         <div class="topbar-right">
             <div class="signed-out-controls" id="signedOutControls">
-                <a class="btn" href="/appstore.html">Sign In</a>
-                <a class="btn btn-solid" href="/appstore.html">Create Account</a>
+                <a class="btn btn-solid" id="signInWithHkmailLink" href="/hkmail.html">Sign in with HKMail</a>
             </div>
             <div class="account-chip" id="accountChip">
                 <span class="account-avatar" id="accountAvatar">A</span>
@@ -589,6 +588,14 @@
         $("openBtn").onclick = function () {
             window.location.href = "{{ app.url }}";
         };
+
+        // Sign in is delegated entirely to HKMail — send the browser to
+        // HKMail's login page and have it bounce back to this exact app
+        // listing once signed in.
+        (function () {
+            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+            $("signInWithHkmailLink").href = "/hkmail.html?return_to=" + returnTo;
+        })();
 
         function applySignedIn(email, fullName) {
             $("signedOutControls").classList.add("hide");

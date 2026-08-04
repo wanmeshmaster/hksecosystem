@@ -720,8 +720,7 @@
 
         <div class="topbar-right">
             <div class="signed-out-controls" id="signedOutControls">
-                <button class="btn" id="openSignInBtn" type="button">Sign In</button>
-                <button class="btn btn-solid" id="openSignUpBtn" type="button">Create Account</button>
+                <button class="btn btn-solid" id="signInWithHkmailBtn" type="button">Sign in with HKMail</button>
             </div>
             <div class="account-chip" id="accountChip">
                 <span class="account-avatar" id="accountAvatar">A</span>
@@ -773,74 +772,6 @@
         <a href="/appstore-terms.html">Terms &amp; Conditions</a>
     </footer>
 
-    <!-- Sign Up modal (email → verification code) -->
-    <div id="signUpModal" class="modal-overlay">
-        <div class="modal-content">
-            <button class="close-btn" id="closeSignUpBtn" type="button" aria-label="Close">&times;</button>
-
-            <div id="signUpStepDetails">
-                <h2 class="font-display">Create your account</h2>
-                <p class="modal-sub">Use your HKMail address. We'll email a code to verify it.</p>
-                <div class="modal-error" id="signUpError"></div>
-                <form id="signUpForm">
-                    <div class="field">
-                        <label for="signUpEmail">HKMail address</label>
-                        <input type="text" id="signUpEmail" name="email" placeholder="name@yourdomain.com" autocomplete="email" required>
-                    </div>
-                    <div class="field">
-                        <label for="signUpFullName">Full name (optional)</label>
-                        <input type="text" id="signUpFullName" name="full_name" placeholder="Jane Doe" autocomplete="name">
-                    </div>
-                    <div class="field">
-                        <label for="signUpPassword">Password</label>
-                        <input type="password" id="signUpPassword" name="password" placeholder="At least 6 characters" autocomplete="new-password" required>
-                    </div>
-                    <button type="submit" class="modal-submit" id="signUpSubmitBtn">Send verification code</button>
-                </form>
-                <p class="modal-footer-note">Already have an account? <button type="button" id="switchToSignInBtn">Sign in</button></p>
-            </div>
-
-            <div id="signUpStepVerify" hidden>
-                <h2 class="font-display">Check your inbox</h2>
-                <p class="modal-sub">We sent a verification code to <strong id="verifyEmailLabel"></strong>. Enter it below to finish creating your account.</p>
-                <div class="modal-error" id="verifyError"></div>
-                <form id="verifyForm">
-                    <div class="field">
-                        <label for="verifyCode">Verification code</label>
-                        <input type="text" id="verifyCode" name="code" class="code-input" placeholder="········" maxlength="8" autocomplete="one-time-code" required>
-                    </div>
-                    <div class="resend-row">
-                        <button type="button" id="resendCodeBtn">Resend code</button>
-                        <button type="button" id="backToDetailsBtn">Use a different email</button>
-                    </div>
-                    <button type="submit" class="modal-submit" id="verifySubmitBtn">Verify &amp; create account</button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Sign In modal -->
-    <div id="signInModal" class="modal-overlay">
-        <div class="modal-content">
-            <button class="close-btn" id="closeSignInBtn" type="button" aria-label="Close">&times;</button>
-            <h2 class="font-display">Sign in</h2>
-            <p class="modal-sub">Sign in to your App Store account.</p>
-            <div class="modal-error" id="signInError"></div>
-            <form id="signInForm">
-                <div class="field">
-                    <label for="signInEmail">HKMail address</label>
-                    <input type="text" id="signInEmail" name="email" placeholder="name@yourdomain.com" autocomplete="email" required>
-                </div>
-                <div class="field">
-                    <label for="signInPassword">Password</label>
-                    <input type="password" id="signInPassword" name="password" placeholder="Your password" autocomplete="current-password" required>
-                </div>
-                <button type="submit" class="modal-submit" id="signInSubmitBtn">Sign in</button>
-            </form>
-            <p class="modal-footer-note">New here? <button type="button" id="switchToSignUpBtn">Create an account</button></p>
-        </div>
-    </div>
-
     <div class="toast" id="toast"></div>
 
     <script>
@@ -872,139 +803,14 @@
             return { ok: res.ok, data: data };
         }
 
-        // ── Modal open/close ───────────────────────────────────────────
-        const signUpModal = $("signUpModal");
-        const signInModal = $("signInModal");
-
-        function openModal(modal) { modal.classList.add("show"); }
-        function closeModal(modal) { modal.classList.remove("show"); }
-
-        function resetSignUpModal() {
-            $("signUpStepDetails").hidden = false;
-            $("signUpStepVerify").hidden = true;
-            setError($("signUpError"), "");
-            setError($("verifyError"), "");
-            $("signUpForm").reset();
-            $("verifyForm").reset();
-        }
-
-        $("openSignUpBtn").onclick = function () { resetSignUpModal(); openModal(signUpModal); };
-        $("closeSignUpBtn").onclick = function () { closeModal(signUpModal); };
-        $("openSignInBtn").onclick = function () { setError($("signInError"), ""); $("signInForm").reset(); openModal(signInModal); };
-        $("closeSignInBtn").onclick = function () { closeModal(signInModal); };
-
-        $("switchToSignInBtn").onclick = function () {
-            closeModal(signUpModal);
-            setError($("signInError"), "");
-            openModal(signInModal);
+        // ── Sign in (delegated to HKMail — App Store has no login form of
+        // its own). Clicking through sends the browser to HKMail's own
+        // login page with a return_to pointing back here; HKMail signs the
+        // person in against its own user table and bounces them right back.
+        $("signInWithHkmailBtn").onclick = function () {
+            const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+            window.location.href = "/hkmail.html?return_to=" + returnTo;
         };
-        $("switchToSignUpBtn").onclick = function () {
-            closeModal(signInModal);
-            resetSignUpModal();
-            openModal(signUpModal);
-        };
-
-        window.addEventListener("click", function (e) {
-            if (e.target === signUpModal) closeModal(signUpModal);
-            if (e.target === signInModal) closeModal(signInModal);
-        });
-
-        // ── Sign up: step 1 — send verification code ───────────────────
-        $("signUpForm").addEventListener("submit", async function (e) {
-            e.preventDefault();
-            setError($("signUpError"), "");
-            const email = $("signUpEmail").value.trim();
-            const fullName = $("signUpFullName").value.trim();
-            const password = $("signUpPassword").value;
-            const btn = $("signUpSubmitBtn");
-
-            btn.disabled = true;
-            btn.textContent = "Sending code…";
-
-            const { ok, data } = await postJSON("/api/appstore/register", {
-                email: email, full_name: fullName, password: password
-            });
-
-            btn.disabled = false;
-            btn.textContent = "Send verification code";
-
-            if (!ok || !data.success) {
-                setError($("signUpError"), (data && data.message) || "Something went wrong. Please try again.");
-                return;
-            }
-
-            $("verifyEmailLabel").textContent = data.email;
-            $("signUpStepDetails").hidden = true;
-            $("signUpStepVerify").hidden = false;
-        });
-
-        // ── Sign up: step 2 — confirm code ──────────────────────────────
-        $("verifyForm").addEventListener("submit", async function (e) {
-            e.preventDefault();
-            setError($("verifyError"), "");
-            const code = $("verifyCode").value.trim();
-            const btn = $("verifySubmitBtn");
-
-            btn.disabled = true;
-            btn.textContent = "Verifying…";
-
-            const { ok, data } = await postJSON("/api/appstore/register/confirm", { code: code });
-
-            btn.disabled = false;
-            btn.textContent = "Verify & create account";
-
-            if (!ok || !data.success) {
-                setError($("verifyError"), (data && data.message) || "Something went wrong. Please try again.");
-                return;
-            }
-
-            closeModal(signUpModal);
-            showToast("Account created — you're signed in.");
-            applySignedIn(data.email, data.fullName);
-        });
-
-        $("resendCodeBtn").onclick = async function () {
-            const btn = $("resendCodeBtn");
-            btn.disabled = true;
-            const { ok, data } = await postJSON("/api/appstore/register/resend", {});
-            btn.disabled = false;
-            if (ok && data.success) {
-                showToast(data.message || "A new code was sent.");
-            } else {
-                setError($("verifyError"), (data && data.message) || "Couldn't resend the code.");
-            }
-        };
-
-        $("backToDetailsBtn").onclick = async function () {
-            await postJSON("/api/appstore/register/cancel", {});
-            resetSignUpModal();
-        };
-
-        // ── Sign in ──────────────────────────────────────────────────
-        $("signInForm").addEventListener("submit", async function (e) {
-            e.preventDefault();
-            setError($("signInError"), "");
-            const email = $("signInEmail").value.trim();
-            const password = $("signInPassword").value;
-            const btn = $("signInSubmitBtn");
-
-            btn.disabled = true;
-            btn.textContent = "Signing in…";
-
-            const { ok, data } = await postJSON("/api/appstore/login", { email: email, password: password });
-
-            btn.disabled = false;
-            btn.textContent = "Sign in";
-
-            if (!ok || !data.success) {
-                setError($("signInError"), (data && data.message) || "Something went wrong. Please try again.");
-                return;
-            }
-
-            closeModal(signInModal);
-            showToast("Welcome back!");
-            applySignedIn(data.email, data.fullName);
-        });
 
         // ── Sign out ─────────────────────────────────────────────────
         $("signOutBtn").onclick = async function () {
