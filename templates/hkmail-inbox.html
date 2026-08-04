@@ -1299,6 +1299,7 @@
         .req-table tr:last-child td { border-bottom: none; }
         .req-status-pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
         .req-status-pending { background: #FDF0D5; color: #8A5B00; }
+        .req-status-needs_info { background: #FCE4C6; color: #9A5200; }
         .req-status-approved { background: #DCEEDD; color: #1A7A3C; }
         .req-status-completed { background: #DCEEDD; color: #1A7A3C; }
         .req-status-rejected { background: #FBE0E2; color: var(--red-dk); }
@@ -1313,6 +1314,8 @@
         .req-reject-btn:hover { background: var(--red-dk); }
         .req-reinstate-btn { background: var(--navy); }
         .req-reinstate-btn:hover { background: var(--navy-lt); }
+        .req-message-btn { background: transparent; border: 1px solid var(--border); color: var(--navy); }
+        .req-message-btn:hover { background: var(--bg); }
         .req-empty { color: var(--muted); font-size: 0.82rem; padding: 14px 0; }
         .req-audit-log { max-height: 200px; overflow-y: auto; font-size: 0.78rem; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fff; }
         .req-audit-entry { padding: 7px 0; border-bottom: 1px solid var(--border); color: var(--navy); }
@@ -1843,10 +1846,12 @@
                     <option value="password_reset">Password reset</option>
                     <option value="account_deletion">Account deletion</option>
                     <option value="business_account">Business account</option>
+                    <option value="developer_license">App Store developer license</option>
                 </select>
                 <select class="c-input" id="req-filter-status" onchange="loadSupportRequests()">
                     <option value="">All statuses</option>
                     <option value="pending">Pending</option>
+                    <option value="needs_info">Needs more info</option>
                     <option value="approved">Approved</option>
                     <option value="completed">Completed</option>
                     <option value="rejected">Rejected</option>
@@ -3595,11 +3600,25 @@
                     <div><strong>Custom domain:</strong> ${r.custom_domain ? escHtml(r.custom_domain) : '<span style="color:var(--muted);">None — using @hkmail.cn</span>'}</div>
                 </div>`;
             }
+            if (r.request_type === 'developer_license') {
+                messageHtml += `<div style="margin-top:8px;">
+                    <div><strong>Name:</strong> ${escHtml(r.first_name || '—')} ${escHtml(r.last_name || '')}</div>
+                    <div><strong>Company:</strong> ${escHtml(r.company_name || '—')}</div>
+                    <div><strong>Business type:</strong> ${escHtml(r.business_type_label || '—')}</div>
+                    <div><strong>Address:</strong> ${escHtml(r.company_address || '—')}</div>
+                    <div><strong>Phone:</strong> ${escHtml(r.phone_number || '—')}</div>
+                    <div><strong>Contact email:</strong> ${escHtml(r.contact_email || '—')}</div>
+                    <div><strong>License fee:</strong> $${Number(r.license_fee || 0).toFixed(2)}/year —
+                        <span style="color:${r.payment_status === 'paid' ? 'var(--navy)' : 'var(--red)'};">${r.payment_status === 'paid' ? 'Paid' : 'Unpaid'}</span>
+                    </div>
+                </div>`;
+            }
             document.getElementById('req-detail-message').innerHTML = messageHtml;
 
             const actions = document.getElementById('req-detail-actions');
             actions.innerHTML = '';
-            if (r.status === 'pending' && r.request_type === 'account_deletion') {
+            const isDecidable = (r.status === 'pending' || r.status === 'needs_info');
+            if (isDecidable && r.request_type === 'account_deletion') {
                 const approveBtn = document.createElement('button');
                 approveBtn.className = 'req-action-btn req-approve-btn';
                 approveBtn.textContent = 'Approve deletion (30-day window)';
@@ -3610,10 +3629,21 @@
                 rejectBtn.textContent = 'Reject';
                 rejectBtn.onclick = () => rejectSupportRequest(requestId);
                 actions.appendChild(rejectBtn);
-            } else if (r.status === 'pending' && r.request_type === 'business_account') {
+            } else if (isDecidable && r.request_type === 'business_account') {
                 const approveBtn = document.createElement('button');
                 approveBtn.className = 'req-action-btn req-approve-btn';
                 approveBtn.textContent = 'Approve — grant Verified Business badge';
+                approveBtn.onclick = () => approveSupportRequest(requestId);
+                actions.appendChild(approveBtn);
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'req-action-btn req-reject-btn';
+                rejectBtn.textContent = 'Reject';
+                rejectBtn.onclick = () => rejectSupportRequest(requestId);
+                actions.appendChild(rejectBtn);
+            } else if (isDecidable && r.request_type === 'developer_license') {
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'req-action-btn req-approve-btn';
+                approveBtn.textContent = 'Approve — grant Developer License';
                 approveBtn.onclick = () => approveSupportRequest(requestId);
                 actions.appendChild(approveBtn);
                 const rejectBtn = document.createElement('button');
@@ -3627,6 +3657,13 @@
                 reinstateBtn.textContent = 'Reinstate account';
                 reinstateBtn.onclick = () => reinstateSupportRequest(requestId);
                 actions.appendChild(reinstateBtn);
+            }
+            if (isDecidable && r.request_type !== 'password_reset') {
+                const messageBtn = document.createElement('button');
+                messageBtn.className = 'req-action-btn req-message-btn';
+                messageBtn.textContent = r.status === 'needs_info' ? 'Ask for more info again' : 'Ask for more info';
+                messageBtn.onclick = () => messageSupportRequest(requestId);
+                actions.appendChild(messageBtn);
             }
 
             const log = document.getElementById('req-audit-log');
@@ -3685,6 +3722,32 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ note: (note || '').trim() })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'ok' : 'err');
+            if (data.success) {
+                showToast(data.message);
+                await loadSupportRequests();
+                await openSupportRequestDetail(requestId);
+            }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg err';
+        }
+    }
+
+    async function messageSupportRequest(requestId) {
+        const note = window.prompt('Message to send the applicant (emailed, and the request moves to "Needs More Info"):');
+        if (note === null) return;
+        const trimmed = (note || '').trim();
+        if (!trimmed) { showToast('A message is required.'); return; }
+        const msg = document.getElementById('req-detail-msg');
+        try {
+            const res  = await fetch(`/api/hkmail/admin/support-requests/${requestId}/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: trimmed })
             });
             const data = await res.json();
             msg.textContent = data.message || '';

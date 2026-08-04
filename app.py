@@ -244,10 +244,11 @@ APPSTORE_MAIL_DEFAULT_PASSWORD = "AppStoreSys159!"
 # eligible for permanent deletion.
 ACCOUNT_DELETION_GRACE_DAYS = 30
 
-MAIL_SUPPORT_REQUEST_TYPES = ("password_reset", "account_deletion", "business_account")
-MAIL_SUPPORT_REQUEST_STATUSES = ("pending", "approved", "rejected", "completed", "cancelled")
+MAIL_SUPPORT_REQUEST_TYPES = ("password_reset", "account_deletion", "business_account", "developer_license")
+MAIL_SUPPORT_REQUEST_STATUSES = ("pending", "needs_info", "approved", "rejected", "completed", "cancelled")
 MAIL_SUPPORT_REQUEST_STATUS_LABELS = {
     "pending": "Pending Review",
+    "needs_info": "Needs More Info",
     "approved": "Approved",
     "rejected": "Rejected",
     "completed": "Completed",
@@ -257,6 +258,26 @@ MAIL_SUPPORT_REQUEST_TYPE_LABELS = {
     "password_reset": "Password Reset",
     "account_deletion": "Account Deletion",
     "business_account": "Business Account Verification",
+    "developer_license": "App Store Developer License",
+}
+
+# ── App Store: Developer License ──────────────────────────────────────────
+# $100/year, applied for from the App Store Developers page while signed in
+# via HKMail (App Store still has no accounts of its own — the application
+# is simply tied to whichever HKMail address was signed in when it was
+# submitted). Applications are reviewed through the exact same Account
+# Requests queue as password resets / deletions / business verification —
+# see request_type='developer_license' throughout this file.
+APP_STORE_DEVELOPER_LICENSE_FEE = 100.00
+APP_STORE_BUSINESS_TYPE_LABELS = {
+    "self_employed":  "Self-employed / Sole trader",
+    "partnership":     "Partnership",
+    "small_business":  "Small business",
+    "medium_business": "Medium business",
+    "large_business":  "Large business / Enterprise",
+    "corporation":     "Corporation",
+    "non_profit":      "Non-profit",
+    "other":           "Other",
 }
 
 
@@ -325,6 +346,19 @@ def hkmail_is_admin(email):
     conn = sqlite3.connect(MAIL_DATABASE)
     cur = conn.cursor()
     cur.execute("SELECT is_admin FROM mail_users WHERE username=?", (email,))
+    row = cur.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+def hkmail_is_app_developer(email):
+    """Return True if this HKMail address holds an approved App Store
+    Developer License. Same live-read pattern as hkmail_is_admin — the
+    badge lives on the HKMail account itself, granted when a
+    'developer_license' support request is approved."""
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT is_app_developer FROM mail_users WHERE username=?", (email,))
     row = cur.fetchone()
     conn.close()
     return bool(row and row[0])
@@ -2578,6 +2612,12 @@ def init_mail_db():
         # that chose to stay on @hkmail.cn. Domain ownership isn't verified
         # yet (HKMail isn't live), so any domain is accepted for now.
         "ALTER TABLE mail_users ADD COLUMN custom_domain TEXT NOT NULL DEFAULT ''",
+        # App Store Developer License. Mirrors is_verified_business in spirit:
+        # a badge read live off this same account rather than a separate
+        # App Store user table, granted when a 'developer_license' support
+        # request is approved (see hkmail_admin_approve_support_request).
+        "ALTER TABLE mail_users ADD COLUMN is_app_developer INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE mail_users ADD COLUMN developer_license_approved_at DATETIME",
     ]:
         try:
             cur.execute(stmt)
@@ -2776,6 +2816,24 @@ def init_mail_db():
         "ALTER TABLE mail_support_requests ADD COLUMN company_address TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE mail_support_requests ADD COLUMN company_phone TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE mail_support_requests ADD COLUMN custom_domain TEXT NOT NULL DEFAULT ''",
+        # Developer License application fields (request_type='developer_license').
+        # first_name/last_name are the applicant's own name, distinct from
+        # company_name above (reused as-is for the "Company name" field) and
+        # company_address (reused as-is for the "Address" field). Blank for
+        # every other request type.
+        "ALTER TABLE mail_support_requests ADD COLUMN first_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN last_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN business_type TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN phone_number TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE mail_support_requests ADD COLUMN contact_email TEXT NOT NULL DEFAULT ''",
+        # The $100/year fee: whether the applicant chose to pay immediately
+        # or asked to be emailed a payment link, and whether it's actually
+        # been paid yet. payment_status is derived live from HKS Bank's own
+        # transactions table (see refresh_developer_license_payment) rather
+        # than trusted from a client redirect — same principle the old
+        # coming-soon contribution bar used.
+        "ALTER TABLE mail_support_requests ADD COLUMN payment_choice TEXT NOT NULL DEFAULT 'later'",
+        "ALTER TABLE mail_support_requests ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'",
     ]:
         try:
             cur.execute(stmt)
@@ -3025,6 +3083,7 @@ def mail_support_requests_notification_count(cur):
         SELECT COUNT(*) FROM mail_support_requests
         WHERE (request_type='account_deletion' AND status='pending')
            OR (request_type='business_account' AND status='pending')
+           OR (request_type='developer_license' AND status IN ('pending', 'needs_info'))
            OR (
                request_type='account_deletion'
                AND status='approved'
@@ -3040,7 +3099,9 @@ def mail_support_request_to_dict(row):
     (req_id, req_number, username, req_type, status, message, verified,
      verified_at, decided_by, decided_at, created_at,
      reinstatement_requested_at, reinstatement_seen_at,
-     company_name, company_address, company_phone, custom_domain) = row
+     company_name, company_address, company_phone, custom_domain,
+     first_name, last_name, business_type, phone_number, contact_email,
+     payment_choice, payment_status) = row
     return {
         "id": req_id,
         "request_number": req_number,
@@ -3061,7 +3122,47 @@ def mail_support_request_to_dict(row):
         "company_address": company_address,
         "company_phone": company_phone,
         "custom_domain": custom_domain,
+        "first_name": first_name,
+        "last_name": last_name,
+        "business_type": business_type,
+        "business_type_label": APP_STORE_BUSINESS_TYPE_LABELS.get(business_type, business_type),
+        "phone_number": phone_number,
+        "contact_email": contact_email,
+        "payment_choice": payment_choice,
+        "payment_status": payment_status,
+        "license_fee": APP_STORE_DEVELOPER_LICENSE_FEE,
     }
+
+
+def refresh_developer_license_payment(mail_cur, request_number, payment_status):
+    """Live-check whether this developer license application's $100 fee has
+    been paid, the same way the old coming-soon contribution bar derived its
+    total: by looking directly at HKS Bank's own `transactions` table for a
+    matching payment, rather than trusting a client-side checkout redirect.
+    The request's own unique request_number is embedded in the checkout
+    description (see hks-bank-checkout.html usage below) and doubles as the
+    payment-matching token, so no separate reference column is needed.
+
+    Self-heals mail_support_requests.payment_status to 'paid' the first time
+    a match is found. Returns the up-to-date payment_status ('paid' or
+    'unpaid') for the caller to use immediately without a second read."""
+    if payment_status == "paid":
+        return "paid"
+    bank_conn = sqlite3.connect(DATABASE)
+    bank_cur = bank_conn.cursor()
+    bank_cur.execute(
+        "SELECT 1 FROM transactions WHERE title LIKE ? AND amount = ? LIMIT 1",
+        (f"%{request_number}%", -APP_STORE_DEVELOPER_LICENSE_FEE)
+    )
+    paid = bank_cur.fetchone() is not None
+    bank_conn.close()
+    if paid:
+        mail_cur.execute(
+            "UPDATE mail_support_requests SET payment_status='paid' WHERE request_number=?",
+            (request_number,)
+        )
+        return "paid"
+    return "unpaid"
 
 
 def _mail_days_remaining(scheduled_deletion_at):
@@ -4426,7 +4527,9 @@ def hkmail_my_support_requests():
         SELECT id, request_number, username, request_type, status, message, verified,
                verified_at, decided_by, decided_at, created_at,
                reinstatement_requested_at, reinstatement_seen_at,
-               company_name, company_address, company_phone, custom_domain
+               company_name, company_address, company_phone, custom_domain,
+               first_name, last_name, business_type, phone_number, contact_email,
+               payment_choice, payment_status
         FROM mail_support_requests WHERE username=? ORDER BY created_at DESC LIMIT 20
     """, (u,))
     rows = cur.fetchall()
@@ -4434,7 +4537,12 @@ def hkmail_my_support_requests():
 
     requests_out = []
     for row in rows:
-        requests_out.append(mail_support_request_to_dict(row))
+        d = mail_support_request_to_dict(row)
+        if d["request_type"] == "developer_license":
+            d["payment_status"] = refresh_developer_license_payment(cur, d["request_number"], d["payment_status"])
+        requests_out.append(d)
+    conn.commit()
+    conn.close()
     return jsonify({"success": True, "requests": requests_out})
 
 
@@ -4466,7 +4574,9 @@ def hkmail_admin_list_support_requests():
         SELECT id, request_number, username, request_type, status, message, verified,
                verified_at, decided_by, decided_at, created_at,
                reinstatement_requested_at, reinstatement_seen_at,
-               company_name, company_address, company_phone, custom_domain
+               company_name, company_address, company_phone, custom_domain,
+               first_name, last_name, business_type, phone_number, contact_email,
+               payment_choice, payment_status
         FROM mail_support_requests
     """
     clauses, params = [], []
@@ -4493,7 +4603,10 @@ def hkmail_admin_list_support_requests():
             u_row = cur.fetchone()
             d["account_is_disabled"] = bool(u_row[0]) if u_row else False
             d["scheduled_deletion_at"] = u_row[1] if u_row else None
+        elif d["request_type"] == "developer_license":
+            d["payment_status"] = refresh_developer_license_payment(cur, d["request_number"], d["payment_status"])
         requests_out.append(d)
+    conn.commit()
     conn.close()
 
     return jsonify({"success": True, "requests": requests_out})
@@ -4511,7 +4624,9 @@ def hkmail_admin_get_support_request(request_id):
         SELECT id, request_number, username, request_type, status, message, verified,
                verified_at, decided_by, decided_at, created_at,
                reinstatement_requested_at, reinstatement_seen_at,
-               company_name, company_address, company_phone, custom_domain
+               company_name, company_address, company_phone, custom_domain,
+               first_name, last_name, business_type, phone_number, contact_email,
+               payment_choice, payment_status
         FROM mail_support_requests WHERE id=?
     """, (request_id,))
     row = cur.fetchone()
@@ -4525,6 +4640,9 @@ def hkmail_admin_get_support_request(request_id):
         u_row = cur.fetchone()
         req["account_is_disabled"] = bool(u_row[0]) if u_row else False
         req["scheduled_deletion_at"] = u_row[1] if u_row else None
+    elif req["request_type"] == "developer_license":
+        req["payment_status"] = refresh_developer_license_payment(cur, req["request_number"], req["payment_status"])
+        conn.commit()
 
     if req.get("reinstatement_pending"):
         cur.execute("""
@@ -4549,8 +4667,8 @@ def hkmail_admin_get_support_request(request_id):
 
 @app.route('/api/hkmail/admin/support-requests/<int:request_id>/approve', methods=['POST'])
 def hkmail_admin_approve_support_request(request_id):
-    """Approve a pending account-deletion request — disables the account and
-    starts its 30-day recovery window. Password resets are self-service and
+    """Approve a pending (or needs-info) account-deletion, business-account,
+    or developer-license request. Password resets are self-service and
     never reach this endpoint."""
     if not mail_is_support_staff():
         return jsonify({"success": False, "message": "Support staff access required."}), 403
@@ -4572,7 +4690,7 @@ def hkmail_admin_approve_support_request(request_id):
         if req_type == "password_reset":
             return jsonify({"success": False, "message": "Password resets are self-service — no staff approval is needed."}), 400
 
-        if status != "pending":
+        if status not in ("pending", "needs_info"):
             return jsonify({"success": False, "message": "This request has already been decided."}), 400
 
         if req_type == "account_deletion":
@@ -4589,7 +4707,7 @@ def hkmail_admin_approve_support_request(request_id):
                 WHERE id=?
             """, (actor_username, request_id))
             mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
-                                    old_status="pending", new_status="approved",
+                                    old_status=status, new_status="approved",
                                     note=f"Account deletion approved. Disabled with a {ACCOUNT_DELETION_GRACE_DAYS}-day recovery window ending {scheduled_deletion_at}.")
 
             cur.execute(
@@ -4616,7 +4734,7 @@ def hkmail_admin_approve_support_request(request_id):
                 WHERE id=?
             """, (actor_username, request_id))
             mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
-                                    old_status="pending", new_status="approved",
+                                    old_status=status, new_status="approved",
                                     note="Business account approved. \"Verified Business\" badge granted.")
 
             cur.execute(
@@ -4628,6 +4746,41 @@ def hkmail_admin_approve_support_request(request_id):
             )
             conn.commit()
             return jsonify({"success": True, "message": f"{username}'s business account has been verified."})
+
+        elif req_type == "developer_license":
+            cur.execute("SELECT payment_status FROM mail_support_requests WHERE id=?", (request_id,))
+            payment_status = cur.fetchone()[0]
+
+            cur.execute("""
+                UPDATE mail_users SET is_app_developer=1, developer_license_approved_at=CURRENT_TIMESTAMP
+                WHERE username=?
+            """, (username,))
+            cur.execute("""
+                UPDATE mail_support_requests
+                SET status='approved', decided_by=?, decided_at=CURRENT_TIMESTAMP
+                WHERE id=?
+            """, (actor_username, request_id))
+            mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
+                                    old_status=status, new_status="approved",
+                                    note="Developer License approved. Developer badge granted in the App Store.")
+
+            payment_note = (
+                "Your license fee has been received — you're all set.\n\n"
+                if payment_status == "paid" else
+                f"Reminder: your ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year license fee is still unpaid. "
+                "Use the payment link we sent earlier, or pay any time from the Developers page in the "
+                "App Store.\n\n"
+            )
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (NOREPLY_MAIL_USERNAME, username, "Your App Store Developer License has been approved",
+                 "Good news — your Developer License application has been reviewed and approved.\n\n"
+                 "You're now listed as a developer in the App Store, tied to this HKMail address.\n\n"
+                 + payment_note
+                 + "— HKMail Support")
+            )
+            conn.commit()
+            return jsonify({"success": True, "message": f"{username} is now a registered App Store developer."})
 
         else:
             return jsonify({"success": False, "message": "Unknown request type."}), 400
@@ -4653,7 +4806,7 @@ def hkmail_admin_reject_support_request(request_id):
         if not row:
             return jsonify({"success": False, "message": "Request not found."}), 404
         username, req_type, status = row
-        if status != "pending":
+        if status not in ("pending", "needs_info"):
             return jsonify({"success": False, "message": "This request has already been decided."}), 400
 
         cur.execute("""
@@ -4662,7 +4815,7 @@ def hkmail_admin_reject_support_request(request_id):
             WHERE id=?
         """, (actor_username, request_id))
         mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
-                                old_status="pending", new_status="rejected", note=note)
+                                old_status=status, new_status="rejected", note=note)
 
         if req_type == "business_account":
             cur.execute("UPDATE mail_users SET business_status='rejected' WHERE username=?", (username,))
@@ -4680,6 +4833,59 @@ def hkmail_admin_reject_support_request(request_id):
         conn.close()
 
     return jsonify({"success": True, "message": f"{MAIL_SUPPORT_REQUEST_TYPE_LABELS.get(req_type, req_type)} request rejected."})
+
+
+@app.route('/api/hkmail/admin/support-requests/<int:request_id>/message', methods=['POST'])
+def hkmail_admin_message_support_request(request_id):
+    """Send the requester a free-text message asking for more details —
+    e.g. a Developer License application that needs clarification — without
+    making a final approve/reject decision. Moves the request to
+    'needs_info' (from 'pending' or an earlier 'needs_info') so it's easy
+    for staff to see what's awaiting a reply, but leaves it fully
+    approvable/rejectable afterwards. The reply itself has to come back the
+    normal way (an email to support@hkmail.cn referencing the case number —
+    there's no automatic email-to-case ingestion here)."""
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    actor_username = mail_current_user()
+    actor_role = "admin" if session.get("mail_is_admin") else "employee"
+    data = request.get_json() or {}
+    note = (data.get("message", "") or "").strip()
+    if not note:
+        return jsonify({"success": False, "message": "A message is required."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT username, request_type, status, request_number FROM mail_support_requests WHERE id=?
+        """, (request_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Request not found."}), 404
+        username, req_type, status, request_number = row
+
+        if status not in ("pending", "needs_info"):
+            return jsonify({"success": False, "message": "This request has already been decided."}), 400
+
+        cur.execute("UPDATE mail_support_requests SET status='needs_info' WHERE id=?", (request_id,))
+        mail_log_support_event(cur, request_id, "message", actor_username, actor_role,
+                                old_status=status, new_status="needs_info", note=note)
+
+        type_label = MAIL_SUPPORT_REQUEST_TYPE_LABELS.get(req_type, req_type)
+        cur.execute(
+            "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+            (NOREPLY_MAIL_USERNAME, username, f"We need more information about your {type_label} request ({request_number})",
+             f"{note}\n\n"
+             f"Please reply to this by emailing support@hkmail.cn and referencing case "
+             f"{request_number} so it's attached to this request.\n\n— HKMail Support")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Message sent to the applicant."})
 
 
 @app.route('/api/hkmail/admin/support-requests/<int:request_id>/reinstate', methods=['POST'])
@@ -5956,6 +6162,149 @@ def appstore_get_user(username):
     row = cur.fetchone()
     conn.close()
     return row
+
+
+# ── App Store: Developer License ────────────────────────────────────────────
+# Applying goes through the exact same Account Requests queue as password
+# resets / deletions / business verification (request_type='developer_license'
+# in mail_support_requests) — see hkmail_admin_approve_support_request and
+# hkmail_admin_reject_support_request above for the staff-side decision, and
+# refresh_developer_license_payment for how payment is tracked.
+
+@app.route('/api/appstore/developer/info', methods=['GET'])
+def appstore_developer_info():
+    """Whether the signed-in HKMail user already holds a Developer License,
+    plus the current fee — lets the Developers page decide what to show
+    without duplicating any of this in a per-app-store user table."""
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": True, "signedIn": False, "license_fee": APP_STORE_DEVELOPER_LICENSE_FEE})
+    return jsonify({
+        "success": True,
+        "signedIn": True,
+        "email": username,
+        "is_developer": hkmail_is_app_developer(username),
+        "license_fee": APP_STORE_DEVELOPER_LICENSE_FEE,
+        "business_types": APP_STORE_BUSINESS_TYPE_LABELS,
+    })
+
+
+@app.route('/api/appstore/developer/apply', methods=['POST'])
+def appstore_developer_apply():
+    """File a Developer License application for the signed-in HKMail user.
+    Opens a case in the same Account Requests queue support staff already
+    work, and — depending on payment_choice — either hands the frontend a
+    checkout URL to redirect to immediately ('now') or emails one to the
+    applicant to use whenever ('later')."""
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail to apply for a Developer License."}), 401
+
+    if hkmail_is_app_developer(username):
+        return jsonify({"success": False, "message": "This HKMail address already holds a Developer License."}), 400
+
+    data = request.get_json() or {}
+    first_name    = (data.get("first_name", "") or "").strip()
+    last_name     = (data.get("last_name", "") or "").strip()
+    company_name  = (data.get("company_name", "") or "").strip()
+    business_type = (data.get("business_type", "") or "").strip()
+    address       = (data.get("address", "") or "").strip()
+    phone_number  = (data.get("phone_number", "") or "").strip()
+    contact_email = (data.get("contact_email", "") or "").strip()
+    payment_choice = (data.get("payment_choice", "") or "").strip()
+
+    if not first_name or not last_name:
+        return jsonify({"success": False, "message": "First and last name are required."}), 400
+    if not company_name:
+        return jsonify({"success": False, "message": "Company name is required."}), 400
+    if business_type not in APP_STORE_BUSINESS_TYPE_LABELS:
+        return jsonify({"success": False, "message": "Please choose a business type."}), 400
+    if not address:
+        return jsonify({"success": False, "message": "Address is required."}), 400
+    if not phone_number:
+        return jsonify({"success": False, "message": "Phone number is required."}), 400
+    if not contact_email or "@" not in contact_email:
+        return jsonify({"success": False, "message": "A valid email address is required."}), 400
+    if payment_choice not in ("now", "later"):
+        return jsonify({"success": False, "message": "Please choose when you'd like to pay the license fee."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur  = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id FROM mail_support_requests
+            WHERE username=? AND request_type='developer_license' AND status IN ('pending', 'needs_info')
+        """, (username,))
+        if cur.fetchone():
+            return jsonify({"success": False, "message": "You already have a Developer License application pending review."}), 400
+
+        business_type_label = APP_STORE_BUSINESS_TYPE_LABELS[business_type]
+        case_body = (
+            "New App Store Developer License application\n\n"
+            f"HKMail account: {username}\n"
+            f"Name: {first_name} {last_name}\n"
+            f"Company name: {company_name}\n"
+            f"Business type: {business_type_label}\n"
+            f"Address: {address}\n"
+            f"Phone: {phone_number}\n"
+            f"Contact email: {contact_email}\n"
+            f"License fee: ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year — "
+            f"applicant chose to pay {'now' if payment_choice == 'now' else 'later (payment link emailed)'}.\n\n"
+            "Please review and approve or reject from the Account Requests tab. "
+            "Use \"Ask for more info\" if you need anything else before deciding."
+        )
+        _case_id, case_number = mail_insert_support_case(cur, username, "App Store Developer License application", case_body)
+
+        cur.execute("""
+            INSERT INTO mail_support_requests
+                (request_number, username, request_type, status,
+                 first_name, last_name, company_name, business_type,
+                 company_address, phone_number, contact_email, payment_choice, payment_status)
+            VALUES (?, ?, 'developer_license', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid')
+        """, (case_number, username, first_name, last_name, company_name, business_type,
+              address, phone_number, contact_email, payment_choice))
+        request_id = cur.lastrowid
+        mail_log_support_event(cur, request_id, "submitted", username, "user",
+                                new_status="pending", note="Developer License application submitted.")
+
+        checkout_url = (
+            f"/hks-bank-checkout.html?amount={APP_STORE_DEVELOPER_LICENSE_FEE:.2f}"
+            f"&desc=App+Store+Developer+License+Fee+({case_number})"
+            f"&return_url=/appstore-developers.html%3Fpaid=1"
+        )
+
+        if payment_choice == "later":
+            absolute_checkout_url = request.host_url.rstrip("/") + checkout_url
+            cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (NOREPLY_MAIL_USERNAME, username, f"Pay your App Store Developer License fee ({case_number})",
+                 f"Hi {first_name},\n\n"
+                 f"Whenever you're ready, you can pay your ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year "
+                 f"Developer License fee here:\n\n{absolute_checkout_url}\n\n"
+                 f"Reference: {case_number}\n\n"
+                 "This isn't required before your application can be reviewed, but your license won't be "
+                 "considered fully active until it's paid.\n\n— App Store")
+            )
+
+        mail_send_support_case_confirmation(
+            cur, username, case_number, "Developer License application",
+            extra_body="Our support team will review your application shortly. You'll receive an email "
+                       "here once it's decided, or if we need more information first."
+                       + ("" if payment_choice == "now" else
+                          f" We've also emailed you a payment link for the ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year fee.")
+        )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success": True,
+        "request_number": case_number,
+        "payment_choice": payment_choice,
+        "checkout_url": checkout_url if payment_choice == "now" else None,
+        "message": "Application submitted. Check your inbox for a case confirmation."
+    })
 
 
 # Per-image cap for product photos — generous for a product shot, same

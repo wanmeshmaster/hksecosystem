@@ -18,8 +18,12 @@
             --text-tertiary: #77828d;
             --accent: #26c9ab;
             --accent-strong: #1aa88f;
+            --accent-amber: #e3b24d;
+            --danger: #e0645a;
+            --danger-dk: #c94a41;
             --radius-lg: 22px;
             --radius-md: 14px;
+            --radius-sm: 10px;
             --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.32);
         }
 
@@ -54,10 +58,12 @@
         }
 
         a { color: inherit; text-decoration: none; }
+        button { font-family: inherit; }
 
         .page-topbar {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 14px;
             padding: 14px 22px;
             background: var(--glass-bg);
@@ -69,6 +75,8 @@
             z-index: 10;
         }
 
+        .page-topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+
         .back-link {
             display: flex;
             align-items: center;
@@ -79,6 +87,7 @@
             padding: 7px 12px 7px 8px;
             border-radius: 10px;
             transition: background 0.15s ease, color 0.15s ease;
+            flex-shrink: 0;
         }
 
         .back-link:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
@@ -90,10 +99,25 @@
             letter-spacing: -0.01em;
         }
 
+        .signed-in-chip {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: var(--text-tertiary);
+            flex-shrink: 0;
+        }
+
+        .signed-in-chip.show { display: flex; }
+        .signed-in-chip strong { color: var(--text-secondary); font-weight: 700; }
+
         .page-wrap {
             max-width: 720px;
             margin: 0 auto;
             padding: 48px 24px 90px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
         }
 
         .page-card {
@@ -106,7 +130,7 @@
             box-shadow: var(--shadow-soft);
         }
 
-        .coming-soon-tag {
+        .live-tag {
             display: inline-block;
             font-size: 0.68rem;
             font-weight: 700;
@@ -129,14 +153,14 @@
         .page-card .page-sub {
             font-size: 0.9rem;
             color: var(--text-tertiary);
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             line-height: 1.5;
         }
 
         .page-card h2 {
             font-size: 1.02rem;
             font-weight: 700;
-            margin: 28px 0 10px;
+            margin: 26px 0 10px;
         }
 
         .page-card h2:first-of-type { margin-top: 0; }
@@ -148,73 +172,558 @@
             margin-bottom: 14px;
         }
 
-        .placeholder-block {
-            border: 1px dashed var(--glass-border);
+        .fee-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            border: 1px solid var(--glass-border);
             border-radius: var(--radius-md);
-            padding: 16px 18px;
-            margin-bottom: 6px;
-            color: var(--text-tertiary);
-            font-size: 0.85rem;
-            font-style: italic;
+            padding: 16px 20px;
+            background: linear-gradient(120deg, rgba(38, 201, 171, 0.12), rgba(43, 111, 156, 0.08));
+            margin-bottom: 8px;
+        }
+
+        .fee-banner-amount { font-size: 1.3rem; font-weight: 800; }
+        .fee-banner-amount span { font-size: 0.78rem; font-weight: 600; color: var(--text-tertiary); }
+        .fee-banner-note { font-size: 0.82rem; color: var(--text-tertiary); max-width: 34ch; }
+
+        .benefit-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 6px 0 18px;
+        }
+
+        .benefit-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .benefit-list svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            color: var(--accent);
+            margin-top: 2px;
         }
 
         .contact-link { color: var(--accent); font-weight: 600; }
         .contact-link:hover { text-decoration: underline; }
 
+        /* ── Buttons ─────────────────────────────────────────────────── */
+
+        .btn {
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 11px 20px;
+            border-radius: 999px;
+            border: 1px solid var(--glass-border);
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn:hover { border-color: var(--accent); color: var(--accent); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-solid {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #06231d;
+        }
+
+        .btn-solid:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: #06231d; }
+        .btn-solid:disabled:hover { background: var(--accent); border-color: var(--accent); }
+
+        /* ── Status states ──────────────────────────────────────────── */
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            padding: 5px 13px;
+            border-radius: 999px;
+            margin-bottom: 14px;
+        }
+
+        .status-pending, .status-needs_info { background: rgba(227, 178, 77, 0.16); color: var(--accent-amber); }
+        .status-approved { background: rgba(38, 201, 171, 0.16); color: var(--accent); }
+        .status-rejected { background: rgba(224, 100, 90, 0.16); color: var(--danger); }
+
+        .status-detail-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 0.86rem;
+            padding: 9px 0;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .status-detail-row:last-of-type { border-bottom: none; }
+        .status-detail-row span:first-child { color: var(--text-tertiary); }
+        .status-detail-row span:last-child { color: var(--text-primary); font-weight: 600; text-align: right; }
+
+        .info-note {
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 16px 18px;
+            margin: 16px 0;
+            font-size: 0.87rem;
+            line-height: 1.55;
+            color: var(--text-secondary);
+        }
+
+        .info-note.amber { border-color: rgba(227, 178, 77, 0.4); background: rgba(227, 178, 77, 0.07); }
+        .info-note.red { border-color: rgba(224, 100, 90, 0.4); background: rgba(224, 100, 90, 0.07); }
+        .info-note.green { border-color: rgba(38, 201, 171, 0.4); background: rgba(38, 201, 171, 0.07); }
+
+        .action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+
+        /* ── Form ────────────────────────────────────────────────────── */
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 6px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group.full { grid-column: 1 / -1; }
+
+        .form-label { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); }
+
+        .form-input, .form-select, .form-textarea {
+            font-family: inherit;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-sm);
+            padding: 10px 13px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        .form-input::placeholder, .form-textarea::placeholder { color: var(--text-tertiary); }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+
+        .form-select option { background: #14181d; color: var(--text-primary); }
+
+        .payment-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
+
+        .payment-option {
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .payment-option:hover { border-color: rgba(38, 201, 171, 0.5); }
+        .payment-option.selected { border-color: var(--accent); background: rgba(38, 201, 171, 0.08); }
+
+        .payment-option input { display: none; }
+        .payment-option-title { font-size: 0.87rem; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
+        .payment-option-title .radio-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--glass-border); flex-shrink: 0; }
+        .payment-option.selected .radio-dot { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 5px, transparent 6px); }
+        .payment-option-sub { font-size: 0.78rem; color: var(--text-tertiary); }
+
+        .form-error {
+            display: none;
+            font-size: 0.83rem;
+            color: var(--danger);
+            background: rgba(224, 100, 90, 0.1);
+            border: 1px solid rgba(224, 100, 90, 0.3);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            margin-top: 16px;
+        }
+
+        .form-error.show { display: block; }
+
+        .form-submit-row { margin-top: 20px; display: flex; align-items: center; gap: 14px; }
+
+        .skeleton-line {
+            height: 14px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            margin-bottom: 10px;
+            animation: skeleton-pulse 1.3s ease-in-out infinite;
+        }
+
+        @keyframes skeleton-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%) translateY(8px);
+            background: #1a1a1a;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 1300;
+            opacity: 0;
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+            max-width: min(320px, calc(100vw - 48px));
+        }
+
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
         @media (max-width: 560px) {
             .page-card { padding: 30px 22px 36px; }
             .page-wrap { padding: 32px 16px 70px; }
+            .form-grid, .payment-choice { grid-template-columns: 1fr; }
+            .fee-banner { flex-direction: column; align-items: flex-start; }
         }
     </style>
 </head>
 <body>
 
     <header class="page-topbar">
-        <a href="/appstore-help.html" class="back-link">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-            Back
-        </a>
-        <span class="page-topbar-title font-display">Developers</span>
+        <div class="page-topbar-left">
+            <a href="/appstore-help.html" class="back-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                Back
+            </a>
+            <span class="page-topbar-title font-display">Developers</span>
+        </div>
+        <span class="signed-in-chip" id="signedInChip">Signed in as <strong id="signedInEmail"></strong></span>
     </header>
 
     <main class="page-wrap">
         <div class="page-card">
-            <span class="coming-soon-tag font-display">Coming soon</span>
+            <span class="live-tag font-display">Developer License</span>
             <h1 class="font-display">Publish to the App Store</h1>
-            <p class="page-sub">We're building out a developer program so anyone can submit native applications to the App Store. This page is a placeholder — full details will replace each section below as they're finalized.</p>
+            <p class="page-sub">Get a Developer License to list your own applications in the App Store under your HKMail identity. Here's how it works and what it costs.</p>
 
-            <h2 class="font-display">Overview</h2>
-            <p>What the developer program will offer, who it's for, and how listings will work end to end.</p>
-            <div class="placeholder-block">Content coming soon.</div>
+            <div class="fee-banner">
+                <div class="fee-banner-amount font-display" id="feeAmount">$100.00 <span>/ year</span></div>
+                <div class="fee-banner-note">One license fee, billed to your HKS Bank account of choice — pay right away or any time before it's due.</div>
+            </div>
 
-            <h2 class="font-display">Getting Started</h2>
-            <p>How to register as a developer, the account requirements, and what you'll need before your first submission.</p>
-            <div class="placeholder-block">Content coming soon.</div>
+            <h2 class="font-display">What you get</h2>
+            <ul class="benefit-list">
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    A Developer badge tied to your HKMail address, recognized anywhere App Store checks for one.
+                </li>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    The ability to submit and list your own applications in the App Store.
+                </li>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    One identity, one sign-in — your license lives on your existing HKMail account, nothing new to register.
+                </li>
+            </ul>
 
-            <h2 class="font-display">Submission &amp; Review Guidelines</h2>
-            <p>What we'll check for during review, expected turnaround times, and how to handle revisions.</p>
-            <div class="placeholder-block">Content coming soon.</div>
+            <h2 class="font-display">How it works</h2>
+            <p>Applying takes a couple of minutes: tell us a bit about you or your business below, choose when you'd like to pay the license fee, and submit. Our support team reviews every application — you'll get an email the moment it's decided, or if we need anything else from you first.</p>
+        </div>
 
-            <h2 class="font-display">API &amp; Integration Reference</h2>
-            <p>Technical documentation for integrating with HK OS services from your application.</p>
-            <div class="placeholder-block">Content coming soon.</div>
-
-            <h2 class="font-display">Stay Updated</h2>
-            <p>Want to be notified when the developer program opens? Reach out at <a href="mailto:contact@hkmail.cn" class="contact-link">contact@hkmail.cn</a> and we'll keep you posted.</p>
+        <div class="page-card" id="stateCard">
+            <div class="skeleton-line" style="width:40%;"></div>
+            <div class="skeleton-line" style="width:70%;"></div>
+            <div class="skeleton-line" style="width:55%;"></div>
         </div>
     </main>
 
+    <div class="toast" id="toast"></div>
+
     <script>
-        document.addEventListener('click', function (e) {
-            const link = e.target.closest('a[href^="mailto:"]');
-            if (!link) return;
+        function $(id) { return document.getElementById(id); }
+
+        function escHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+
+        function showToast(msg) {
+            const t = $('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3400);
+        }
+
+        async function getJSON(url) {
+            const res = await fetch(url);
+            return res.json();
+        }
+
+        async function postJSON(url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body || {})
+            });
+            let data = {};
+            try { data = await res.json(); } catch (e) {}
+            return { ok: res.ok, data };
+        }
+
+        let developerInfo = null;
+
+        // ── Landing back from checkout ─────────────────────────────────
+        const urlParams = new URLSearchParams(window.location.search);
+        const justPaid = urlParams.get('paid') === '1';
+        if (justPaid) {
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState({}, '', cleanUrl);
+        }
+
+        function buildCheckoutUrl(requestNumber, amount) {
+            const desc = `App Store Developer License Fee (${requestNumber})`;
+            const returnUrl = '/appstore-developers.html?paid=1';
+            return `/hks-bank-checkout.html?amount=${encodeURIComponent(amount.toFixed(2))}`
+                + `&desc=${encodeURIComponent(desc)}&return_url=${encodeURIComponent(returnUrl)}`;
+        }
+
+        function payNow(requestNumber, amount) {
+            window.location.href = buildCheckoutUrl(requestNumber, amount);
+        }
+
+        // ── State renderers ─────────────────────────────────────────────
+
+        function renderSignedOut() {
+            const card = $('stateCard');
+            card.innerHTML = `
+                <h2 class="font-display" style="margin-top:0;">Sign in to apply</h2>
+                <p>You'll need to be signed in with HKMail to apply for a Developer License — your application and license are tied to that address.</p>
+                <div class="action-row">
+                    <button class="btn btn-solid" id="signInBtn">Sign in with HKMail</button>
+                </div>
+            `;
+            $('signInBtn').onclick = function () {
+                const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = '/hkmail.html?return_to=' + returnTo;
+            };
+        }
+
+        function renderApproved(email, req) {
+            const card = $('stateCard');
+            const paid = req && req.payment_status === 'paid';
+            let paymentBlock = '';
+            if (req && !paid) {
+                paymentBlock = `
+                    <div class="info-note amber">
+                        Your license is active, but the $${Number(req.license_fee).toFixed(2)}/year fee for this
+                        application (${escHtml(req.request_number)}) is still unpaid.
+                    </div>
+                    <div class="action-row">
+                        <button class="btn btn-solid" id="payNowBtn">Pay license fee</button>
+                    </div>
+                `;
+            }
+            card.innerHTML = `
+                <span class="status-pill status-approved font-display">Developer License Active</span>
+                <h2 class="font-display" style="margin-top:0;">You're a registered developer</h2>
+                <p>${escHtml(email)} holds an active App Store Developer License. You can submit applications for listing whenever you're ready.</p>
+                ${paymentBlock}
+            `;
+            if (req && !paid) {
+                $('payNowBtn').onclick = () => payNow(req.request_number, Number(req.license_fee));
+            }
+        }
+
+        function renderPending(email, req) {
+            const card = $('stateCard');
+            const needsInfo = req.status === 'needs_info';
+            const paid = req.payment_status === 'paid';
+            card.innerHTML = `
+                <span class="status-pill ${needsInfo ? 'status-needs_info' : 'status-pending'} font-display">
+                    ${needsInfo ? 'Needs More Info' : 'Pending Review'}
+                </span>
+                <h2 class="font-display" style="margin-top:0;">Application ${escHtml(req.request_number)}</h2>
+                ${needsInfo ? `<div class="info-note amber">
+                    <strong>Support needs more information from you.</strong><br>
+                    Check your HKMail inbox for what they need, then reply by emailing
+                    <strong>support@hkmail.cn</strong> and referencing case <strong>${escHtml(req.request_number)}</strong>.
+                </div>` : `<p>Our support team is reviewing your application. You'll get an email as soon as it's decided.</p>`}
+                <div class="status-detail-row"><span>Applicant</span><span>${escHtml(req.first_name)} ${escHtml(req.last_name)}</span></div>
+                <div class="status-detail-row"><span>Company</span><span>${escHtml(req.company_name)}</span></div>
+                <div class="status-detail-row"><span>Business type</span><span>${escHtml(req.business_type_label)}</span></div>
+                <div class="status-detail-row"><span>License fee</span><span>$${Number(req.license_fee).toFixed(2)}/year — ${paid ? 'Paid' : 'Unpaid'}</span></div>
+                ${!paid ? `<div class="action-row"><button class="btn btn-solid" id="payNowBtn">Pay license fee</button></div>` : ''}
+            `;
+            if (!paid) {
+                $('payNowBtn').onclick = () => payNow(req.request_number, Number(req.license_fee));
+            }
+        }
+
+        function renderForm(email, businessTypes, licenseFee, priorRejected) {
+            const card = $('stateCard');
+            const typeOptions = Object.entries(businessTypes || {})
+                .map(([value, label]) => `<option value="${escHtml(value)}">${escHtml(label)}</option>`).join('');
+
+            card.innerHTML = `
+                <h2 class="font-display" style="margin-top:0;">Apply for a Developer License</h2>
+                ${priorRejected ? `<div class="info-note red">Your previous application wasn't approved. You're welcome to apply again below.</div>` : ''}
+                <form id="applyForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="f-first">First name</label>
+                            <input class="form-input" id="f-first" type="text" placeholder="Jane" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="f-last">Last name</label>
+                            <input class="form-input" id="f-last" type="text" placeholder="Doe" required>
+                        </div>
+                        <div class="form-group full">
+                            <label class="form-label" for="f-company">Company name</label>
+                            <input class="form-input" id="f-company" type="text" placeholder="Your company or studio name" required>
+                        </div>
+                        <div class="form-group full">
+                            <label class="form-label" for="f-biztype">Business type</label>
+                            <select class="form-select" id="f-biztype" required>
+                                <option value="" disabled selected>Choose one…</option>
+                                ${typeOptions}
+                            </select>
+                        </div>
+                        <div class="form-group full">
+                            <label class="form-label" for="f-address">Address</label>
+                            <input class="form-input" id="f-address" type="text" placeholder="Street, city, region, postcode" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="f-phone">Phone number</label>
+                            <input class="form-input" id="f-phone" type="tel" placeholder="+852 …" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="f-contact-email">Contact email</label>
+                            <input class="form-input" id="f-contact-email" type="email" placeholder="${escHtml(email)}" value="${escHtml(email)}" required>
+                        </div>
+                    </div>
+
+                    <h2 class="font-display">When would you like to pay?</h2>
+                    <p style="margin-bottom:0;">The $${Number(licenseFee).toFixed(2)}/year license fee isn't required before we can review your application — but your license won't be considered fully active until it's paid.</p>
+                    <div class="payment-choice">
+                        <label class="payment-option selected" id="opt-now">
+                            <input type="radio" name="payment_choice" value="now" checked>
+                            <div class="payment-option-title"><span class="radio-dot"></span>Pay now</div>
+                            <div class="payment-option-sub">Head to checkout right after submitting.</div>
+                        </label>
+                        <label class="payment-option" id="opt-later">
+                            <input type="radio" name="payment_choice" value="later">
+                            <div class="payment-option-title"><span class="radio-dot"></span>Pay later</div>
+                            <div class="payment-option-sub">We'll email you a payment link to use any time.</div>
+                        </label>
+                    </div>
+
+                    <div class="form-error" id="formError"></div>
+                    <div class="form-submit-row">
+                        <button type="submit" class="btn btn-solid" id="submitBtn">Submit application</button>
+                    </div>
+                </form>
+            `;
+
+            const optNow = $('opt-now');
+            const optLater = $('opt-later');
+            [optNow, optLater].forEach(opt => {
+                opt.addEventListener('click', () => {
+                    optNow.classList.toggle('selected', opt === optNow);
+                    optLater.classList.toggle('selected', opt === optLater);
+                });
+            });
+
+            $('applyForm').addEventListener('submit', submitApplication);
+        }
+
+        async function submitApplication(e) {
             e.preventDefault();
-            const mailto = new URL(link.href);
-            const qs = new URLSearchParams();
-            qs.set('compose', '1');
-            if (mailto.pathname) qs.set('to', mailto.pathname);
-            window.location.href = '/hkmail-inbox.html?' + qs.toString();
-        });
+            const errorBox = $('formError');
+            errorBox.classList.remove('show');
+            const submitBtn = $('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting…';
+
+            const payload = {
+                first_name: $('f-first').value.trim(),
+                last_name: $('f-last').value.trim(),
+                company_name: $('f-company').value.trim(),
+                business_type: $('f-biztype').value,
+                address: $('f-address').value.trim(),
+                phone_number: $('f-phone').value.trim(),
+                contact_email: $('f-contact-email').value.trim(),
+                payment_choice: document.querySelector('input[name="payment_choice"]:checked').value
+            };
+
+            const { data } = await postJSON('/api/appstore/developer/apply', payload);
+            if (!data.success) {
+                errorBox.textContent = data.message || 'Something went wrong — please try again.';
+                errorBox.classList.add('show');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit application';
+                return;
+            }
+
+            if (payload.payment_choice === 'now' && data.checkout_url) {
+                window.location.href = data.checkout_url;
+                return;
+            }
+
+            showToast(data.message || 'Application submitted.');
+            await init();
+        }
+
+        // ── Orchestration ────────────────────────────────────────────────
+
+        async function init() {
+            let info;
+            try {
+                info = await getJSON('/api/appstore/developer/info');
+            } catch (e) {
+                $('stateCard').innerHTML = '<p style="color:var(--danger);">Could not load — please refresh the page.</p>';
+                return;
+            }
+            developerInfo = info;
+            if (info.license_fee != null) {
+                $('feeAmount').innerHTML = `$${Number(info.license_fee).toFixed(2)} <span>/ year</span>`;
+            }
+
+            if (!info.signedIn) {
+                $('signedInChip').classList.remove('show');
+                renderSignedOut();
+                return;
+            }
+
+            $('signedInChip').classList.add('show');
+            $('signedInEmail').textContent = info.email;
+
+            if (justPaid) showToast('Thanks! Checking your payment…');
+
+            let myRequests = [];
+            try {
+                const reqData = await getJSON('/api/hkmail/support/my-requests');
+                myRequests = (reqData.requests || []).filter(r => r.request_type === 'developer_license');
+            } catch (e) { /* fall through with no requests */ }
+
+            const latest = myRequests[0] || null;
+
+            if (info.is_developer) {
+                renderApproved(info.email, latest);
+                return;
+            }
+
+            if (latest && (latest.status === 'pending' || latest.status === 'needs_info')) {
+                renderPending(info.email, latest);
+                return;
+            }
+
+            const priorRejected = !!(latest && latest.status === 'rejected');
+            renderForm(info.email, info.business_types, info.license_fee, priorRejected);
+        }
+
+        init();
     </script>
 
 </body>
