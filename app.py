@@ -739,6 +739,10 @@ def about_us():
 def os_terms():
     return render_template('terms.html')
 
+@app.route('/eula.html')
+def eula():
+    return render_template('eula.html')
+
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
