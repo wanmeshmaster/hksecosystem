@@ -3134,7 +3134,7 @@ def mail_support_request_to_dict(row):
     }
 
 
-def refresh_developer_license_payment(mail_cur, request_number, payment_status):
+def refresh_developer_license_payment(mail_cur, username, request_number, payment_status, request_status):
     """Live-check whether this developer license application's $100 fee has
     been paid, the same way the old coming-soon contribution bar derived its
     total: by looking directly at HKS Bank's own `transactions` table for a
@@ -3145,24 +3145,46 @@ def refresh_developer_license_payment(mail_cur, request_number, payment_status):
 
     Self-heals mail_support_requests.payment_status to 'paid' the first time
     a match is found. Returns the up-to-date payment_status ('paid' or
-    'unpaid') for the caller to use immediately without a second read."""
-    if payment_status == "paid":
-        return "paid"
-    bank_conn = sqlite3.connect(DATABASE)
-    bank_cur = bank_conn.cursor()
-    bank_cur.execute(
-        "SELECT 1 FROM transactions WHERE title LIKE ? AND amount = ? LIMIT 1",
-        (f"%{request_number}%", -APP_STORE_DEVELOPER_LICENSE_FEE)
-    )
-    paid = bank_cur.fetchone() is not None
-    bank_conn.close()
-    if paid:
-        mail_cur.execute(
-            "UPDATE mail_support_requests SET payment_status='paid' WHERE request_number=?",
-            (request_number,)
+    'unpaid') for the caller to use immediately without a second read.
+
+    This is also the ONLY place the Developer badge (mail_users.is_app_developer)
+    is ever granted: an approved-but-unpaid application never sets it, and
+    payment alone (which can only happen once approved — the Developers page
+    only exposes a checkout link post-approval) never sets it either. Both an
+    'approved' request_status and a cleared payment have to be true at once."""
+    if payment_status != "paid":
+        bank_conn = sqlite3.connect(DATABASE)
+        bank_cur = bank_conn.cursor()
+        bank_cur.execute(
+            "SELECT 1 FROM transactions WHERE title LIKE ? AND amount = ? LIMIT 1",
+            (f"%{request_number}%", -APP_STORE_DEVELOPER_LICENSE_FEE)
         )
-        return "paid"
-    return "unpaid"
+        paid = bank_cur.fetchone() is not None
+        bank_conn.close()
+        if paid:
+            mail_cur.execute(
+                "UPDATE mail_support_requests SET payment_status='paid' WHERE request_number=?",
+                (request_number,)
+            )
+            payment_status = "paid"
+
+    if payment_status == "paid" and request_status == "approved":
+        mail_cur.execute("SELECT is_app_developer FROM mail_users WHERE username=?", (username,))
+        row = mail_cur.fetchone()
+        if row and not row[0]:
+            mail_cur.execute("""
+                UPDATE mail_users SET is_app_developer=1, developer_license_approved_at=CURRENT_TIMESTAMP
+                WHERE username=?
+            """, (username,))
+            mail_cur.execute(
+                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+                (NOREPLY_MAIL_USERNAME, username, "Your App Store Developer License is now active",
+                 f"We've received your ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year license fee payment.\n\n"
+                 "Your App Store Developer License is now active, and your Developer badge is now live "
+                 "on your account.\n\n— App Store")
+            )
+
+    return payment_status
 
 
 def _mail_days_remaining(scheduled_deletion_at):
@@ -4533,13 +4555,13 @@ def hkmail_my_support_requests():
         FROM mail_support_requests WHERE username=? ORDER BY created_at DESC LIMIT 20
     """, (u,))
     rows = cur.fetchall()
-    conn.close()
 
     requests_out = []
     for row in rows:
         d = mail_support_request_to_dict(row)
         if d["request_type"] == "developer_license":
-            d["payment_status"] = refresh_developer_license_payment(cur, d["request_number"], d["payment_status"])
+            d["payment_status"] = refresh_developer_license_payment(
+                cur, d["username"], d["request_number"], d["payment_status"], d["status"])
         requests_out.append(d)
     conn.commit()
     conn.close()
@@ -4604,7 +4626,8 @@ def hkmail_admin_list_support_requests():
             d["account_is_disabled"] = bool(u_row[0]) if u_row else False
             d["scheduled_deletion_at"] = u_row[1] if u_row else None
         elif d["request_type"] == "developer_license":
-            d["payment_status"] = refresh_developer_license_payment(cur, d["request_number"], d["payment_status"])
+            d["payment_status"] = refresh_developer_license_payment(
+                cur, d["username"], d["request_number"], d["payment_status"], d["status"])
         requests_out.append(d)
     conn.commit()
     conn.close()
@@ -4641,7 +4664,8 @@ def hkmail_admin_get_support_request(request_id):
         req["account_is_disabled"] = bool(u_row[0]) if u_row else False
         req["scheduled_deletion_at"] = u_row[1] if u_row else None
     elif req["request_type"] == "developer_license":
-        req["payment_status"] = refresh_developer_license_payment(cur, req["request_number"], req["payment_status"])
+        req["payment_status"] = refresh_developer_license_payment(
+            cur, req["username"], req["request_number"], req["payment_status"], req["status"])
         conn.commit()
 
     if req.get("reinstatement_pending"):
@@ -4748,13 +4772,11 @@ def hkmail_admin_approve_support_request(request_id):
             return jsonify({"success": True, "message": f"{username}'s business account has been verified."})
 
         elif req_type == "developer_license":
-            cur.execute("SELECT payment_status FROM mail_support_requests WHERE id=?", (request_id,))
-            payment_status = cur.fetchone()[0]
-
-            cur.execute("""
-                UPDATE mail_users SET is_app_developer=1, developer_license_approved_at=CURRENT_TIMESTAMP
-                WHERE username=?
-            """, (username,))
+            # Approval unlocks payment — it does not itself grant the badge.
+            # The Developer badge (is_app_developer) is only set once the
+            # license fee actually clears, in refresh_developer_license_payment,
+            # so a user can never obtain it without both an approved
+            # application and a completed payment.
             cur.execute("""
                 UPDATE mail_support_requests
                 SET status='approved', decided_by=?, decided_at=CURRENT_TIMESTAMP
@@ -4762,25 +4784,19 @@ def hkmail_admin_approve_support_request(request_id):
             """, (actor_username, request_id))
             mail_log_support_event(cur, request_id, "status_change", actor_username, actor_role,
                                     old_status=status, new_status="approved",
-                                    note="Developer License approved. Developer badge granted in the App Store.")
+                                    note="Developer License approved. Applicant can now pay the license "
+                                         "fee from the Developers page to activate their license and badge.")
 
-            payment_note = (
-                "Your license fee has been received — you're all set.\n\n"
-                if payment_status == "paid" else
-                f"Reminder: your ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year license fee is still unpaid. "
-                "Use the payment link we sent earlier, or pay any time from the Developers page in the "
-                "App Store.\n\n"
-            )
             cur.execute(
                 "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
                 (NOREPLY_MAIL_USERNAME, username, "Your App Store Developer License has been approved",
                  "Good news — your Developer License application has been reviewed and approved.\n\n"
-                 "You're now listed as a developer in the App Store, tied to this HKMail address.\n\n"
-                 + payment_note
-                 + "— HKMail Support")
+                 "One step left: head back to the Developers page in the App Store, where you can now "
+                 f"pay your ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year license fee. Your Developer badge "
+                 "and full publishing access go live as soon as payment is received.\n\n— HKMail Support")
             )
             conn.commit()
-            return jsonify({"success": True, "message": f"{username} is now a registered App Store developer."})
+            return jsonify({"success": True, "message": f"{username}'s Developer License application has been approved. They can now pay the license fee to activate it."})
 
         else:
             return jsonify({"success": False, "message": "Unknown request type."}), 400
@@ -6193,9 +6209,12 @@ def appstore_developer_info():
 def appstore_developer_apply():
     """File a Developer License application for the signed-in HKMail user.
     Opens a case in the same Account Requests queue support staff already
-    work, and — depending on payment_choice — either hands the frontend a
-    checkout URL to redirect to immediately ('now') or emails one to the
-    applicant to use whenever ('later')."""
+    work. No payment is collected at this stage — the license fee can only
+    be paid once the application has been approved (see
+    hkmail_admin_approve_support_request), at which point the applicant is
+    directed back to the Developers page to pay. The Developer badge itself
+    is granted only once that payment clears — see
+    refresh_developer_license_payment."""
     username = appstore_current_user()
     if not username:
         return jsonify({"success": False, "message": "Sign in with HKMail to apply for a Developer License."}), 401
@@ -6211,7 +6230,6 @@ def appstore_developer_apply():
     address       = (data.get("address", "") or "").strip()
     phone_number  = (data.get("phone_number", "") or "").strip()
     contact_email = (data.get("contact_email", "") or "").strip()
-    payment_choice = (data.get("payment_choice", "") or "").strip()
 
     if not first_name or not last_name:
         return jsonify({"success": False, "message": "First and last name are required."}), 400
@@ -6225,8 +6243,6 @@ def appstore_developer_apply():
         return jsonify({"success": False, "message": "Phone number is required."}), 400
     if not contact_email or "@" not in contact_email:
         return jsonify({"success": False, "message": "A valid email address is required."}), 400
-    if payment_choice not in ("now", "later"):
-        return jsonify({"success": False, "message": "Please choose when you'd like to pay the license fee."}), 400
 
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
@@ -6248,8 +6264,7 @@ def appstore_developer_apply():
             f"Address: {address}\n"
             f"Phone: {phone_number}\n"
             f"Contact email: {contact_email}\n"
-            f"License fee: ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year — "
-            f"applicant chose to pay {'now' if payment_choice == 'now' else 'later (payment link emailed)'}.\n\n"
+            f"License fee: ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year — payable only once approved.\n\n"
             "Please review and approve or reject from the Account Requests tab. "
             "Use \"Ask for more info\" if you need anything else before deciding."
         )
@@ -6259,39 +6274,20 @@ def appstore_developer_apply():
             INSERT INTO mail_support_requests
                 (request_number, username, request_type, status,
                  first_name, last_name, company_name, business_type,
-                 company_address, phone_number, contact_email, payment_choice, payment_status)
-            VALUES (?, ?, 'developer_license', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid')
+                 company_address, phone_number, contact_email, payment_status)
+            VALUES (?, ?, 'developer_license', 'pending', ?, ?, ?, ?, ?, ?, ?, 'unpaid')
         """, (case_number, username, first_name, last_name, company_name, business_type,
-              address, phone_number, contact_email, payment_choice))
+              address, phone_number, contact_email))
         request_id = cur.lastrowid
         mail_log_support_event(cur, request_id, "submitted", username, "user",
                                 new_status="pending", note="Developer License application submitted.")
 
-        checkout_url = (
-            f"/hks-bank-checkout.html?amount={APP_STORE_DEVELOPER_LICENSE_FEE:.2f}"
-            f"&desc=App+Store+Developer+License+Fee+({case_number})"
-            f"&return_url=/appstore-developers.html%3Fpaid=1"
-        )
-
-        if payment_choice == "later":
-            absolute_checkout_url = request.host_url.rstrip("/") + checkout_url
-            cur.execute(
-                "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
-                (NOREPLY_MAIL_USERNAME, username, f"Pay your App Store Developer License fee ({case_number})",
-                 f"Hi {first_name},\n\n"
-                 f"Whenever you're ready, you can pay your ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year "
-                 f"Developer License fee here:\n\n{absolute_checkout_url}\n\n"
-                 f"Reference: {case_number}\n\n"
-                 "This isn't required before your application can be reviewed, but your license won't be "
-                 "considered fully active until it's paid.\n\n— App Store")
-            )
-
         mail_send_support_case_confirmation(
             cur, username, case_number, "Developer License application",
             extra_body="Our support team will review your application shortly. You'll receive an email "
-                       "here once it's decided, or if we need more information first."
-                       + ("" if payment_choice == "now" else
-                          f" We've also emailed you a payment link for the ${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year fee.")
+                       "here once it's decided, or if we need more information first. If approved, "
+                       f"you'll be asked to head back to the Developers page in the App Store to pay the "
+                       f"${APP_STORE_DEVELOPER_LICENSE_FEE:.2f}/year license fee and activate your license."
         )
 
         conn.commit()
@@ -6301,8 +6297,6 @@ def appstore_developer_apply():
     return jsonify({
         "success": True,
         "request_number": case_number,
-        "payment_choice": payment_choice,
-        "checkout_url": checkout_url if payment_choice == "now" else None,
         "message": "Application submitted. Check your inbox for a case confirmation."
     })
 
@@ -6882,6 +6876,7 @@ def appstore_me():
         "email": row[0],
         "fullName": row[1],
         "isAdmin": hkmail_is_admin(row[0]),
+        "isDeveloper": hkmail_is_app_developer(row[0]),
         "joinDate": row[2]
     })
 

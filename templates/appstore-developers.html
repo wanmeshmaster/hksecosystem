@@ -260,6 +260,15 @@
         .status-approved { background: rgba(38, 201, 171, 0.16); color: var(--accent); }
         .status-rejected { background: rgba(224, 100, 90, 0.16); color: var(--danger); }
 
+        .badge-icon {
+            display: inline-flex;
+            width: 13px;
+            height: 13px;
+            margin-right: 5px;
+        }
+
+        .badge-icon svg { width: 100%; height: 100%; display: block; }
+
         .status-detail-row {
             display: flex;
             justify-content: space-between;
@@ -408,7 +417,7 @@
 
             <div class="fee-banner">
                 <div class="fee-banner-amount font-display" id="feeAmount">$100.00 <span>/ year</span></div>
-                <div class="fee-banner-note">One license fee, billed to your HKS Bank account of choice — pay right away or any time before it's due.</div>
+                <div class="fee-banner-note">One license fee, billed to your HKS Bank account of choice. You'll pay from this page once your application is approved.</div>
             </div>
 
             <h2 class="font-display">What you get</h2>
@@ -428,7 +437,7 @@
             </ul>
 
             <h2 class="font-display">How it works</h2>
-            <p>Applying takes a couple of minutes: tell us a bit about you or your business below, choose when you'd like to pay the license fee, and submit. Our support team reviews every application — you'll get an email the moment it's decided, or if we need anything else from you first.</p>
+            <p>Applying takes a couple of minutes: tell us a bit about you or your business below and submit. Our support team reviews every application — you'll get an email the moment it's decided, or if we need anything else from you first. Once approved, come back to this page to pay the license fee; your Developer badge and full license go live as soon as payment clears.</p>
         </div>
 
         <div class="page-card" id="stateCard">
@@ -512,34 +521,38 @@
 
         function renderApproved(email, req) {
             const card = $('stateCard');
-            const paid = req && req.payment_status === 'paid';
-            let paymentBlock = '';
-            if (req && !paid) {
-                paymentBlock = `
-                    <div class="info-note amber">
-                        Your license is active, but the $${Number(req.license_fee).toFixed(2)}/year fee for this
-                        application (${escHtml(req.request_number)}) is still unpaid.
-                    </div>
-                    <div class="action-row">
-                        <button class="btn btn-solid" id="payNowBtn">Pay license fee</button>
-                    </div>
-                `;
-            }
             card.innerHTML = `
-                <span class="status-pill status-approved font-display">Developer License Active</span>
+                <span class="status-pill status-approved font-display">
+                    <span class="badge-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>
+                    </span>
+                    Developer License Active
+                </span>
                 <h2 class="font-display" style="margin-top:0;">You're a registered developer</h2>
-                <p>${escHtml(email)} holds an active App Store Developer License. You can submit applications for listing whenever you're ready.</p>
-                ${paymentBlock}
+                <p>${escHtml(email)} holds an active App Store Developer License, with the Developer badge live on the account. You can submit applications for listing whenever you're ready.</p>
             `;
-            if (req && !paid) {
-                $('payNowBtn').onclick = () => payNow(req.request_number, Number(req.license_fee));
-            }
+        }
+
+        function renderApprovedUnpaid(email, req) {
+            const card = $('stateCard');
+            card.innerHTML = `
+                <span class="status-pill status-approved font-display">Approved</span>
+                <h2 class="font-display" style="margin-top:0;">One step left — pay to activate</h2>
+                <p>Your Developer License application (${escHtml(req.request_number)}) has been approved. Pay the
+                $${Number(req.license_fee).toFixed(2)}/year license fee below to activate your license — your
+                Developer badge goes live as soon as payment clears.</p>
+                <div class="status-detail-row"><span>Applicant</span><span>${escHtml(req.first_name)} ${escHtml(req.last_name)}</span></div>
+                <div class="status-detail-row"><span>Company</span><span>${escHtml(req.company_name)}</span></div>
+                <div class="action-row">
+                    <button class="btn btn-solid" id="payNowBtn">Pay license fee</button>
+                </div>
+            `;
+            $('payNowBtn').onclick = () => payNow(req.request_number, Number(req.license_fee));
         }
 
         function renderPending(email, req) {
             const card = $('stateCard');
             const needsInfo = req.status === 'needs_info';
-            const paid = req.payment_status === 'paid';
             card.innerHTML = `
                 <span class="status-pill ${needsInfo ? 'status-needs_info' : 'status-pending'} font-display">
                     ${needsInfo ? 'Needs More Info' : 'Pending Review'}
@@ -549,16 +562,11 @@
                     <strong>Support needs more information from you.</strong><br>
                     Check your HKMail inbox for what they need, then reply by emailing
                     <strong>support@hkmail.cn</strong> and referencing case <strong>${escHtml(req.request_number)}</strong>.
-                </div>` : `<p>Our support team is reviewing your application. You'll get an email as soon as it's decided.</p>`}
+                </div>` : `<p>Our support team is reviewing your application. You'll get an email as soon as it's decided. The $${Number(req.license_fee).toFixed(2)}/year license fee isn't payable yet — you'll be able to pay it from this page once your application is approved.</p>`}
                 <div class="status-detail-row"><span>Applicant</span><span>${escHtml(req.first_name)} ${escHtml(req.last_name)}</span></div>
                 <div class="status-detail-row"><span>Company</span><span>${escHtml(req.company_name)}</span></div>
                 <div class="status-detail-row"><span>Business type</span><span>${escHtml(req.business_type_label)}</span></div>
-                <div class="status-detail-row"><span>License fee</span><span>$${Number(req.license_fee).toFixed(2)}/year — ${paid ? 'Paid' : 'Unpaid'}</span></div>
-                ${!paid ? `<div class="action-row"><button class="btn btn-solid" id="payNowBtn">Pay license fee</button></div>` : ''}
             `;
-            if (!paid) {
-                $('payNowBtn').onclick = () => payNow(req.request_number, Number(req.license_fee));
-            }
         }
 
         function renderForm(email, businessTypes, licenseFee, priorRejected) {
@@ -604,20 +612,11 @@
                         </div>
                     </div>
 
-                    <h2 class="font-display">When would you like to pay?</h2>
-                    <p style="margin-bottom:0;">The $${Number(licenseFee).toFixed(2)}/year license fee isn't required before we can review your application — but your license won't be considered fully active until it's paid.</p>
-                    <div class="payment-choice">
-                        <label class="payment-option selected" id="opt-now">
-                            <input type="radio" name="payment_choice" value="now" checked>
-                            <div class="payment-option-title"><span class="radio-dot"></span>Pay now</div>
-                            <div class="payment-option-sub">Head to checkout right after submitting.</div>
-                        </label>
-                        <label class="payment-option" id="opt-later">
-                            <input type="radio" name="payment_choice" value="later">
-                            <div class="payment-option-title"><span class="radio-dot"></span>Pay later</div>
-                            <div class="payment-option-sub">We'll email you a payment link to use any time.</div>
-                        </label>
-                    </div>
+                    <p class="info-note" style="background:rgba(255,255,255,0.03); color:var(--text-tertiary); margin-top:22px;">
+                        No payment is needed to apply. If approved, you'll come back to this page to pay the
+                        $${Number(licenseFee).toFixed(2)}/year license fee — your Developer badge activates as
+                        soon as that's received.
+                    </p>
 
                     <div class="form-error" id="formError"></div>
                     <div class="form-submit-row">
@@ -625,15 +624,6 @@
                     </div>
                 </form>
             `;
-
-            const optNow = $('opt-now');
-            const optLater = $('opt-later');
-            [optNow, optLater].forEach(opt => {
-                opt.addEventListener('click', () => {
-                    optNow.classList.toggle('selected', opt === optNow);
-                    optLater.classList.toggle('selected', opt === optLater);
-                });
-            });
 
             $('applyForm').addEventListener('submit', submitApplication);
         }
@@ -653,8 +643,7 @@
                 business_type: $('f-biztype').value,
                 address: $('f-address').value.trim(),
                 phone_number: $('f-phone').value.trim(),
-                contact_email: $('f-contact-email').value.trim(),
-                payment_choice: document.querySelector('input[name="payment_choice"]:checked').value
+                contact_email: $('f-contact-email').value.trim()
             };
 
             const { data } = await postJSON('/api/appstore/developer/apply', payload);
@@ -663,11 +652,6 @@
                 errorBox.classList.add('show');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Submit application';
-                return;
-            }
-
-            if (payload.payment_choice === 'now' && data.checkout_url) {
-                window.location.href = data.checkout_url;
                 return;
             }
 
@@ -711,6 +695,11 @@
 
             if (info.is_developer) {
                 renderApproved(info.email, latest);
+                return;
+            }
+
+            if (latest && latest.status === 'approved') {
+                renderApprovedUnpaid(info.email, latest);
                 return;
             }
 

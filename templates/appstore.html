@@ -239,6 +239,49 @@
             white-space: nowrap;
         }
 
+        .dev-badge {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: rgba(38, 201, 171, 0.16);
+            color: var(--accent);
+            position: relative;
+        }
+
+        .dev-badge.show { display: flex; }
+
+        .dev-badge svg { width: 12px; height: 12px; }
+
+        .dev-badge::after {
+            content: "Developer";
+            position: absolute;
+            top: calc(100% + 9px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #14181d;
+            color: var(--text-primary);
+            font-size: 0.68rem;
+            font-weight: 600;
+            white-space: nowrap;
+            padding: 6px 10px;
+            border-radius: 7px;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+            z-index: 20;
+        }
+
+        .dev-badge:hover::after,
+        .dev-badge:focus-visible::after {
+            opacity: 1;
+        }
+
         .signed-out-controls { display: flex; align-items: center; gap: 10px; }
         .signed-out-controls.hide { display: none; }
 
@@ -725,6 +768,9 @@
             <div class="account-chip" id="accountChip">
                 <span class="account-avatar" id="accountAvatar">A</span>
                 <span class="account-name" id="accountName"></span>
+                <span class="dev-badge" id="devBadge" tabindex="-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>
+                </span>
                 <button class="btn" id="signOutBtn" type="button">Sign Out</button>
             </div>
         </div>
@@ -820,17 +866,19 @@
         };
 
         // ── Session state ───────────────────────────────────────────────
-        function applySignedIn(email, fullName) {
+        function applySignedIn(email, fullName, isDeveloper) {
             $("signedOutControls").classList.add("hide");
             $("accountChip").classList.add("show");
             const label = fullName || email;
             $("accountName").textContent = label;
             $("accountAvatar").textContent = label.charAt(0).toUpperCase();
+            $("devBadge").classList.toggle("show", !!isDeveloper);
         }
 
         function applySignedOut() {
             $("signedOutControls").classList.remove("hide");
             $("accountChip").classList.remove("show");
+            $("devBadge").classList.remove("show");
         }
 
         (async function checkSession() {
@@ -838,7 +886,7 @@
                 const res = await fetch("/api/appstore/me");
                 const data = await res.json();
                 if (data && data.loggedIn) {
-                    applySignedIn(data.email, data.fullName);
+                    applySignedIn(data.email, data.fullName, data.isDeveloper);
                 }
             } catch (e) {}
         })();
