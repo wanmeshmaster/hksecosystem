@@ -1809,6 +1809,7 @@
             <button class="admin-tab active" id="admin-tab-users" onclick="switchAdminTab('users')">User Directory</button>
             <button class="admin-tab" id="admin-tab-requests" onclick="switchAdminTab('requests')">Account Requests <span class="badge" id="admin-tab-requests-badge">0</span></button>
             <button class="admin-tab" id="admin-tab-apps" onclick="switchAdminTab('apps')">App Submissions <span class="badge" id="admin-tab-apps-badge">0</span></button>
+            <button class="admin-tab" id="admin-tab-active" onclick="switchAdminTab('active')">Active Apps</button>
             <button class="admin-tab" id="admin-tab-create" onclick="switchAdminTab('create')">Create Official Account</button>
         </div>
 
@@ -1942,6 +1943,30 @@
                 <div style="margin-top:14px;font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--muted);">Audit log</div>
                 <div class="req-audit-log" id="app-audit-log"></div>
             </div>
+        </div>
+
+        <!-- Active Apps tab: everything currently live — the 3 built-in
+             apps (always active, no admin action needed) plus every
+             third-party listing with status='published'. Read-focused,
+             with a Delist shortcut for third-party apps; full review
+             (approve/reject/verify) still happens in App Submissions. -->
+        <div class="admin-tab-panel" id="admin-panel-active">
+            <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px;">Every app currently live on the App Store and visible to users — built-in apps plus published third-party listings.</p>
+            <table class="req-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Developer</th>
+                        <th>Category</th>
+                        <th>Version</th>
+                        <th>Verified</th>
+                        <th>Live since</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="active-apps-table-body"></tbody>
+            </table>
+            <p class="req-empty" id="active-apps-table-empty" style="display:none;">No apps are currently active.</p>
         </div>
 
         <!-- Create official account tab -->
@@ -2901,6 +2926,82 @@
         }
     }
 
+    // Built-in apps are always live and aren't rows in app_store_listings —
+    // they're listed statically here (mirrors APP_STORE_RESERVED_LISTING_IDS
+    // / get_appstore_apps() in app.py) so the Active Apps tab shows the
+    // complete picture, not just third-party listings.
+    const BUILTIN_ACTIVE_APPS = [
+        { title: 'HKS Bank',  developer: 'Hong Kong Solutions Ltd.', category: 'Finance',      version: '—', verified: 'official' },
+        { title: 'HKMail',    developer: 'Hong Kong Solutions Ltd.', category: 'Productivity',  version: '—', verified: 'official' },
+        { title: 'SnackShop', developer: 'SnackShop Co.',            category: 'Shopping',      version: '—', verified: 'verified' },
+    ];
+
+    async function loadActiveApps() {
+        if (!iAmSupportStaff) return;
+        const tbody = document.getElementById('active-apps-table-body');
+        const empty = document.getElementById('active-apps-table-empty');
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);">Loading…</td></tr>';
+        empty.style.display = 'none';
+        try {
+            const res  = await fetch('/api/appstore/admin/listings?status=published');
+            const data = await res.json();
+            if (!data.success) {
+                tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red);">${escHtml(data.message || 'Failed to load.')}</td></tr>`;
+                return;
+            }
+            const thirdParty = data.listings || [];
+            if (!thirdParty.length && !BUILTIN_ACTIVE_APPS.length) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            const builtinRows = BUILTIN_ACTIVE_APPS.map(a => `
+                <tr>
+                    <td>${escHtml(a.title)}</td>
+                    <td>${escHtml(a.developer)}</td>
+                    <td>${escHtml(a.category)}</td>
+                    <td>${escHtml(a.version)}</td>
+                    <td>${a.verified === 'official' ? '<span class="req-verified-yes">Official</span>' : '<span class="req-verified-yes">Verified</span>'}</td>
+                    <td style="color:var(--muted);">Built-in</td>
+                    <td></td>
+                </tr>
+            `).join('');
+            const thirdPartyRows = thirdParty.map(l => `
+                <tr>
+                    <td>${escHtml(l.title)}</td>
+                    <td>${escHtml(l.owner_username)}</td>
+                    <td>${escHtml(l.category || '—')}</td>
+                    <td>${escHtml(l.version || '—')}</td>
+                    <td>${l.verified === 'verified' ? '<span class="req-verified-yes">Yes</span>' : '<span class="req-verified-no">—</span>'}</td>
+                    <td style="color:var(--muted);">${l.published_at ? formatDate(l.published_at, true) : '—'}</td>
+                    <td><button class="admin-edit-btn" onclick="delistActiveApp('${escJs(l.id)}', '${escJs(l.title)}')">Delist</button></td>
+                </tr>
+            `).join('');
+            tbody.innerHTML = builtinRows + thirdPartyRows;
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="7" style="color:var(--red);">Connection error.</td></tr>';
+        }
+    }
+
+    async function delistActiveApp(listingId, title) {
+        if (!confirm(`Delist "${title}" from the App Store? It will disappear from the store and from everyone's home screen.`)) return;
+        const note = prompt('Optional note to the developer (leave blank for none):') || '';
+        try {
+            const res  = await fetch(`/api/appstore/admin/listings/${listingId}/delist`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note })
+            });
+            const data = await res.json();
+            if (data.success) {
+                loadActiveApps();
+            } else {
+                alert(data.message || 'Could not delist this app — please try again.');
+            }
+        } catch {
+            alert('Connection error — please try again.');
+        }
+    }
+
     async function openAppDetail(listingId) {
         appDetailId = listingId;
         const box = document.getElementById('app-detail-box');
@@ -3761,6 +3862,7 @@
         document.getElementById('admin-tab-create').style.display = showAllAdminTabs ? '' : 'none';
         document.getElementById('admin-tab-requests').style.display = '';
         document.getElementById('admin-tab-apps').style.display = '';
+        document.getElementById('admin-tab-active').style.display = '';
     }
 
     function closeAdminPanel() {
@@ -3777,13 +3879,16 @@
         document.getElementById('admin-panel-users').classList.toggle('active', which === 'users');
         document.getElementById('admin-panel-requests').classList.toggle('active', which === 'requests');
         document.getElementById('admin-panel-apps').classList.toggle('active', which === 'apps');
+        document.getElementById('admin-panel-active').classList.toggle('active', which === 'active');
         document.getElementById('admin-panel-create').classList.toggle('active', which === 'create');
         document.getElementById('admin-tab-users').classList.toggle('active', which === 'users');
         document.getElementById('admin-tab-requests').classList.toggle('active', which === 'requests');
         document.getElementById('admin-tab-apps').classList.toggle('active', which === 'apps');
+        document.getElementById('admin-tab-active').classList.toggle('active', which === 'active');
         document.getElementById('admin-tab-create').classList.toggle('active', which === 'create');
         if (which === 'requests') loadSupportRequests();
         if (which === 'apps') loadAppSubmissions();
+        if (which === 'active') loadActiveApps();
     }
 
     function reqStatusPillClass(status) {
