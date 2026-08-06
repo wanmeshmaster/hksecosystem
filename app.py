@@ -723,16 +723,24 @@ def get_appstore_apps():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur = conn.cursor()
     cur.execute("""
-        SELECT id, owner_username, title, description, category, url, verified,
-               icon_mime, published_at, version
-        FROM app_store_listings WHERE status='published' ORDER BY published_at DESC
+        SELECT l.id, l.owner_username, l.title, l.description, l.category, l.url, l.verified,
+               l.icon_mime, l.published_at, l.version, u.company_name
+        FROM app_store_listings l
+        LEFT JOIN mail_users u ON u.username = l.owner_username
+        WHERE l.status='published' ORDER BY l.published_at DESC
     """)
     rows = cur.fetchall()
     conn.close()
-    for (lid, owner, title, desc, category, url, verified, icon_mime, published_at, version) in rows:
+    for (lid, owner, title, desc, category, url, verified, icon_mime, published_at, version, company_name) in rows:
         apps.append({
             'id': lid, 'title': title, 'url': url, 'description': desc,
-            'developer': owner, 'verified': verified, 'category': category or 'Other',
+            # The developer's company name, captured on their Developer
+            # License application (see f-company on appstore-developers.html
+            # and mail_users.company_name), not their HKMail address —
+            # nobody browsing the store should see another user's email.
+            # Falls back to the raw username only in the unlikely case a
+            # developer account has no company name on file.
+            'developer': company_name or owner, 'verified': verified, 'category': category or 'Other',
             'downloads': '—',
             'published': (published_at or '')[:7],
             'version': version or None,
