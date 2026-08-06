@@ -280,6 +280,23 @@ APP_STORE_BUSINESS_TYPE_LABELS = {
     "other":           "Other",
 }
 
+# ── App Store: Listings (third-party app publishing) ───────────────────────
+# Once a developer holds an active Developer License (above), they can submit
+# their own apps for listing. Submissions live in app_store_listings and go
+# through pending_review -> published/rejected, reviewed by the same support
+# staff who work the Account Requests queue. See init_mail_db for the table
+# definitions and the "App Store: Listings" section below for the routes.
+APP_STORE_LISTING_CATEGORIES = [
+    "Finance", "Productivity", "Shopping", "Games", "Social", "Utilities", "Other",
+]
+APP_STORE_LISTING_STATUSES = ["draft", "pending_review", "published", "rejected", "delisted"]
+# Listings can never self-grant 'official' — that's reserved for HKS Solutions'
+# own three built-in apps (hks-bank/hkmail/snackshop), which aren't rows in
+# this table at all. Admins can only move a third-party listing between these two.
+APP_STORE_LISTING_VERIFIED_LEVELS = ["unverified", "verified"]
+# Reserved so a developer-submitted slug can never collide with a built-in app.
+APP_STORE_RESERVED_LISTING_IDS = {"hks-bank", "hkmail", "snackshop"}
+
 
 def generate_signup_code(length=8):
     alphabet = string.ascii_uppercase + string.digits
@@ -660,7 +677,9 @@ def coming_soon():
     return redirect('/appstore.html')
 
 def get_appstore_apps():
-    """Shared app-listing data for the App Store index and per-app detail pages."""
+    """Shared app-listing data for the App Store index and per-app detail pages:
+    the three built-in official apps, plus any third-party developer listings
+    that are currently published (see 'App Store: Listings' below)."""
     apps = [
         {'id': 'hks-bank',  'title': 'HKS Bank',  'url': '/hks-bank.html',
          'description': 'Accounts, cards, and payments for the ecosystem.',
@@ -678,6 +697,24 @@ def get_appstore_apps():
     for a in apps:
         img = f"{a['id']}.jpg"
         a['bg_image'] = img if os.path.exists(os.path.join(app.root_path, 'source', img)) else None
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, owner_username, title, description, category, url, verified,
+               icon_mime, published_at
+        FROM app_store_listings WHERE status='published' ORDER BY published_at DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    for (lid, owner, title, desc, category, url, verified, icon_mime, published_at) in rows:
+        apps.append({
+            'id': lid, 'title': title, 'url': url, 'description': desc,
+            'developer': owner, 'verified': verified, 'category': category or 'Other',
+            'downloads': '—',
+            'published': (published_at or '')[:7],
+            'bg_image': f"/api/appstore/listings/{lid}/icon" if icon_mime else None,
+        })
     return apps
 
 @app.route('/appstore.html')
@@ -2861,6 +2898,53 @@ def init_mail_db():
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_support_events_request ON mail_support_request_events(request_id)")
+
+    # Third-party App Store listings, submitted by developers who hold an
+    # active Developer License (see APP_STORE_* above). Kept as its own table
+    # rather than folded into mail_support_requests: a listing has a very
+    # different lifecycle (can be edited and resubmitted indefinitely; a
+    # support case doesn't work that way) and its own fields (url, icon,
+    # category) that don't map onto the support-request columns.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_store_listings (
+            id              TEXT PRIMARY KEY,               -- slug, e.g. 'snack-tracker'
+            owner_username  TEXT NOT NULL,                   -- FK to mail_users.username
+            title           TEXT NOT NULL,
+            description     TEXT NOT NULL DEFAULT '',
+            category        TEXT NOT NULL DEFAULT '',
+            url             TEXT NOT NULL DEFAULT '',         -- where "Open" sends users
+            icon_mime       TEXT NOT NULL DEFAULT '',
+            icon_blob       BLOB,
+            status          TEXT NOT NULL DEFAULT 'draft',    -- draft|pending_review|published|rejected|delisted
+            verified        TEXT NOT NULL DEFAULT 'unverified', -- unverified|verified (never 'official' — see APP_STORE_LISTING_VERIFIED_LEVELS)
+            reject_reason   TEXT NOT NULL DEFAULT '',
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            submitted_at    DATETIME,
+            published_at    DATETIME,
+            updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_listings_owner ON app_store_listings(owner_username)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_listings_status ON app_store_listings(status)")
+
+    # Full audit trail for listings, same shape/purpose as
+    # mail_support_request_events above: every submission, edit, approval,
+    # rejection, and delisting, plus who did it.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_store_listing_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            listing_id      TEXT NOT NULL,
+            action          TEXT NOT NULL,           -- submitted|resubmitted|edited|approved|rejected|delisted|verified_changed
+            old_status      TEXT,
+            new_status      TEXT,
+            note            TEXT NOT NULL DEFAULT '',
+            actor_username  TEXT NOT NULL,
+            actor_role      TEXT NOT NULL,            -- developer | admin
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (listing_id) REFERENCES app_store_listings(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_listing_events_listing ON app_store_listing_events(listing_id)")
 
     # Ensure the HKMail administrator account exists. It's inserted first so
     # it is literally the first user of the HKMail service, and it is both
@@ -6303,6 +6387,492 @@ def appstore_developer_apply():
         "request_number": case_number,
         "message": "Application submitted. Check your inbox for a case confirmation."
     })
+
+
+# ── App Store: Listings ──────────────────────────────────────────────────
+# Dynamic publishing on top of the three built-in apps. Any HKMail address
+# holding an active Developer License (hkmail_is_app_developer) can submit a
+# listing; it goes to pending_review, and support staff approve/reject it
+# from the same admin surface as Account Requests (mail_is_support_staff).
+# get_appstore_apps() above folds every status='published' row into the
+# public App Store alongside HKS Bank/HKMail/SnackShop.
+
+APP_STORE_LISTING_ICON_MAX_MB = 2
+APP_STORE_LISTING_ICON_MAX_BYTES = APP_STORE_LISTING_ICON_MAX_MB * 1024 * 1024
+
+
+def app_store_slugify(title):
+    """Turn a listing title into a URL-safe slug, e.g. 'Snack Tracker!' ->
+    'snack-tracker'. Falls back to 'app' if nothing alphanumeric survives."""
+    slug = re.sub(r'[^a-z0-9]+', '-', title.strip().lower()).strip('-')
+    return slug or 'app'
+
+
+def app_store_unique_listing_id(cur, title):
+    """Generate a slug for a new listing, disambiguating against both the
+    reserved built-in ids and any existing row (including other developers'
+    listings, and this developer's own past submissions)."""
+    base = app_store_slugify(title)
+    candidate = base
+    n = 2
+    while True:
+        if candidate not in APP_STORE_RESERVED_LISTING_IDS:
+            cur.execute("SELECT 1 FROM app_store_listings WHERE id=?", (candidate,))
+            if not cur.fetchone():
+                return candidate
+        candidate = f"{base}-{n}"
+        n += 1
+
+
+def app_store_log_listing_event(cur, listing_id, action, actor_username, actor_role,
+                                 old_status=None, new_status=None, note=""):
+    cur.execute("""
+        INSERT INTO app_store_listing_events
+            (listing_id, action, old_status, new_status, note, actor_username, actor_role)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (listing_id, action, old_status, new_status, note, actor_username, actor_role))
+
+
+def app_store_notify(cur, recipient, subject, body):
+    """Drop a notice into the developer's HKMail inbox from the App Store's
+    own mailbox — same direct-insert pattern as mail_send_support_case_confirmation,
+    just without a case number since listings aren't support cases."""
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (APPSTORE_MAIL_SENDER, recipient, subject, body)
+    )
+
+
+APP_STORE_LISTING_SELECT_COLUMNS = """
+    id, owner_username, title, description, category, url, icon_mime,
+    status, verified, reject_reason, created_at, submitted_at, published_at, updated_at
+"""
+
+
+def app_store_listing_row_to_dict(row):
+    (lid, owner, title, desc, category, url, icon_mime, status, verified,
+     reject_reason, created_at, submitted_at, published_at, updated_at) = row
+    return {
+        "id": lid, "owner_username": owner, "title": title, "description": desc,
+        "category": category, "url": url, "has_icon": bool(icon_mime),
+        "icon_url": f"/api/appstore/listings/{lid}/icon" if icon_mime else None,
+        "status": status, "verified": verified, "reject_reason": reject_reason,
+        "created_at": created_at, "submitted_at": submitted_at,
+        "published_at": published_at, "updated_at": updated_at,
+    }
+
+
+def app_store_decode_icon(icon_field):
+    """Decode a {"mime_type": ..., "data": <base64>} payload into
+    (mime_type, raw_bytes). Returns (None, None) if no icon was sent.
+    Raises ValueError with a user-facing message on invalid input. Same
+    approach as shop_decode_image, sized down for an app icon."""
+    if not icon_field:
+        return None, None
+    if not isinstance(icon_field, dict):
+        raise ValueError("Invalid icon data.")
+    mime_type = (icon_field.get("mime_type") or "").strip().lower()
+    b64data = icon_field.get("data") or ""
+    if mime_type not in ALLOWED_PRODUCT_IMAGE_MIME_TYPES:
+        raise ValueError("Icons must be JPEG, PNG, WEBP or GIF.")
+    try:
+        raw = base64.b64decode(b64data, validate=True)
+    except Exception:
+        raise ValueError("Icon could not be read — please re-upload it.")
+    if len(raw) == 0:
+        raise ValueError("Icon file is empty.")
+    if len(raw) > APP_STORE_LISTING_ICON_MAX_BYTES:
+        raise ValueError(f"Icons must be {APP_STORE_LISTING_ICON_MAX_MB}MB or smaller.")
+    return mime_type, raw
+
+
+def app_store_validate_listing_fields(data):
+    """Shared validation for both create and edit. Returns (fields_dict, error_message)."""
+    title       = (data.get("title", "") or "").strip()
+    description = (data.get("description", "") or "").strip()
+    category    = (data.get("category", "") or "").strip()
+    url         = (data.get("url", "") or "").strip()
+
+    if not title or len(title) > 80:
+        return None, "Title is required (80 characters max)."
+    if not description or len(description) > 600:
+        return None, "Description is required (600 characters max)."
+    if category not in APP_STORE_LISTING_CATEGORIES:
+        return None, "Please choose a valid category."
+    if not url or not re.match(r'^https?://', url):
+        return None, "URL is required and must start with http:// or https://."
+    return {"title": title, "description": description, "category": category, "url": url}, None
+
+
+@app.route('/api/appstore/listings/mine', methods=['GET'])
+def appstore_listings_mine():
+    """Every listing (any status) owned by the signed-in developer, for the
+    'My Apps' dashboard on the Developers page."""
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail first."}), 401
+    if not hkmail_is_app_developer(username):
+        return jsonify({"success": False, "message": "An active Developer License is required."}), 403
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT {APP_STORE_LISTING_SELECT_COLUMNS} FROM app_store_listings
+        WHERE owner_username=? ORDER BY updated_at DESC
+    """, (username,))
+    rows = cur.fetchall()
+    conn.close()
+    return jsonify({"success": True, "listings": [app_store_listing_row_to_dict(r) for r in rows],
+                     "categories": APP_STORE_LISTING_CATEGORIES})
+
+
+@app.route('/api/appstore/listings', methods=['POST'])
+def appstore_listings_create():
+    """Submit a new app for listing. Goes straight to pending_review — there's
+    no reason to make a developer save a draft first just to resubmit it."""
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail first."}), 401
+    if not hkmail_is_app_developer(username):
+        return jsonify({"success": False, "message": "An active Developer License is required to submit apps."}), 403
+
+    data = request.get_json() or {}
+    fields, error = app_store_validate_listing_fields(data)
+    if error:
+        return jsonify({"success": False, "message": error}), 400
+
+    try:
+        icon_mime, icon_blob = app_store_decode_icon(data.get("icon"))
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        listing_id = app_store_unique_listing_id(cur, fields["title"])
+        cur.execute("""
+            INSERT INTO app_store_listings
+                (id, owner_username, title, description, category, url,
+                 icon_mime, icon_blob, status, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', CURRENT_TIMESTAMP)
+        """, (listing_id, username, fields["title"], fields["description"],
+              fields["category"], fields["url"], icon_mime or "", icon_blob))
+        app_store_log_listing_event(cur, listing_id, "submitted", username, "developer",
+                                     new_status="pending_review", note="Listing submitted for review.")
+        app_store_notify(cur, username, f"App submitted for review: {fields['title']}",
+                          f"Thanks for submitting \"{fields['title']}\" to the App Store.\n\n"
+                          "Our team will review it shortly — you'll get an email here as soon as it's "
+                          "approved and published, or if it's rejected. You can check its status any "
+                          "time from My Apps on the Developers page.\n\n— App Store")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "id": listing_id, "message": "Submitted for review."})
+
+
+@app.route('/api/appstore/listings/<listing_id>', methods=['PUT'])
+def appstore_listings_update(listing_id):
+    """Edit an owned listing. Any edit — regardless of current status — sends
+    it back to pending_review; only an admin approval can make it (re)appear
+    in the public store. Delisted listings can be edited too, which is how a
+    developer brings one back."""
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail first."}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT owner_username, title, status FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Listing not found."}), 404
+        owner, old_title, old_status = row
+        if owner != username:
+            return jsonify({"success": False, "message": "You don't own this listing."}), 403
+
+        data = request.get_json() or {}
+        fields, error = app_store_validate_listing_fields(data)
+        if error:
+            return jsonify({"success": False, "message": error}), 400
+
+        icon_sql = ""
+        icon_params = []
+        if data.get("icon"):
+            try:
+                icon_mime, icon_blob = app_store_decode_icon(data.get("icon"))
+            except ValueError as e:
+                return jsonify({"success": False, "message": str(e)}), 400
+            icon_sql = ", icon_mime=?, icon_blob=?"
+            icon_params = [icon_mime or "", icon_blob]
+
+        cur.execute(f"""
+            UPDATE app_store_listings
+            SET title=?, description=?, category=?, url=?, status='pending_review',
+                reject_reason='', submitted_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP{icon_sql}
+            WHERE id=?
+        """, [fields["title"], fields["description"], fields["category"], fields["url"], *icon_params, listing_id])
+
+        action = "resubmitted" if old_status in ("published", "rejected", "delisted") else "edited"
+        app_store_log_listing_event(cur, listing_id, action, username, "developer",
+                                     old_status=old_status, new_status="pending_review",
+                                     note="Listing edited and resubmitted for review.")
+        app_store_notify(cur, username, f"App resubmitted for review: {fields['title']}",
+                          f"Your edits to \"{fields['title']}\" have been submitted for review.\n\n"
+                          "You'll get an email here as soon as it's approved and published, or if it's "
+                          "rejected.\n\n— App Store")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Listing updated and resubmitted for review."})
+
+
+@app.route('/api/appstore/listings/<listing_id>/delist', methods=['POST'])
+def appstore_listings_delist(listing_id):
+    """Developer pulls their own app from the store. No review required —
+    same self-service principle as deleting your own product."""
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail first."}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT owner_username, status FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Listing not found."}), 404
+        owner, old_status = row
+        if owner != username:
+            return jsonify({"success": False, "message": "You don't own this listing."}), 403
+        if old_status == "delisted":
+            return jsonify({"success": False, "message": "Already delisted."}), 400
+
+        cur.execute("UPDATE app_store_listings SET status='delisted', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                     (listing_id,))
+        app_store_log_listing_event(cur, listing_id, "delisted", username, "developer",
+                                     old_status=old_status, new_status="delisted",
+                                     note="Delisted by developer.")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Listing delisted."})
+
+
+@app.route('/api/appstore/listings/<listing_id>/icon')
+def appstore_listing_icon(listing_id):
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT icon_mime, icon_blob FROM app_store_listings WHERE id=?", (listing_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row or not row[1]:
+        return jsonify({"success": False, "message": "No icon for this listing."}), 404
+    mime_type, blob = row
+    return Response(blob, mimetype=mime_type or "application/octet-stream",
+                     headers={"Cache-Control": "public, max-age=3600"})
+
+
+# ── App Store: Listings — admin review ──────────────────────────────────────
+# Mirrors the Account Requests queue support staff already work
+# (mail_is_support_staff), just against app_store_listings instead of
+# mail_support_requests.
+
+@app.route('/api/appstore/admin/listings', methods=['GET'])
+def appstore_admin_listings():
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    status = (request.args.get("status") or "").strip()
+    query = f"SELECT {APP_STORE_LISTING_SELECT_COLUMNS} FROM app_store_listings"
+    params = []
+    if status in APP_STORE_LISTING_STATUSES:
+        query += " WHERE status=?"
+        params.append(status)
+    query += " ORDER BY submitted_at DESC, created_at DESC"
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.execute("SELECT COUNT(*) FROM app_store_listings WHERE status='pending_review'")
+    pending_count = cur.fetchone()[0]
+    conn.close()
+    return jsonify({"success": True, "listings": [app_store_listing_row_to_dict(r) for r in rows],
+                     "pending_count": pending_count})
+
+
+@app.route('/api/appstore/admin/listings/<listing_id>', methods=['GET'])
+def appstore_admin_listing_detail(listing_id):
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute(f"SELECT {APP_STORE_LISTING_SELECT_COLUMNS} FROM app_store_listings WHERE id=?", (listing_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "message": "Listing not found."}), 404
+    listing = app_store_listing_row_to_dict(row)
+    cur.execute("""
+        SELECT action, old_status, new_status, note, actor_username, actor_role, created_at
+        FROM app_store_listing_events WHERE listing_id=? ORDER BY created_at ASC
+    """, (listing_id,))
+    listing["events"] = [
+        {"action": a, "old_status": os_, "new_status": ns, "note": n,
+         "actor_username": au, "actor_role": ar, "created_at": ca}
+        for (a, os_, ns, n, au, ar, ca) in cur.fetchall()
+    ]
+    conn.close()
+    return jsonify({"success": True, "listing": listing})
+
+
+@app.route('/api/appstore/admin/listings/<listing_id>/approve', methods=['POST'])
+def appstore_admin_listing_approve(listing_id):
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+    admin_username = session.get("mail_username")
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT owner_username, title, status FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Listing not found."}), 404
+        owner, title, old_status = row
+        if old_status != "pending_review":
+            return jsonify({"success": False, "message": "Only listings pending review can be approved."}), 400
+
+        cur.execute("""
+            UPDATE app_store_listings
+            SET status='published', published_at=CURRENT_TIMESTAMP, reject_reason='', updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        """, (listing_id,))
+        app_store_log_listing_event(cur, listing_id, "approved", admin_username, "admin",
+                                     old_status=old_status, new_status="published")
+        app_store_notify(cur, owner, f"Your app was approved: {title}",
+                          f"Good news — \"{title}\" has been approved and is now live in the App Store.\n\n"
+                          "— App Store")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Listing approved and published."})
+
+
+@app.route('/api/appstore/admin/listings/<listing_id>/reject', methods=['POST'])
+def appstore_admin_listing_reject(listing_id):
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+    admin_username = session.get("mail_username")
+
+    data = request.get_json() or {}
+    reason = (data.get("reason", "") or "").strip()
+    if not reason:
+        return jsonify({"success": False, "message": "A rejection reason is required."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT owner_username, title, status FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Listing not found."}), 404
+        owner, title, old_status = row
+        if old_status != "pending_review":
+            return jsonify({"success": False, "message": "Only listings pending review can be rejected."}), 400
+
+        cur.execute("""
+            UPDATE app_store_listings SET status='rejected', reject_reason=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+        """, (reason, listing_id))
+        app_store_log_listing_event(cur, listing_id, "rejected", admin_username, "admin",
+                                     old_status=old_status, new_status="rejected", note=reason)
+        app_store_notify(cur, owner, f"Your app submission needs changes: {title}",
+                          f"\"{title}\" wasn't approved this time.\n\nReason: {reason}\n\n"
+                          "You can fix it up and resubmit any time from My Apps on the Developers page.\n\n"
+                          "— App Store")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Listing rejected."})
+
+
+@app.route('/api/appstore/admin/listings/<listing_id>/delist', methods=['POST'])
+def appstore_admin_listing_delist(listing_id):
+    """Admin can pull any listing (typically a published one) independent of
+    the owning developer, e.g. for a policy violation."""
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+    admin_username = session.get("mail_username")
+
+    data = request.get_json() or {}
+    note = (data.get("note", "") or "").strip()
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT owner_username, title, status FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Listing not found."}), 404
+        owner, title, old_status = row
+        if old_status == "delisted":
+            return jsonify({"success": False, "message": "Already delisted."}), 400
+
+        cur.execute("UPDATE app_store_listings SET status='delisted', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                     (listing_id,))
+        app_store_log_listing_event(cur, listing_id, "delisted", admin_username, "admin",
+                                     old_status=old_status, new_status="delisted", note=note)
+        app_store_notify(cur, owner, f"Your app was delisted: {title}",
+                          f"\"{title}\" has been delisted from the App Store by our team"
+                          + (f":\n\n{note}\n\n" if note else ".\n\n")
+                          + "Contact support if you have questions.\n\n— App Store")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Listing delisted."})
+
+
+@app.route('/api/appstore/admin/listings/<listing_id>/set-verified', methods=['POST'])
+def appstore_admin_listing_set_verified(listing_id):
+    """Toggle the 'verified' badge — admin-only, independent of publish
+    status, and can never be self-granted by the developer (see
+    APP_STORE_LISTING_VERIFIED_LEVELS: 'official' isn't reachable here at all)."""
+    if not mail_is_support_staff():
+        return jsonify({"success": False, "message": "Support staff access required."}), 403
+    admin_username = session.get("mail_username")
+
+    data = request.get_json() or {}
+    level = (data.get("level", "") or "").strip()
+    if level not in APP_STORE_LISTING_VERIFIED_LEVELS:
+        return jsonify({"success": False, "message": "Invalid verification level."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT verified FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "Listing not found."}), 404
+        old_verified = row[0]
+
+        cur.execute("UPDATE app_store_listings SET verified=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                     (level, listing_id))
+        app_store_log_listing_event(cur, listing_id, "verified_changed", admin_username, "admin",
+                                     note=f"{old_verified} -> {level}")
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": f"Verification level set to {level}."})
 
 
 # Per-image cap for product photos — generous for a product shot, same

@@ -256,9 +256,79 @@
             margin-bottom: 14px;
         }
 
-        .status-pending, .status-needs_info { background: rgba(227, 178, 77, 0.16); color: var(--accent-amber); }
-        .status-approved { background: rgba(38, 201, 171, 0.16); color: var(--accent); }
+        .status-pending, .status-needs_info, .status-pending_review { background: rgba(227, 178, 77, 0.16); color: var(--accent-amber); }
+        .status-approved, .status-published { background: rgba(38, 201, 171, 0.16); color: var(--accent); }
         .status-rejected { background: rgba(224, 100, 90, 0.16); color: var(--danger); }
+        .status-draft, .status-delisted { background: rgba(255, 255, 255, 0.08); color: var(--text-tertiary); }
+
+        /* ── My Apps ─────────────────────────────────────────────────── */
+
+        .my-apps-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 6px; }
+        .my-apps-header h2 { margin: 0; }
+
+        .app-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px 4px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .app-row:last-child { border-bottom: none; }
+
+        .app-row-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.06) center/cover no-repeat;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: var(--text-tertiary);
+        }
+
+        .app-row-body { flex: 1; min-width: 0; }
+        .app-row-body h3 { font-size: 0.94rem; font-weight: 700; margin-bottom: 3px; }
+        .app-row-body p { font-size: 0.8rem; color: var(--text-tertiary); margin: 0; }
+        .app-row-body .status-pill { margin: 6px 0 0; }
+
+        .app-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+        .app-row-actions .btn { padding: 8px 14px; font-size: 0.78rem; }
+
+        .empty-note { font-size: 0.86rem; color: var(--text-tertiary); padding: 10px 4px 4px; }
+
+        /* ── Publish modal ───────────────────────────────────────────── */
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(4, 7, 10, 0.6);
+            backdrop-filter: blur(6px);
+            z-index: 50;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 60px 20px;
+            overflow-y: auto;
+        }
+        .modal-overlay.show { display: flex; }
+
+        .modal-card {
+            width: 100%;
+            max-width: 560px;
+            background: var(--glass-bg-strong);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 32px 32px 36px;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .modal-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+        .modal-card-head h2 { margin: 0; }
+        .modal-close { background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 4px; }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-close svg { width: 20px; height: 20px; display: block; }
 
         .badge-icon {
             display: inline-flex;
@@ -445,7 +515,59 @@
             <div class="skeleton-line" style="width:70%;"></div>
             <div class="skeleton-line" style="width:55%;"></div>
         </div>
+
+        <div class="page-card" id="myAppsCard" style="display:none;">
+            <div class="my-apps-header">
+                <h2 class="font-display">My Apps</h2>
+                <button class="btn btn-solid" id="submitNewAppBtn">Submit new app</button>
+            </div>
+            <p class="page-sub" style="margin-bottom:6px;">Apps you've submitted, and their current status in the App Store.</p>
+            <div id="myAppsList"></div>
+        </div>
     </main>
+
+    <div class="modal-overlay" id="listingModal">
+        <div class="modal-card">
+            <div class="modal-card-head">
+                <h2 class="font-display" id="listingModalTitle">Submit a new app</h2>
+                <button class="modal-close" id="listingModalClose" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <form id="listingForm">
+                <div class="form-grid">
+                    <div class="form-group full">
+                        <label class="form-label" for="l-title">App title</label>
+                        <input class="form-input" id="l-title" type="text" placeholder="Snack Tracker" maxlength="80" required>
+                    </div>
+                    <div class="form-group full">
+                        <label class="form-label" for="l-description">Description</label>
+                        <textarea class="form-textarea" id="l-description" rows="3" maxlength="600" placeholder="What your app does, in a sentence or two." required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="l-category">Category</label>
+                        <select class="form-select" id="l-category" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="l-url">App URL</label>
+                        <input class="form-input" id="l-url" type="url" placeholder="https://…" required>
+                    </div>
+                    <div class="form-group full">
+                        <label class="form-label" for="l-icon">Icon (optional)</label>
+                        <input class="form-input" id="l-icon" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                    </div>
+                </div>
+                <p class="info-note" style="background:rgba(255,255,255,0.03); color:var(--text-tertiary); margin-top:18px;">
+                    Submitting sends this listing to our review team. You'll get an email as soon as it's
+                    approved and live, or if we need changes first.
+                </p>
+                <div class="form-error" id="listingFormError"></div>
+                <div class="form-submit-row">
+                    <button type="submit" class="btn btn-solid" id="listingSubmitBtn">Submit for review</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="toast" id="toast"></div>
 
@@ -482,6 +604,8 @@
         }
 
         let developerInfo = null;
+        let myAppsCategories = [];
+        let editingListingId = null;
 
         // ── Landing back from checkout ─────────────────────────────────
         const urlParams = new URLSearchParams(window.location.search);
@@ -529,8 +653,166 @@
                     Developer License Active
                 </span>
                 <h2 class="font-display" style="margin-top:0;">You're a registered developer</h2>
-                <p>${escHtml(email)} holds an active App Store Developer License, with the Developer badge live on the account. You can submit applications for listing whenever you're ready.</p>
+                <p>${escHtml(email)} holds an active App Store Developer License, with the Developer badge live on the account. You can submit apps for listing below.</p>
             `;
+            $('myAppsCard').style.display = '';
+            loadMyApps();
+        }
+
+        // ── My Apps / listing submission ──────────────────────────────────
+
+        const STATUS_LABELS = {
+            draft: 'Draft', pending_review: 'Pending Review', published: 'Published',
+            rejected: 'Rejected', delisted: 'Delisted'
+        };
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function loadMyApps() {
+            const list = $('myAppsList');
+            list.innerHTML = '<div class="skeleton-line" style="width:60%;"></div>';
+            let data;
+            try {
+                data = await getJSON('/api/appstore/listings/mine');
+            } catch (e) {
+                list.innerHTML = '<p class="empty-note">Could not load your apps — please refresh.</p>';
+                return;
+            }
+            if (!data.success) {
+                list.innerHTML = `<p class="empty-note">${escHtml(data.message || 'Could not load your apps.')}</p>`;
+                return;
+            }
+            myAppsCategories = data.categories || [];
+            renderMyApps(data.listings || []);
+        }
+
+        function renderMyApps(listings) {
+            const list = $('myAppsList');
+            if (!listings.length) {
+                list.innerHTML = '<p class="empty-note">You haven\'t submitted any apps yet.</p>';
+                return;
+            }
+            list.innerHTML = listings.map(l => {
+                const canEdit = true;
+                const canDelist = l.status === 'published' || l.status === 'pending_review';
+                const iconStyle = l.icon_url ? `style="background-image:url('${l.icon_url}')"` : '';
+                return `
+                    <div class="app-row">
+                        <span class="app-row-icon" ${iconStyle}>${l.icon_url ? '' : escHtml(l.title[0] || '?')}</span>
+                        <div class="app-row-body">
+                            <h3>${escHtml(l.title)}</h3>
+                            <p>${escHtml(l.category || '')}</p>
+                            <span class="status-pill status-${l.status} font-display">${STATUS_LABELS[l.status] || l.status}</span>
+                            ${l.status === 'rejected' && l.reject_reason ? `<p style="margin-top:6px;color:var(--danger);">${escHtml(l.reject_reason)}</p>` : ''}
+                        </div>
+                        <div class="app-row-actions">
+                            ${canEdit ? `<button class="btn" onclick="openListingModal(${JSON.stringify(l).replace(/"/g, '&quot;')})">Edit</button>` : ''}
+                            ${canDelist ? `<button class="btn" onclick="delistListing('${l.id}', '${escJsAttr(l.title)}')">Delist</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function escJsAttr(s) {
+            return String(s == null ? '' : s).replace(/'/g, "\\'");
+        }
+
+        function openListingModal(existing) {
+            editingListingId = existing ? existing.id : null;
+            $('listingModalTitle').textContent = existing ? 'Edit app' : 'Submit a new app';
+            $('listingSubmitBtn').textContent = existing ? 'Save & resubmit for review' : 'Submit for review';
+            $('listingFormError').classList.remove('show');
+            $('l-title').value = existing ? existing.title : '';
+            $('l-description').value = existing ? existing.description : '';
+            $('l-url').value = existing ? existing.url : '';
+            $('l-icon').value = '';
+
+            const catSelect = $('l-category');
+            catSelect.innerHTML = myAppsCategories.map(c =>
+                `<option value="${escHtml(c)}" ${existing && existing.category === c ? 'selected' : ''}>${escHtml(c)}</option>`
+            ).join('');
+
+            $('listingModal').classList.add('show');
+        }
+
+        function closeListingModal() {
+            $('listingModal').classList.remove('show');
+        }
+
+        $('submitNewAppBtn').addEventListener('click', () => openListingModal(null));
+        $('listingModalClose').addEventListener('click', closeListingModal);
+        $('listingModal').addEventListener('click', (e) => { if (e.target === $('listingModal')) closeListingModal(); });
+
+        $('listingForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const errorBox = $('listingFormError');
+            errorBox.classList.remove('show');
+            const submitBtn = $('listingSubmitBtn');
+            submitBtn.disabled = true;
+            const originalLabel = submitBtn.textContent;
+            submitBtn.textContent = 'Submitting…';
+
+            const payload = {
+                title: $('l-title').value.trim(),
+                description: $('l-description').value.trim(),
+                category: $('l-category').value,
+                url: $('l-url').value.trim()
+            };
+
+            const iconFile = $('l-icon').files[0];
+            if (iconFile) {
+                try {
+                    const b64 = await fileToBase64(iconFile);
+                    payload.icon = { mime_type: iconFile.type, data: b64 };
+                } catch (e) {
+                    errorBox.textContent = 'Could not read the icon file — please try another one.';
+                    errorBox.classList.add('show');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalLabel;
+                    return;
+                }
+            }
+
+            const url = editingListingId ? `/api/appstore/listings/${editingListingId}` : '/api/appstore/listings';
+            const method = editingListingId ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            });
+            let data = {};
+            try { data = await res.json(); } catch (e) {}
+
+            if (!res.ok || !data.success) {
+                errorBox.textContent = data.message || 'Something went wrong — please try again.';
+                errorBox.classList.add('show');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalLabel;
+                return;
+            }
+
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalLabel;
+            closeListingModal();
+            showToast(data.message || 'Submitted.');
+            loadMyApps();
+        });
+
+        async function delistListing(id, title) {
+            if (!confirm(`Delist "${title}" from the App Store? You can resubmit it later by editing it again.`)) return;
+            const { data } = await postJSON(`/api/appstore/listings/${id}/delist`, {});
+            if (!data.success) {
+                showToast(data.message || 'Could not delist this app.');
+                return;
+            }
+            showToast('Listing delisted.');
+            loadMyApps();
         }
 
         function renderApprovedUnpaid(email, req) {

@@ -1304,6 +1304,20 @@
         .req-status-completed { background: #DCEEDD; color: #1A7A3C; }
         .req-status-rejected { background: #FBE0E2; color: var(--red-dk); }
         .req-status-cancelled { background: var(--bg); color: var(--muted); }
+        .req-status-draft { background: var(--bg); color: var(--muted); }
+        .req-status-pending_review { background: #FDF0D5; color: #8A5B00; }
+        .req-status-published { background: #DCEEDD; color: #1A7A3C; }
+        .req-status-delisted { background: var(--bg); color: var(--muted); }
+
+        .req-neutral-btn { background: #5b6472; }
+        .req-neutral-btn:hover { background: #454c57; }
+        .req-verify-btn { background: #0B66C2; }
+        .req-verify-btn:hover { background: #0951a0; }
+
+        .app-icon-preview {
+            width: 48px; height: 48px; border-radius: 12px; object-fit: cover;
+            background: var(--bg); border: 1px solid var(--border); flex-shrink: 0;
+        }
         .req-verified-yes { color: #1A7A3C; font-weight: 700; }
         .req-verified-no { color: var(--muted); }
         .req-action-btn { border: none; border-radius: 6px; padding: 5px 11px; font-size: 0.76rem; font-weight: 700; cursor: pointer; color: #fff; margin-right: 4px; white-space: nowrap; }
@@ -1794,6 +1808,7 @@
         <div class="admin-tabs" id="admin-tabs-bar">
             <button class="admin-tab active" id="admin-tab-users" onclick="switchAdminTab('users')">User Directory</button>
             <button class="admin-tab" id="admin-tab-requests" onclick="switchAdminTab('requests')">Account Requests <span class="badge" id="admin-tab-requests-badge">0</span></button>
+            <button class="admin-tab" id="admin-tab-apps" onclick="switchAdminTab('apps')">App Submissions <span class="badge" id="admin-tab-apps-badge">0</span></button>
             <button class="admin-tab" id="admin-tab-create" onclick="switchAdminTab('create')">Create Official Account</button>
         </div>
 
@@ -1885,6 +1900,49 @@
             </div>
         </div>
 
+        <div class="admin-tab-panel" id="admin-panel-apps">
+            <div class="req-filters">
+                <select class="c-input" id="app-filter-status" onchange="loadAppSubmissions()">
+                    <option value="">All statuses</option>
+                    <option value="pending_review">Pending Review</option>
+                    <option value="published">Published</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="delisted">Delisted</option>
+                    <option value="draft">Draft</option>
+                </select>
+            </div>
+            <table class="req-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Developer</th>
+                        <th>Category</th>
+                        <th>Status</th>
+                        <th>Verified</th>
+                        <th>Submitted</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="app-table-body"></tbody>
+            </table>
+            <p class="req-empty" id="app-table-empty" style="display:none;">No app submissions match these filters.</p>
+
+            <div class="req-detail-box" id="app-detail-box">
+                <div style="display:flex;gap:12px;align-items:flex-start;">
+                    <img class="app-icon-preview" id="app-detail-icon" src="" alt="" style="display:none;">
+                    <div style="flex:1;min-width:0;">
+                        <h4 style="font-size:0.95rem;margin-bottom:8px;">App <span id="app-detail-title" style="color:var(--red);"></span></h4>
+                        <div id="app-detail-meta" style="font-size:0.8rem;color:var(--muted);margin-bottom:10px;"></div>
+                        <div id="app-detail-desc" style="font-size:0.83rem;margin-bottom:10px;"></div>
+                    </div>
+                </div>
+                <div class="req-detail-actions" id="app-detail-actions"></div>
+                <div class="admin-status-msg" id="app-detail-msg"></div>
+                <div style="margin-top:14px;font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--muted);">Audit log</div>
+                <div class="req-audit-log" id="app-audit-log"></div>
+            </div>
+        </div>
+
         <!-- Create official account tab -->
         <div class="admin-tab-panel" id="admin-panel-create">
             <div class="create-acct-form">
@@ -1964,6 +2022,8 @@
     let myUsername = null;
     let supportRequestsCache = [];
     let supportRequestDetailId = null;
+    let appSubmissionsCache = [];
+    let appDetailId = null;
     let accountDisabled = false;
     let daysRemaining = 0;
     // Only Business-verified and HKMail staff accounts can choose to
@@ -2030,6 +2090,7 @@
         }
         if (iAmSupportStaff) {
             refreshSupportRequestNotifications();
+            refreshAppSubmissionNotifications();
         }
         if (data.isVerifiedBusiness) {
             document.getElementById('topbar-business-badge').style.display = 'inline-block';
@@ -2778,6 +2839,197 @@
         } catch {}
     }
 
+    async function refreshAppSubmissionNotifications() {
+        if (!iAmSupportStaff) return;
+        try {
+            const res  = await fetch('/api/appstore/admin/listings?status=pending_review');
+            const data = await res.json();
+            if (!data.success) return;
+            updateNotificationBadge('admin-tab-apps-badge', data.pending_count || 0);
+        } catch {}
+    }
+
+    function appStatusLabel(status) {
+        return { draft: 'Draft', pending_review: 'Pending Review', published: 'Published',
+                 rejected: 'Rejected', delisted: 'Delisted' }[status] || status;
+    }
+
+    async function loadAppSubmissions() {
+        if (!iAmSupportStaff) return;
+        const tbody = document.getElementById('app-table-body');
+        const empty = document.getElementById('app-table-empty');
+        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);">Loading…</td></tr>';
+        empty.style.display = 'none';
+        const status = document.getElementById('app-filter-status').value;
+        const qs = new URLSearchParams();
+        if (status) qs.set('status', status);
+        try {
+            const res  = await fetch('/api/appstore/admin/listings?' + qs.toString());
+            const data = await res.json();
+            if (!data.success) {
+                tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red);">${escHtml(data.message || 'Failed to load.')}</td></tr>`;
+                return;
+            }
+            appSubmissionsCache = data.listings || [];
+            updateNotificationBadge('admin-tab-apps-badge', data.pending_count || 0);
+            if (!appSubmissionsCache.length) {
+                tbody.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            tbody.innerHTML = appSubmissionsCache.map(l => `
+                <tr>
+                    <td>${escHtml(l.title)}</td>
+                    <td>${escHtml(l.owner_username)}</td>
+                    <td>${escHtml(l.category || '—')}</td>
+                    <td><span class="req-status-pill req-status-${l.status}">${escHtml(appStatusLabel(l.status))}</span></td>
+                    <td>${l.verified === 'verified' ? '<span class="req-verified-yes">Yes</span>' : '<span class="req-verified-no">—</span>'}</td>
+                    <td style="color:var(--muted);">${l.submitted_at ? formatDate(l.submitted_at, true) : '—'}</td>
+                    <td><button class="admin-edit-btn" onclick="openAppDetail('${escJs(l.id)}')">Review</button></td>
+                </tr>
+            `).join('');
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="7" style="color:var(--red);">Connection error.</td></tr>';
+        }
+    }
+
+    async function openAppDetail(listingId) {
+        appDetailId = listingId;
+        const box = document.getElementById('app-detail-box');
+        const msg = document.getElementById('app-detail-msg');
+        msg.textContent = '';
+        msg.className = 'admin-status-msg';
+        box.classList.add('open');
+        document.getElementById('app-audit-log').innerHTML = '<span style="color:var(--muted);">Loading…</span>';
+        try {
+            const res  = await fetch(`/api/appstore/admin/listings/${listingId}`);
+            const data = await res.json();
+            if (!data.success) {
+                document.getElementById('app-audit-log').textContent = data.message || 'Failed to load.';
+                return;
+            }
+            const l = data.listing;
+            document.getElementById('app-detail-title').textContent = l.title;
+            const iconEl = document.getElementById('app-detail-icon');
+            if (l.icon_url) { iconEl.src = l.icon_url; iconEl.style.display = ''; }
+            else { iconEl.style.display = 'none'; }
+            document.getElementById('app-detail-meta').innerHTML =
+                `${escHtml(l.owner_username)} · ${escHtml(l.category || '—')} · <span class="req-status-pill req-status-${l.status}">${escHtml(appStatusLabel(l.status))}</span>` +
+                (l.verified === 'verified' ? ' · <span class="req-verified-yes">Verified</span>' : '');
+            document.getElementById('app-detail-desc').innerHTML =
+                `<div>${escHtml(l.description)}</div>` +
+                `<div style="margin-top:6px;"><strong>URL:</strong> <a href="${escHtml(l.url)}" target="_blank" rel="noopener">${escHtml(l.url)}</a></div>` +
+                (l.status === 'rejected' && l.reject_reason ? `<div style="margin-top:6px;color:var(--red);"><strong>Rejection reason:</strong> ${escHtml(l.reject_reason)}</div>` : '');
+
+            const actions = document.getElementById('app-detail-actions');
+            actions.innerHTML = '';
+            if (l.status === 'pending_review') {
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'req-action-btn req-approve-btn';
+                approveBtn.textContent = 'Approve & publish';
+                approveBtn.onclick = () => approveAppListing(listingId);
+                actions.appendChild(approveBtn);
+
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'req-action-btn req-reject-btn';
+                rejectBtn.textContent = 'Reject';
+                rejectBtn.onclick = () => rejectAppListing(listingId);
+                actions.appendChild(rejectBtn);
+            }
+            if (l.status === 'published' || l.status === 'pending_review') {
+                const delistBtn = document.createElement('button');
+                delistBtn.className = 'req-action-btn req-neutral-btn';
+                delistBtn.textContent = 'Delist';
+                delistBtn.onclick = () => delistAppListing(listingId);
+                actions.appendChild(delistBtn);
+            }
+            const verifyBtn = document.createElement('button');
+            verifyBtn.className = 'req-action-btn req-verify-btn';
+            verifyBtn.textContent = l.verified === 'verified' ? 'Remove verified badge' : 'Mark verified';
+            verifyBtn.onclick = () => setAppListingVerified(listingId, l.verified === 'verified' ? 'unverified' : 'verified');
+            actions.appendChild(verifyBtn);
+
+            document.getElementById('app-audit-log').innerHTML = (l.events || []).slice().reverse().map(ev => `
+                <div style="padding:5px 0;border-bottom:1px solid var(--border);">
+                    <strong>${escHtml(ev.action)}</strong> by ${escHtml(ev.actor_username)} (${escHtml(ev.actor_role)})
+                    ${ev.note ? ' — ' + escHtml(ev.note) : ''}
+                    <span style="color:var(--muted);"> · ${formatDate(ev.created_at, true)}</span>
+                </div>
+            `).join('') || '<span style="color:var(--muted);">No events.</span>';
+        } catch {
+            document.getElementById('app-audit-log').textContent = 'Connection error.';
+        }
+    }
+
+    async function approveAppListing(listingId) {
+        const msg = document.getElementById('app-detail-msg');
+        try {
+            const res  = await fetch(`/api/appstore/admin/listings/${listingId}/approve`, { method: 'POST' });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'success' : 'error');
+            if (data.success) { loadAppSubmissions(); openAppDetail(listingId); }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg error';
+        }
+    }
+
+    async function rejectAppListing(listingId) {
+        const reason = prompt('Reason for rejecting this app (shown to the developer):');
+        if (!reason) return;
+        const msg = document.getElementById('app-detail-msg');
+        try {
+            const res  = await fetch(`/api/appstore/admin/listings/${listingId}/reject`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'success' : 'error');
+            if (data.success) { loadAppSubmissions(); openAppDetail(listingId); }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg error';
+        }
+    }
+
+    async function delistAppListing(listingId) {
+        if (!confirm('Delist this app from the App Store?')) return;
+        const note = prompt('Optional note to the developer (leave blank for none):') || '';
+        const msg = document.getElementById('app-detail-msg');
+        try {
+            const res  = await fetch(`/api/appstore/admin/listings/${listingId}/delist`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'success' : 'error');
+            if (data.success) { loadAppSubmissions(); openAppDetail(listingId); }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg error';
+        }
+    }
+
+    async function setAppListingVerified(listingId, level) {
+        const msg = document.getElementById('app-detail-msg');
+        try {
+            const res  = await fetch(`/api/appstore/admin/listings/${listingId}/set-verified`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level })
+            });
+            const data = await res.json();
+            msg.textContent = data.message || '';
+            msg.className = 'admin-status-msg ' + (data.success ? 'success' : 'error');
+            if (data.success) { loadAppSubmissions(); openAppDetail(listingId); }
+        } catch {
+            msg.textContent = 'Connection error.';
+            msg.className = 'admin-status-msg error';
+        }
+    }
+
     function setReinstateButtonPending(pending) {
         const btn = document.getElementById('recovery-reinstate-btn');
         if (!btn) return;
@@ -3500,24 +3752,30 @@
         document.getElementById('admin-tab-users').style.display = showAllAdminTabs ? '' : 'none';
         document.getElementById('admin-tab-create').style.display = showAllAdminTabs ? '' : 'none';
         document.getElementById('admin-tab-requests').style.display = '';
+        document.getElementById('admin-tab-apps').style.display = '';
     }
 
     function closeAdminPanel() {
         document.getElementById('admin-modal').classList.remove('open');
         document.getElementById('admin-edit-box').style.display = 'none';
         document.getElementById('req-detail-box').classList.remove('open');
+        document.getElementById('app-detail-box').classList.remove('open');
         supportRequestDetailId = null;
+        appDetailId = null;
         adminEditingUsername = null;
     }
 
     function switchAdminTab(which) {
         document.getElementById('admin-panel-users').classList.toggle('active', which === 'users');
         document.getElementById('admin-panel-requests').classList.toggle('active', which === 'requests');
+        document.getElementById('admin-panel-apps').classList.toggle('active', which === 'apps');
         document.getElementById('admin-panel-create').classList.toggle('active', which === 'create');
         document.getElementById('admin-tab-users').classList.toggle('active', which === 'users');
         document.getElementById('admin-tab-requests').classList.toggle('active', which === 'requests');
+        document.getElementById('admin-tab-apps').classList.toggle('active', which === 'apps');
         document.getElementById('admin-tab-create').classList.toggle('active', which === 'create');
         if (which === 'requests') loadSupportRequests();
+        if (which === 'apps') loadAppSubmissions();
     }
 
     function reqStatusPillClass(status) {

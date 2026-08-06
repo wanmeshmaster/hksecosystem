@@ -786,7 +786,7 @@
         <section class="app-grid" aria-label="Applications">
             {% for app in apps %}
                 <a class="app-tile" href="/appstore/app/{{ app.id }}">
-                    <span class="app-tile-thumb" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
+                    <span class="app-tile-thumb" {% if app.bg_image %}style="background-image: url('{{ app.bg_image if app.bg_image.startswith('/') else '/source/' + app.bg_image }}')"{% endif %}>
                         {% if not app.bg_image %}<span>{{ app.title[0] | upper }}</span>{% endif %}
                     </span>
                     <span class="app-tile-title-row">

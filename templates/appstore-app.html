@@ -551,11 +551,11 @@
     </header>
 
     <main>
-        <section class="app-hero" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
+        <section class="app-hero" {% if app.bg_image %}style="background-image: url('{{ app.bg_image if app.bg_image.startswith('/') else '/source/' + app.bg_image }}')"{% endif %}>
             <div class="app-hero-scrim"></div>
             <div class="app-hero-inner">
                 <div class="app-hero-main">
-                    <span class="app-icon-lg" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
+                    <span class="app-icon-lg" {% if app.bg_image %}style="background-image: url('{{ app.bg_image if app.bg_image.startswith('/') else '/source/' + app.bg_image }}')"{% endif %}>
                         {% if not app.bg_image %}<span>{{ app.title[0] | upper }}</span>{% endif %}
                     </span>
                     <div class="app-hero-text">
