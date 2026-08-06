@@ -393,6 +393,39 @@
             border-radius: 16px;
         }
 
+        .app-icon-wrap {
+            position: relative;
+            width: 100%;
+            max-width: 118px;
+        }
+
+        .app-icon-remove {
+            position: absolute;
+            top: -4px;
+            right: 10px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(10, 12, 16, 0.85);
+            color: #f2f6f9;
+            font-size: 16px;
+            line-height: 1;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 2;
+            transition: background 0.15s ease, transform 0.15s ease;
+        }
+
+        .app-icon-remove:hover { background: #e0645a; transform: scale(1.08); }
+
+        .app-icon-wrap:hover .app-icon-remove,
+        .app-icon-wrap:focus-within .app-icon-remove {
+            display: flex;
+        }
+
         .app-icon:focus-visible {
             outline: 2px solid var(--accent);
             outline-offset: 4px;
@@ -422,11 +455,11 @@
             background: linear-gradient(150deg, #1c8f7c, #123a37);
         }
 
-        .app-icon:nth-of-type(3n+2) .icon-tile:not([style*="background-image"]) {
+        .app-icon-wrap:nth-of-type(3n+2) .icon-tile:not([style*="background-image"]) {
             background: linear-gradient(150deg, #2b6f9c, #10222f);
         }
 
-        .app-icon:nth-of-type(3n+3) .icon-tile:not([style*="background-image"]) {
+        .app-icon-wrap:nth-of-type(3n+3) .icon-tile:not([style*="background-image"]) {
             background: linear-gradient(150deg, #a9772f, #2c2013);
         }
 
@@ -687,12 +720,17 @@
         <section class="icon-grid" aria-label="Applications">
             {% for app in apps %}
                 {% set display_name = app.title or (app.id.replace('-', ' ') | title) %}
-                <a href="{{ app.url }}" class="app-icon" title="{{ display_name }}" aria-label="Open {{ display_name }}">
-                    <span class="icon-tile" {% if app.bg_image %}style="background-image: url('/source/{{ app.bg_image }}')"{% endif %}>
-                        {% if not app.bg_image %}<span class="icon-glyph">{{ display_name[0] | upper }}</span>{% endif %}
-                    </span>
-                    <span class="icon-label">{{ display_name }}</span>
-                </a>
+                <div class="app-icon-wrap">
+                    <a href="{{ app.url }}" class="app-icon" title="{{ display_name }}" aria-label="Open {{ display_name }}">
+                        <span class="icon-tile" {% if app.bg_image %}style="background-image: url('{{ app.bg_image if app.bg_image.startswith('/') else '/source/' + app.bg_image }}')"{% endif %}>
+                            {% if not app.bg_image %}<span class="icon-glyph">{{ display_name[0] | upper }}</span>{% endif %}
+                        </span>
+                        <span class="icon-label">{{ display_name }}</span>
+                    </a>
+                    {% if app.installed %}
+                        <button type="button" class="app-icon-remove" data-listing-id="{{ app.id }}" data-title="{{ display_name }}" title="Remove from home screen" aria-label="Uninstall {{ display_name }}">&times;</button>
+                    {% endif %}
+                </div>
             {% endfor %}
         </section>
     </main>
@@ -737,7 +775,7 @@
                 </div>
             </div>
 
-            <div class="modal-version">v0.9.15</div>
+            <div class="modal-version">v0.9.16</div>
         </div>
     </div>
 
@@ -804,6 +842,32 @@
         }
         updateClock();
         setInterval(updateClock, 15000);
+
+        // ── Uninstall (remove from home screen) ─────────────────────
+        document.querySelectorAll(".app-icon-remove").forEach(function (btn) {
+            btn.addEventListener("click", async function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const listingId = btn.getAttribute("data-listing-id");
+                const title = btn.getAttribute("data-title") || "this app";
+                if (!confirm(`Remove ${title} from your home screen? You can reinstall it any time from the App Store.`)) return;
+                btn.disabled = true;
+                try {
+                    const res = await fetch(`/api/appstore/listings/${encodeURIComponent(listingId)}/uninstall`, { method: "POST" });
+                    const data = await res.json();
+                    if (data.success) {
+                        const wrap = btn.closest(".app-icon-wrap");
+                        if (wrap) wrap.remove();
+                    } else {
+                        alert(data.message || "Could not remove this app — please try again.");
+                        btn.disabled = false;
+                    }
+                } catch (err) {
+                    alert("Connection error — please try again.");
+                    btn.disabled = false;
+                }
+            });
+        });
     </script>
 
 </body>

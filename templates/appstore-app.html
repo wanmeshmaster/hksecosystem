@@ -355,6 +355,40 @@
             white-space: nowrap;
         }
 
+        .app-install-btn {
+            font-family: inherit;
+            font-size: 0.92rem;
+            font-weight: 800;
+            padding: 12px 26px;
+            border-radius: 999px;
+            border: none;
+            background: var(--accent);
+            color: #06231d;
+            cursor: pointer;
+            transition: background 0.15s ease, opacity 0.15s ease;
+        }
+
+        .app-install-btn:hover { background: var(--accent-strong); }
+
+        .app-install-btn.installed {
+            background: transparent;
+            border: 1.5px solid var(--glass-border);
+            color: var(--text-secondary);
+        }
+
+        .app-install-btn.installed:hover {
+            border-color: #e0645a;
+            color: #e0645a;
+        }
+
+        .app-install-btn:disabled { opacity: 0.6; cursor: default; }
+
+        .app-install-msg {
+            flex-basis: 100%;
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+        }
+
         .app-more-btn {
             width: 42px;
             height: 42px;
@@ -583,10 +617,21 @@
 
                         <div class="app-hero-actions">
                             <button class="app-open-btn" id="openBtn" type="button">Open</button>
-                            <span class="status-pill">Installed</span>
+                            {% if app.is_reserved %}
+                                <span class="status-pill">Installed</span>
+                            {% else %}
+                                <button
+                                    class="app-install-btn{% if app.installed %} installed{% endif %}"
+                                    id="installBtn"
+                                    type="button"
+                                    data-listing-id="{{ app.id }}"
+                                    data-installed="{{ 'true' if app.installed else 'false' }}"
+                                >{{ 'Remove' if app.installed else 'Install' }}</button>
+                            {% endif %}
                             <button class="app-more-btn" type="button" aria-label="More options">
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
                             </button>
+                            <span class="app-install-msg" id="installMsg"></span>
                         </div>
                     </div>
                 </div>
@@ -675,6 +720,60 @@
                     applySignedIn(data.email, data.fullName, data.isDeveloper);
                 }
             } catch (e) {}
+        })();
+
+        // ── Install / Remove (per-account home screen state) ─────────
+        // Not rendered at all for the 3 built-in apps (see app.is_reserved
+        // in the template) — those are on every home screen unconditionally.
+        (function () {
+            const installBtn = $("installBtn");
+            if (!installBtn) return;
+
+            const listingId = installBtn.getAttribute("data-listing-id");
+            const msg = $("installMsg");
+
+            function showMsg(text) {
+                if (!msg) return;
+                msg.textContent = text || "";
+            }
+
+            function setInstalled(isInstalled) {
+                installBtn.setAttribute("data-installed", isInstalled ? "true" : "false");
+                installBtn.classList.toggle("installed", isInstalled);
+                installBtn.textContent = isInstalled ? "Remove" : "Install";
+            }
+
+            installBtn.addEventListener("click", async function () {
+                const isInstalled = installBtn.getAttribute("data-installed") === "true";
+                const endpoint = `/api/appstore/listings/${encodeURIComponent(listingId)}/${isInstalled ? "uninstall" : "install"}`;
+
+                installBtn.disabled = true;
+                showMsg("");
+
+                try {
+                    const res = await fetch(endpoint, { method: "POST" });
+                    const data = await res.json();
+
+                    if (res.status === 401) {
+                        // Not signed in — bounce to HKMail sign-in and come
+                        // straight back to this listing afterwards.
+                        const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+                        window.location.href = "/hkmail.html?return_to=" + returnTo;
+                        return;
+                    }
+
+                    if (data.success) {
+                        setInstalled(!isInstalled);
+                        showMsg(data.message || (isInstalled ? "Removed from your home screen." : "Added to your home screen."));
+                    } else {
+                        showMsg(data.message || "Something went wrong — please try again.");
+                    }
+                } catch (err) {
+                    showMsg("Connection error — please try again.");
+                } finally {
+                    installBtn.disabled = false;
+                }
+            });
         })();
     </script>
 

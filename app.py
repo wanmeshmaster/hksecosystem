@@ -669,6 +669,28 @@ def home():
     for a in apps:
         img = f"{a['id']}.jpg"
         a['bg_image'] = img if os.path.exists(os.path.join(app.root_path, 'source', img)) else None
+        a['installed'] = False
+
+    # Third-party apps the signed-in HKMail account has installed from the
+    # App Store. Purely per-account UI state (app_store_installs) — nobody
+    # else signed in anywhere else sees these. Only currently-published
+    # listings are shown, so a delisted app quietly drops off its
+    # installers' home screens without losing the install record — it
+    # reappears automatically if the developer brings it back.
+    username = session.get("mail_username")
+    if username:
+        conn = sqlite3.connect(MAIL_DATABASE)
+        cur = conn.cursor()
+        cur.execute("SELECT listing_id FROM app_store_installs WHERE username=?", (username,))
+        installed_ids = {r[0] for r in cur.fetchall()}
+        conn.close()
+        if installed_ids:
+            for a in get_appstore_apps():
+                if a['id'] in installed_ids:
+                    apps.append({
+                        'id': a['id'], 'title': a['title'], 'url': a['url'],
+                        'bg_image': a['bg_image'], 'installed': True,
+                    })
     return render_template('index.html', apps=apps)
 
 @app.route('/coming-soon.html')
@@ -727,6 +749,27 @@ def appstore_app_detail(app_id):
     matched = next((a for a in get_appstore_apps() if a['id'] == app_id), None)
     if not matched:
         return redirect('/appstore.html')
+
+    matched = dict(matched)
+    # The 3 built-in apps are on every home screen unconditionally and can't
+    # be installed/uninstalled (mirrors APP_STORE_RESERVED_LISTING_IDS checks
+    # in the install/uninstall API routes below). Everything else is opt-in,
+    # per-account UI state read from app_store_installs, same source of
+    # truth home() uses for the desktop icon grid.
+    matched['is_reserved'] = app_id in APP_STORE_RESERVED_LISTING_IDS
+    matched['installed'] = matched['is_reserved']
+    if not matched['is_reserved']:
+        username = appstore_current_user()
+        if username:
+            conn = sqlite3.connect(MAIL_DATABASE)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT 1 FROM app_store_installs WHERE username=? AND listing_id=?",
+                (username, app_id)
+            )
+            matched['installed'] = cur.fetchone() is not None
+            conn.close()
+
     return render_template('appstore-app.html', app=matched)
 
 @app.route('/appstore-terms.html')
@@ -2957,6 +3000,21 @@ def init_mail_db():
         )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_listing_events_listing ON app_store_listing_events(listing_id)")
+
+    # Per-user "installs" — clicking Install on a listing's Store page adds
+    # it to that HKMail account's own home screen and nobody else's. Keyed
+    # by username (not by browser/host), so it follows the account wherever
+    # they sign in, same as everything else App Store reads from HKMail.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_store_installs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            username        TEXT NOT NULL,
+            listing_id      TEXT NOT NULL,
+            installed_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(username, listing_id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_installs_username ON app_store_installs(username)")
 
     # Ensure the HKMail administrator account exists. It's inserted first so
     # it is literally the first user of the HKMail service, and it is both
@@ -6726,6 +6784,74 @@ def appstore_listing_icon(listing_id):
     mime_type, blob = row
     return Response(blob, mimetype=mime_type or "application/octet-stream",
                      headers={"Cache-Control": "public, max-age=3600"})
+
+
+# ── App Store: Installs (per-user home screen) ──────────────────────────────
+# Installing a listing is purely additive UI state — it doesn't touch the
+# listing itself. It's keyed to the signed-in HKMail account (app_store_installs),
+# so an install only ever shows up on that one account's home screen
+# (see home()), never for anyone else signed in on a different device.
+
+@app.route('/api/appstore/installs/mine', methods=['GET'])
+def appstore_installs_mine():
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": True, "installed_ids": []})
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    cur.execute("SELECT listing_id FROM app_store_installs WHERE username=?", (username,))
+    ids = [r[0] for r in cur.fetchall()]
+    conn.close()
+    return jsonify({"success": True, "installed_ids": ids})
+
+
+@app.route('/api/appstore/listings/<listing_id>/install', methods=['POST'])
+def appstore_listing_install(listing_id):
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail to install apps."}), 401
+    if listing_id in APP_STORE_RESERVED_LISTING_IDS:
+        return jsonify({"success": False, "message": "That app is already on every home screen."}), 400
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT status FROM app_store_listings WHERE id=?", (listing_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"success": False, "message": "App not found."}), 404
+        if row[0] != "published":
+            return jsonify({"success": False, "message": "This app isn't currently available to install."}), 400
+
+        cur.execute(
+            "INSERT OR IGNORE INTO app_store_installs (username, listing_id) VALUES (?, ?)",
+            (username, listing_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Installed — it's on your home screen now."})
+
+
+@app.route('/api/appstore/listings/<listing_id>/uninstall', methods=['POST'])
+def appstore_listing_uninstall(listing_id):
+    username = appstore_current_user()
+    if not username:
+        return jsonify({"success": False, "message": "Sign in with HKMail first."}), 401
+
+    conn = sqlite3.connect(MAIL_DATABASE)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM app_store_installs WHERE username=? AND listing_id=?",
+            (username, listing_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"success": True, "message": "Removed from your home screen."})
 
 
 # ── App Store: Listings — admin review ──────────────────────────────────────
