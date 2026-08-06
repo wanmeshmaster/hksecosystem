@@ -684,15 +684,15 @@ def get_appstore_apps():
         {'id': 'hks-bank',  'title': 'HKS Bank',  'url': '/hks-bank.html',
          'description': 'Accounts, cards, and payments for the ecosystem.',
          'developer': 'Hong Kong Solutions Ltd.', 'verified': 'official',
-         'category': 'Finance', 'downloads': '4.1k+', 'published': 'Jan 2026'},
+         'category': 'Finance', 'downloads': '4.1k+', 'published': 'Jan 2026', 'version': None},
         {'id': 'hkmail',    'title': 'HKMail',    'url': '/hkmail.html',
          'description': 'Email for every HK OS account.',
          'developer': 'Hong Kong Solutions Ltd.', 'verified': 'official',
-         'category': 'Productivity', 'downloads': '5.8k+', 'published': 'Jan 2026'},
+         'category': 'Productivity', 'downloads': '5.8k+', 'published': 'Jan 2026', 'version': None},
         {'id': 'snackshop', 'title': 'SnackShop', 'url': '/snackshop.html',
          'description': 'Order snacks and drinks, paid for with HKS Bank.',
          'developer': 'SnackShop Co.', 'verified': 'verified',
-         'category': 'Shopping', 'downloads': '2.3k+', 'published': 'Mar 2026'},
+         'category': 'Shopping', 'downloads': '2.3k+', 'published': 'Mar 2026', 'version': None},
     ]
     for a in apps:
         img = f"{a['id']}.jpg"
@@ -702,17 +702,18 @@ def get_appstore_apps():
     cur = conn.cursor()
     cur.execute("""
         SELECT id, owner_username, title, description, category, url, verified,
-               icon_mime, published_at
+               icon_mime, published_at, version
         FROM app_store_listings WHERE status='published' ORDER BY published_at DESC
     """)
     rows = cur.fetchall()
     conn.close()
-    for (lid, owner, title, desc, category, url, verified, icon_mime, published_at) in rows:
+    for (lid, owner, title, desc, category, url, verified, icon_mime, published_at, version) in rows:
         apps.append({
             'id': lid, 'title': title, 'url': url, 'description': desc,
             'developer': owner, 'verified': verified, 'category': category or 'Other',
             'downloads': '—',
             'published': (published_at or '')[:7],
+            'version': version or None,
             'bg_image': f"/api/appstore/listings/{lid}/icon" if icon_mime else None,
         })
     return apps
@@ -2926,6 +2927,17 @@ def init_mail_db():
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_listings_owner ON app_store_listings(owner_username)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_app_store_listings_status ON app_store_listings(status)")
+    for stmt in [
+        # Version string set by the developer on each submission (e.g. '1.2.0'),
+        # shown on the app's Store detail page. Bumping it on a re-submission
+        # only takes effect once that re-submission is approved, same as every
+        # other field — see appstore_listings_update.
+        "ALTER TABLE app_store_listings ADD COLUMN version TEXT NOT NULL DEFAULT ''",
+    ]:
+        try:
+            cur.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
 
     # Full audit trail for listings, same shape/purpose as
     # mail_support_request_events above: every submission, edit, approval,
@@ -4667,8 +4679,14 @@ def hkmail_admin_support_requests_notification_count():
     conn = sqlite3.connect(MAIL_DATABASE)
     cur  = conn.cursor()
     count = mail_support_requests_notification_count(cur)
+    # Folded in here (rather than requiring the client to poll a second
+    # endpoint) so the "Account Requests" nav item in the general inbox
+    # view — support staff's one at-a-glance queue indicator — reflects
+    # pending App Store submissions too, not just account-service requests.
+    cur.execute("SELECT COUNT(*) FROM app_store_listings WHERE status='pending_review'")
+    app_pending_count = cur.fetchone()[0]
     conn.close()
-    return jsonify({"success": True, "count": count})
+    return jsonify({"success": True, "count": count, "app_pending_count": app_pending_count})
 
 @app.route('/api/hkmail/admin/support-requests', methods=['GET'])
 def hkmail_admin_list_support_requests():
@@ -6443,21 +6461,46 @@ def app_store_notify(cur, recipient, subject, body):
     )
 
 
+def app_store_notify_support(cur, listing_id, title, owner, category, url, version, resubmission=False):
+    """Email support@hkmail.cn from the App Store's own mailbox whenever a
+    listing lands in pending_review — on first submission and on every
+    edit-triggered resubmission — so staff see it show up as mail the same
+    way any other App Store notice does, on top of the badge count on the
+    Account Requests nav item (see hkmail_admin_support_requests_notification_count)."""
+    verb = "resubmitted for review" if resubmission else "submitted for review"
+    cur.execute(
+        "INSERT INTO emails (sender, recipient, subject, body) VALUES (?, ?, ?, ?)",
+        (
+            APPSTORE_MAIL_SENDER, SUPPORT_MAIL_USERNAME,
+            f"App {verb}: {title}",
+            f"An app listing has been {verb}.\n\n"
+            f"Title: {title}\n"
+            f"Developer: {owner}\n"
+            f"Category: {category}\n"
+            f"Version: {version}\n"
+            f"URL: {url}\n"
+            f"Listing ID: {listing_id}\n\n"
+            "Please review and approve or reject from the App Submissions tab in HKMail Administration.\n\n"
+            "— App Store"
+        )
+    )
+
+
 APP_STORE_LISTING_SELECT_COLUMNS = """
     id, owner_username, title, description, category, url, icon_mime,
-    status, verified, reject_reason, created_at, submitted_at, published_at, updated_at
+    status, verified, reject_reason, version, created_at, submitted_at, published_at, updated_at
 """
 
 
 def app_store_listing_row_to_dict(row):
     (lid, owner, title, desc, category, url, icon_mime, status, verified,
-     reject_reason, created_at, submitted_at, published_at, updated_at) = row
+     reject_reason, version, created_at, submitted_at, published_at, updated_at) = row
     return {
         "id": lid, "owner_username": owner, "title": title, "description": desc,
         "category": category, "url": url, "has_icon": bool(icon_mime),
         "icon_url": f"/api/appstore/listings/{lid}/icon" if icon_mime else None,
         "status": status, "verified": verified, "reject_reason": reject_reason,
-        "created_at": created_at, "submitted_at": submitted_at,
+        "version": version, "created_at": created_at, "submitted_at": submitted_at,
         "published_at": published_at, "updated_at": updated_at,
     }
 
@@ -6492,6 +6535,7 @@ def app_store_validate_listing_fields(data):
     description = (data.get("description", "") or "").strip()
     category    = (data.get("category", "") or "").strip()
     url         = (data.get("url", "") or "").strip()
+    version     = (data.get("version", "") or "").strip()
 
     if not title or len(title) > 80:
         return None, "Title is required (80 characters max)."
@@ -6501,7 +6545,10 @@ def app_store_validate_listing_fields(data):
         return None, "Please choose a valid category."
     if not url or not re.match(r'^https?://', url):
         return None, "URL is required and must start with http:// or https://."
-    return {"title": title, "description": description, "category": category, "url": url}, None
+    if not version or len(version) > 20 or not re.match(r'^[A-Za-z0-9][A-Za-z0-9._+-]*$', version):
+        return None, "Version is required (e.g. 1.0.0), 20 characters max."
+    return {"title": title, "description": description, "category": category,
+            "url": url, "version": version}, None
 
 
 @app.route('/api/appstore/listings/mine', methods=['GET'])
@@ -6552,11 +6599,11 @@ def appstore_listings_create():
         listing_id = app_store_unique_listing_id(cur, fields["title"])
         cur.execute("""
             INSERT INTO app_store_listings
-                (id, owner_username, title, description, category, url,
+                (id, owner_username, title, description, category, url, version,
                  icon_mime, icon_blob, status, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', CURRENT_TIMESTAMP)
         """, (listing_id, username, fields["title"], fields["description"],
-              fields["category"], fields["url"], icon_mime or "", icon_blob))
+              fields["category"], fields["url"], fields["version"], icon_mime or "", icon_blob))
         app_store_log_listing_event(cur, listing_id, "submitted", username, "developer",
                                      new_status="pending_review", note="Listing submitted for review.")
         app_store_notify(cur, username, f"App submitted for review: {fields['title']}",
@@ -6564,6 +6611,8 @@ def appstore_listings_create():
                           "Our team will review it shortly — you'll get an email here as soon as it's "
                           "approved and published, or if it's rejected. You can check its status any "
                           "time from My Apps on the Developers page.\n\n— App Store")
+        app_store_notify_support(cur, listing_id, fields["title"], username, fields["category"],
+                                  fields["url"], fields["version"], resubmission=False)
         conn.commit()
     finally:
         conn.close()
@@ -6609,10 +6658,11 @@ def appstore_listings_update(listing_id):
 
         cur.execute(f"""
             UPDATE app_store_listings
-            SET title=?, description=?, category=?, url=?, status='pending_review',
+            SET title=?, description=?, category=?, url=?, version=?, status='pending_review',
                 reject_reason='', submitted_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP{icon_sql}
             WHERE id=?
-        """, [fields["title"], fields["description"], fields["category"], fields["url"], *icon_params, listing_id])
+        """, [fields["title"], fields["description"], fields["category"], fields["url"],
+              fields["version"], *icon_params, listing_id])
 
         action = "resubmitted" if old_status in ("published", "rejected", "delisted") else "edited"
         app_store_log_listing_event(cur, listing_id, action, username, "developer",
@@ -6622,6 +6672,8 @@ def appstore_listings_update(listing_id):
                           f"Your edits to \"{fields['title']}\" have been submitted for review.\n\n"
                           "You'll get an email here as soon as it's approved and published, or if it's "
                           "rejected.\n\n— App Store")
+        app_store_notify_support(cur, listing_id, fields["title"], username, fields["category"],
+                                  fields["url"], fields["version"], resubmission=True)
         conn.commit()
     finally:
         conn.close()

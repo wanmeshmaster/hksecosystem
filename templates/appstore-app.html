@@ -593,6 +593,9 @@
 
                 <aside class="app-info-card">
                     <div class="app-info-card-title">App info</div>
+                    {% if app.version %}
+                    <div class="app-info-row"><span>Version</span><strong>{{ app.version }}</strong></div>
+                    {% endif %}
                     <div class="app-info-row"><span>Published</span><strong>{{ app.published }}</strong></div>
                     <div class="app-info-row"><span>Category</span><strong>{{ app.category }}</strong></div>
                     <div class="app-info-row">

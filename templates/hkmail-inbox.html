@@ -1917,6 +1917,7 @@
                         <th>Title</th>
                         <th>Developer</th>
                         <th>Category</th>
+                        <th>Version</th>
                         <th>Status</th>
                         <th>Verified</th>
                         <th>Submitted</th>
@@ -2833,9 +2834,15 @@
             const res  = await fetch('/api/hkmail/admin/support-requests/notification-count');
             const data = await res.json();
             if (!data.success) return;
-            const count = data.count || 0;
-            updateNotificationBadge('account-requests-badge', count);
-            updateNotificationBadge('admin-tab-requests-badge', count);
+            // The sidebar/topbar "Account Requests" indicators are support
+            // staff's one general-purpose queue signal, so they fold in
+            // pending App Store submissions too — not just account-service
+            // requests. The App Submissions tab's own badge (set in
+            // loadAppSubmissions/refreshAppSubmissionNotifications) stays
+            // app-submission-specific since that panel only shows those.
+            const combined = (data.count || 0) + (data.app_pending_count || 0);
+            updateNotificationBadge('account-requests-badge', combined);
+            updateNotificationBadge('admin-tab-requests-badge', data.count || 0);
         } catch {}
     }
 
@@ -2858,7 +2865,7 @@
         if (!iAmSupportStaff) return;
         const tbody = document.getElementById('app-table-body');
         const empty = document.getElementById('app-table-empty');
-        tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);">Loading…</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);">Loading…</td></tr>';
         empty.style.display = 'none';
         const status = document.getElementById('app-filter-status').value;
         const qs = new URLSearchParams();
@@ -2867,7 +2874,7 @@
             const res  = await fetch('/api/appstore/admin/listings?' + qs.toString());
             const data = await res.json();
             if (!data.success) {
-                tbody.innerHTML = `<tr><td colspan="7" style="color:var(--red);">${escHtml(data.message || 'Failed to load.')}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red);">${escHtml(data.message || 'Failed to load.')}</td></tr>`;
                 return;
             }
             appSubmissionsCache = data.listings || [];
@@ -2882,6 +2889,7 @@
                     <td>${escHtml(l.title)}</td>
                     <td>${escHtml(l.owner_username)}</td>
                     <td>${escHtml(l.category || '—')}</td>
+                    <td>${escHtml(l.version || '—')}</td>
                     <td><span class="req-status-pill req-status-${l.status}">${escHtml(appStatusLabel(l.status))}</span></td>
                     <td>${l.verified === 'verified' ? '<span class="req-verified-yes">Yes</span>' : '<span class="req-verified-no">—</span>'}</td>
                     <td style="color:var(--muted);">${l.submitted_at ? formatDate(l.submitted_at, true) : '—'}</td>
@@ -2889,7 +2897,7 @@
                 </tr>
             `).join('');
         } catch {
-            tbody.innerHTML = '<tr><td colspan="7" style="color:var(--red);">Connection error.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="color:var(--red);">Connection error.</td></tr>';
         }
     }
 
@@ -2914,7 +2922,7 @@
             if (l.icon_url) { iconEl.src = l.icon_url; iconEl.style.display = ''; }
             else { iconEl.style.display = 'none'; }
             document.getElementById('app-detail-meta').innerHTML =
-                `${escHtml(l.owner_username)} · ${escHtml(l.category || '—')} · <span class="req-status-pill req-status-${l.status}">${escHtml(appStatusLabel(l.status))}</span>` +
+                `${escHtml(l.owner_username)} · ${escHtml(l.category || '—')} · v${escHtml(l.version || '—')} · <span class="req-status-pill req-status-${l.status}">${escHtml(appStatusLabel(l.status))}</span>` +
                 (l.verified === 'verified' ? ' · <span class="req-verified-yes">Verified</span>' : '');
             document.getElementById('app-detail-desc').innerHTML =
                 `<div>${escHtml(l.description)}</div>` +

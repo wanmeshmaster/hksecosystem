@@ -549,6 +549,10 @@
                         <select class="form-select" id="l-category" required></select>
                     </div>
                     <div class="form-group">
+                        <label class="form-label" for="l-version">Version</label>
+                        <input class="form-input" id="l-version" type="text" placeholder="1.0.0" maxlength="20" required>
+                    </div>
+                    <div class="form-group full">
                         <label class="form-label" for="l-url">App URL</label>
                         <input class="form-input" id="l-url" type="url" placeholder="https://…" required>
                     </div>
@@ -708,7 +712,7 @@
                         <span class="app-row-icon" ${iconStyle}>${l.icon_url ? '' : escHtml(l.title[0] || '?')}</span>
                         <div class="app-row-body">
                             <h3>${escHtml(l.title)}</h3>
-                            <p>${escHtml(l.category || '')}</p>
+                            <p>${escHtml(l.category || '')}${l.version ? ' · v' + escHtml(l.version) : ''}</p>
                             <span class="status-pill status-${l.status} font-display">${STATUS_LABELS[l.status] || l.status}</span>
                             ${l.status === 'rejected' && l.reject_reason ? `<p style="margin-top:6px;color:var(--danger);">${escHtml(l.reject_reason)}</p>` : ''}
                         </div>
@@ -733,6 +737,7 @@
             $('l-title').value = existing ? existing.title : '';
             $('l-description').value = existing ? existing.description : '';
             $('l-url').value = existing ? existing.url : '';
+            $('l-version').value = existing ? existing.version : '';
             $('l-icon').value = '';
 
             const catSelect = $('l-category');
@@ -764,6 +769,7 @@
                 title: $('l-title').value.trim(),
                 description: $('l-description').value.trim(),
                 category: $('l-category').value,
+                version: $('l-version').value.trim(),
                 url: $('l-url').value.trim()
             };
 
